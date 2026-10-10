@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const speedFill = $('speed-fill'), speedText = $('speed-text'), chargeFill = $('charge-fill');
 const state = $('state'), popups = $('popups'), overlay = $('overlay'), crosshair = $('crosshair');
 const scorePoints = $('score-points'), scoreMult = $('score-mult'), scoreHeat = $('score-heat'), weaponsEl = $('weapons');
-let shownMult = 1, shownWeapons = '', shownStreak = 0;
+let shownMult = 1, shownWeapons = '', shownStreak = 0, shownPowers = null;
 const chestMarker = $('chest-marker'), chestLabel = chestMarker.querySelector('span');
 const hpFill = $('hp-fill'), hpText = $('hp-text'), statsEl = $('stats'), hurtEl = $('hurt'), xpFill = $('xp-fill'), xpLevel = $('xp-level'), buffsEl = $('buffs');
 
@@ -109,7 +109,25 @@ export const hud = {
     if (progress !== null) $('capture-fill').style.width = `${progress * 100}%`;
   },
 
-  shielded(on) { $('hp').classList.toggle('shielded', on); },
+  // Shield charge (0..1) as a thin blue bar under the HP bar; hidden if you have no shield.
+  shield(charge, owned) {
+    $('shield-bar').classList.toggle('hidden', !owned);
+    $('shield-fill').style.width = `${charge * 100}%`;
+    $('hp').classList.toggle('shielded', charge > 0);
+  },
+
+  // The power-ups you own, e.g. "TOZTOXIK III", each in its own colour.
+  powers(list) {
+    const key = list.map((p) => p.label).join();
+    if (key === shownPowers) return;
+    shownPowers = key;
+    $('powers').replaceChildren(...list.map((p) => {
+      const el = document.createElement('span');
+      el.textContent = p.label;
+      el.style.color = `#${p.color.toString(16).padStart(6, '0')}`;
+      return el;
+    }));
+  },
 
   // Points at a chest: x / y are screen fractions (0..1), or pass null to hide it.
   chestMarker(x, y, metres) {

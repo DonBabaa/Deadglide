@@ -293,3 +293,11 @@ body { font-family: var(--text); font-size: 16px; letter-spacing: 0.3px; color: 
 #streak .bar { height: 4px; margin: 4px auto 0; width: 70%; }
 #streak-time { background: #ff6a4a; }
 #zone-marker, #capture { --zone: #c9b8ff; }
+
+/* ---- Permanent power-ups: shield charge under the HP bar, then a line per power-up owned ---- */
+#player { align-items: flex-start; }
+#shield-bar { width: 260px; height: 5px; margin-top: 3px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(88, 183, 255, 0.6); }
+#shield-bar.hidden { display: none; }
+#shield-fill { height: 100%; background: #58b7ff; box-shadow: 0 0 8px #58b7ff; transition: width 0.15s; }
+#powers { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 300px; font-family: var(--text); font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.steppers { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 22px; padding: 2px 8px 8px 2px; }

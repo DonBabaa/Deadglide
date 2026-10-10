@@ -109,6 +109,7 @@ function restart() {
   if (creative) {
     for (const id of creative.weapons) weapon.give(id);
     for (const u of UPGRADES) for (let n = 0; n < (creative.upgrades[u.id] || 0); n++) takeUpgrade(u, run);
+    for (const id in creative.powers) for (let n = 0; n < creative.powers[id]; n++) powerups.grant(id);
   }
   config.horde.enabled = creative ? creative.monsters : true;
   hp = maxHp();
@@ -187,6 +188,8 @@ function showMenu() {
   hud.chestMarker(null);
   hud.zoneMarker(null);
   hud.capture(null);
+  hud.powers([]);
+  hud.shield(0, false);
   hud.scope(false);
   model.setVisible(false);
   menuScene.setVisible(true);
@@ -361,15 +364,14 @@ function frame(now) {
 
     // Monsters: spawn, chase, and claw at the player.
     invulnerable = Math.max(0, invulnerable - dt);
-    const damage = horde.update(dt * (powerups.active('slow') ? config.powerups.slowFactor : 1), skater);   // Couch Lock slows their whole world down
+    const damage = horde.update(dt, skater);
     if (damage > 0) hurt(damage);
 
     // Gun: the arm points at whatever is under the crosshair, bullets fly there.
     weapon.aimPoint(camera, aimPoint);
     model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
     trickBuff = Math.max(0, trickBuff - dt);
-    if (powerups.active('blaze')) stats.frenzy = Math.max(stats.frenzy, powerups.time.blaze);   // Blaze: double fire rate...
-    const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1) * (powerups.active('blaze') ? 2 : 1);   // ...and double damage
+    const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1);
     if (weapon.update(dt, firing, aiming, model.muzzle, aimPoint, horde, damageMult)) {
       model.onShot();
       chase.onShot(weapon.def.kick);
@@ -413,14 +415,19 @@ function frame(now) {
     }
     if (box.captured) {
       const won = powerups.random();   // you only find out what was in it now
-      powerups.grant(won);
-      hud.popup(`${POWERUPS[won].name}: ${POWERUPS[won].description}`, 'loot');
+      if (won) {
+        powerups.grant(won);
+        hud.popup(`${powerups.label(won)}: ${POWERUPS[won].description}`, 'loot');
+      } else {                         // every power-up is already at full strength
+        run.heal(40);
+        hud.popup('Everything maxed: +40 HP', 'loot');
+      }
       playPowerup();
       score.add(250, 0.5);
     }
-    powerups.update(dt, renderPos, horde, run);
-    stats.gravity = powerups.active('float') ? config.powerups.floatGravity : 1;   // Moon Rocks
-    hud.shielded(powerups.active('shield'));
+    powerups.update(dt, skater, renderPos, horde);
+    hud.shield(powerups.shieldCharge(), stats.power.shield.level > 0);
+    hud.powers(powerups.owned());
 
     // XP: gems fly in, and enough of them means an upgrade.
     const gain = xp.update(dt, skater);
@@ -429,7 +436,7 @@ function frame(now) {
     if (pendingLevels > 0 && !choosing && !dead) offerUpgrade();
 
     arena.update(dt, renderPos);
-    hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': powerups.active('blaze') ? 0 : stats.frenzy, 'Invincible': shield, 'Double damage': trickBuff, ...powerups.running() });
+    hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': stats.frenzy, 'Invincible': shield, 'Double damage': trickBuff });
   }
   renderer.render(scene, camera);
 }

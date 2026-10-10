@@ -19,9 +19,16 @@ const BASE = {
   gravity: 1,         // gravity multiplier (Moon Rocks lowers it)
 };
 
-export const stats = { ...BASE, taken: {} };   // taken: upgrade id -> how many times picked
+// HotBox power-ups (see player/powerups.js). For each one:
+//   level = how many times you've won it (0 = don't have it)
+//   damage / size / rate = multipliers from level-up upgrades; count = extra orbs, skulls or jumps
+export const POWER_IDS = ['shield', 'gas', 'fire', 'seekers', 'thorns', 'lightning', 'float'];
+const freshPowers = () => Object.fromEntries(POWER_IDS.map((id) => [id, { level: 0, damage: 1, size: 1, rate: 1, count: 0 }]));
+
+export const stats = { ...BASE, taken: {}, power: freshPowers() };   // taken: upgrade id -> how many times picked
 
 export function resetStats() {
   Object.assign(stats, BASE);
   stats.taken = {};
+  stats.power = freshPowers();
 }

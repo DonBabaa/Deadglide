@@ -2,6 +2,7 @@
 // Add an upgrade by adding an entry:
 //   rarity: 'common' | 'rare'   (rare ones turn up about a third as often)
 //   max:    how many times it can be taken
+//   requires: a HotBox power-up id; the upgrade is only offered once you own that power-up
 //   apply(stats, run): change the player's stats (see player/stats.js);
 //                      `run` has heal(n) for upgrades that restore HP.
 import { stats } from '../player/stats.js';
@@ -20,12 +21,28 @@ export const UPGRADES = [
   { id: 'speed', name: 'Hot Wheels', description: '+10% top pushing speed.', rarity: 'common', max: 5, apply: (s) => { s.topSpeed += 0.1; } },
   { id: 'heart', name: 'Second Wind', description: '+20 maximum HP, and heal 20.', rarity: 'rare', max: 5, apply: (s, run) => { s.maxHp += 20; run.heal(20); } },
   { id: 'heal', name: 'Patch Up', description: 'Heal 35 HP.', rarity: 'common', max: 99, apply: (s, run) => run.heal(35) },
+  // --- Power-up boosters: these only turn up once you own the power-up they improve. ---
+  { id: 'gasSize', requires: 'gas', name: 'TozToxik: Wider Cloud', description: '+25% gas radius, round you and along the trail.', rarity: 'common', max: 4, apply: (s) => { s.power.gas.size += 0.25; } },
+  { id: 'gasDamage', requires: 'gas', name: 'TozToxik: Stronger Dose', description: '+35% gas damage.', rarity: 'common', max: 5, apply: (s) => { s.power.gas.damage += 0.35; } },
+  { id: 'fireCount', requires: 'fire', name: 'Ring of Fire: Extra Flame', description: '+1 fireball in the ring.', rarity: 'rare', max: 3, apply: (s) => { s.power.fire.count += 1; } },
+  { id: 'fireDamage', requires: 'fire', name: 'Ring of Fire: Hotter', description: '+35% fireball damage.', rarity: 'common', max: 5, apply: (s) => { s.power.fire.damage += 0.35; } },
+  { id: 'fireSize', requires: 'fire', name: 'Ring of Fire: Wider Ring', description: '+20% ring radius.', rarity: 'common', max: 3, apply: (s) => { s.power.fire.size += 0.2; } },
+  { id: 'seekCount', requires: 'seekers', name: 'Grave Seekers: Extra Skull', description: '+1 skull in every volley.', rarity: 'rare', max: 3, apply: (s) => { s.power.seekers.count += 1; } },
+  { id: 'seekRate', requires: 'seekers', name: 'Grave Seekers: Restless', description: 'Volleys come 25% faster.', rarity: 'common', max: 4, apply: (s) => { s.power.seekers.rate += 0.25; } },
+  { id: 'seekDamage', requires: 'seekers', name: 'Grave Seekers: Heavier Skulls', description: '+35% skull damage.', rarity: 'common', max: 5, apply: (s) => { s.power.seekers.damage += 0.35; } },
+  { id: 'thornDamage', requires: 'thorns', name: 'Thorns: Sharper', description: '+40% thorn damage.', rarity: 'common', max: 5, apply: (s) => { s.power.thorns.damage += 0.4; } },
+  { id: 'thornSize', requires: 'thorns', name: 'Thorns: Longer Reach', description: '+25% thorn reach.', rarity: 'common', max: 3, apply: (s) => { s.power.thorns.size += 0.25; } },
+  { id: 'boltCount', requires: 'lightning', name: 'Chain Lightning: Longer Chain', description: 'Each bolt jumps to 2 more monsters.', rarity: 'common', max: 4, apply: (s) => { s.power.lightning.count += 2; } },
+  { id: 'boltRate', requires: 'lightning', name: 'Chain Lightning: Storm', description: 'Bolts strike 25% more often.', rarity: 'common', max: 4, apply: (s) => { s.power.lightning.rate += 0.25; } },
+  { id: 'boltDamage', requires: 'lightning', name: 'Chain Lightning: More Volts', description: '+35% bolt damage.', rarity: 'common', max: 5, apply: (s) => { s.power.lightning.damage += 0.35; } },
+  { id: 'shieldSize', requires: 'shield', name: 'Shield: Thicker', description: '+30% shield capacity.', rarity: 'common', max: 4, apply: (s) => { s.power.shield.size += 0.3; } },
+  { id: 'shieldRate', requires: 'shield', name: 'Shield: Quick Recharge', description: 'The shield starts recharging 25% sooner.', rarity: 'common', max: 4, apply: (s) => { s.power.shield.rate += 0.25; } },
   { id: 'skin', name: 'Thick Skin', description: '+0.5 s of safety after taking a hit.', rarity: 'common', max: 3, apply: (s) => { s.invulnerable += 0.5; } },
 ];
 
 // Up to `count` different upgrades that can still be taken.
 export function rollUpgrades(count = 3) {
-  const pool = UPGRADES.filter((u) => (stats.taken[u.id] || 0) < u.max);
+  const pool = UPGRADES.filter((u) => (stats.taken[u.id] || 0) < u.max && (!u.requires || stats.power[u.requires].level > 0));
   const picks = [];
   while (picks.length < count && pool.length) {
     const weights = pool.map((u) => (u.rarity === 'rare' ? 1 : 3));
