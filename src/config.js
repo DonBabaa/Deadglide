@@ -121,6 +121,13 @@ export const config = {
     bossBlobDamage: 22,   // a direct hit
     bossSplashDamage: 12, // caught in the splat
     bossSplashRadius: 3.2,
+    // Overtime: once the boss is dead a portal opens and stays open. Leave through it to bank
+    // your score, or stay and farm while the monsters come exponentially faster.
+    bossClearRadius: 40,  // his death kills every monster this close to you
+    escapeDistance: 170,  // how far away the portal opens
+    overtimeSpawnRate: 4, // monsters per second when overtime starts...
+    overtimeDoubling: 20, // ...doubling every this many seconds
+    overtimeWave: 20,     // and they toughen up a wave every this many seconds
   },
 
   xp: {

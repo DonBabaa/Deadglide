@@ -100,11 +100,76 @@ function hiss(filterType, from, to, time, volume, at = 0) {
 
 // ---- Sounds ------------------------------------------------------------------
 
-// pitch / loud come from the weapon: a sniper is deep and loud, a machine gun thin and quick.
-export function playShot(pitch = 1, loud = 1) {
-  if (!ready()) return;
-  hiss('lowpass', 5200 * pitch, 500 * pitch, 0.16 / pitch, Math.min(0.6, 0.32 * loud));   // crack
-  tone('sine', 170 * pitch, 45 * pitch, 0.11 / pitch, Math.min(0.7, 0.4 * loud));          // thump
+// A muzzle blast: noise pushed hard into a clipper, so it hits like a slap rather than a hiss.
+let overdrive = null;
+function clipper() {
+  if (!overdrive) {
+    overdrive = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) overdrive[i] = Math.tanh(((i / 512) - 1) * 6);
+  }
+  return overdrive;
+}
+function blast(from, to, time, volume, at = 0) {
+  const ctx = audio.ctx, t = ctx.currentTime + at;
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), drive = ctx.createWaveShaper(), gain = ctx.createGain();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 0.9 + Math.random() * 0.2;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(from, t);
+  filter.frequency.exponentialRampToValueAtTime(to, t + time * 0.9);
+  drive.curve = clipper();
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + time);
+  src.connect(filter).connect(drive).connect(gain).connect(audio.sfx);
+  src.start(t);
+  src.stop(t + time + 0.03);
+}
+
+// Gunshots, built the way a real one is: the crack of the round, an overdriven
+// muzzle blast, a thump of low end you feel, the action working, and the report
+// rolling away. `r` detunes every shot a little so bursts don't sound stamped out.
+// (Drop pistol.mp3, machineGun.mp3, shotgun.mp3 or launcher.mp3 into
+// src/assets/sounds/ and the recording plays instead.)
+const SHOTS = {
+  // 9 mm pistol: a short, dry bark and the slide snapping back.
+  pistol(r) {
+    hiss('highpass', 5200 * r, 2600, 0.018, 0.5);
+    blast(4600 * r, 260, 0.12, 0.42);
+    tone('sine', 165 * r, 46, 0.1, 0.6);
+    tone('triangle', 340 * r, 90, 0.05, 0.25);
+    hiss('lowpass', 1500, 180, 0.4, 0.1, 0.03);
+    tone('square', 2200, 1500, 0.014, 0.035, 0.075);
+  },
+  // Assault rifle on full auto: tighter and harder, each round on top of the last one's tail.
+  machineGun(r) {
+    hiss('highpass', 6000 * r, 3200, 0.012, 0.36);
+    blast(3800 * r, 340, 0.075, 0.36);
+    tone('sine', 140 * r, 52, 0.07, 0.5);
+    hiss('lowpass', 1100, 240, 0.22, 0.07, 0.02);
+  },
+  // 12 gauge: a boom with a long tail, then the pump racked back and forward.
+  shotgun(r) {
+    hiss('highpass', 4200 * r, 1800, 0.03, 0.5);
+    blast(3200 * r, 110, 0.32, 0.6);
+    tone('sine', 98 * r, 26, 0.55, 0.85);
+    tone('sine', 170 * r, 40, 0.26, 0.5);
+    hiss('lowpass', 950, 90, 1.2, 0.26, 0.05);
+    hiss('lowpass', 600, 100, 0.6, 0.1, 0.3);
+    hiss('bandpass', 2000, 900, 0.05, 0.2, 0.27); tone('square', 430, 300, 0.035, 0.06, 0.27);
+    hiss('bandpass', 2600, 1300, 0.045, 0.18, 0.38); tone('square', 560, 420, 0.03, 0.05, 0.38);
+  },
+  // Launcher: a hollow "thoomp" out of the tube.
+  launcher(r) {
+    tone('sine', 200 * r, 42, 0.32, 0.85);
+    tone('triangle', 290 * r, 110, 0.16, 0.3);
+    blast(1000 * r, 140, 0.22, 0.4);
+    hiss('bandpass', 520, 180, 0.35, 0.2, 0.02);
+    hiss('lowpass', 700, 90, 0.8, 0.12, 0.08);
+  },
+};
+export function playShot(id) {
+  if (!ready() || playSample(id)) return;
+  (SHOTS[id] || SHOTS.pistol)(0.94 + Math.random() * 0.12);
 }
 
 export const playHeadshot = () => ready() && (tone('square', 1700, 1100, 0.07, 0.09), tone('sine', 2600, 2600, 0.12, 0.07));
@@ -156,23 +221,17 @@ export function playHeal() {
 // A supersonic crack, an overdriven muzzle blast, a sub-bass thump you feel,
 // the heavy action clanking as it cycles, and a long report rolling away.
 // (Put a real recording at src/assets/sounds/sniper.mp3 and it plays instead.)
-let overdrive = null;
 export function playSniper() {
   if (!ready()) return;
   if (playSample('sniper')) return;
   const ctx = audio.ctx, t = ctx.currentTime;
 
-  // Muzzle blast: noise pushed hard into a clipper, so it hits like a slap rather than a hiss.
-  if (!overdrive) {
-    overdrive = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) overdrive[i] = Math.tanh(((i / 512) - 1) * 6);
-  }
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), drive = ctx.createWaveShaper(), gain = ctx.createGain();
   src.buffer = audio.noise;
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(5200, t);
   filter.frequency.exponentialRampToValueAtTime(140, t + 0.38);
-  drive.curve = overdrive;
+  drive.curve = clipper();
   gain.gain.setValueAtTime(0.6, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
   src.connect(filter).connect(drive).connect(gain).connect(audio.sfx);

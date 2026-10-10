@@ -137,7 +137,7 @@ export class Weapon {
     }
     if (fired) {
       this.flash.position.copy(muzzle);
-      this.flash.intensity = 60 * W.loud;
+      this.flash.intensity = 60 * W.flash;
     }
     return fired;
   }

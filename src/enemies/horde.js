@@ -8,8 +8,10 @@
 // into fresh spawns ahead, so you are never alone for long.
 //
 // When wave `bossWave` starts, the final boss arrives and throws filth at you
-// from range. Kill him and every other monster dies with him, nothing more
-// spawns, and main.js opens the exit portal.
+// from range. Kill him and the monsters near you die with him, an exit portal
+// opens some way off (main.js draws it) and overtime starts: the portal stays
+// open, and monsters pour out of the ground exponentially faster until you
+// leave through it or they get you.
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { heightAt, groundAt } from '../world/terrain.js';
@@ -26,7 +28,7 @@ const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
 const BLOB_GRAVITY = 20;
-const BROWN = new THREE.Color(0x5a3416), BLOOD = new THREE.Color(0x6a0f0c);
+const BROWN = new THREE.Color(0x5a3416);
 const cellKey = (x, z) => Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663;
 
 export class Horde {
@@ -90,9 +92,11 @@ export class Horde {
     this.enemies.length = 0;
     this.boss = null;           // the final boss, while he's alive
     this.bossSpawned = false;
-    this.finished = false;      // true once the boss is dead: nothing spawns any more
+    this.finished = false;      // true once the boss is dead: overtime
+    this.overtime = 0;          // seconds of it so far
     for (const b of this.blobs) b.life = 0;
     for (const sp of this.splats) sp.life = 0;
+    this.gibs.forEach((g, i) => { g.life = 0; this.gibMesh.setMatrixAt(i, HIDDEN); });
     this.time = 0;
     this.wave = 1;
     this.kills = 0;
@@ -147,8 +151,23 @@ export class Horde {
 
   direct(dt, player) {
     const H = config.horde;
-    if (this.finished) return;   // the boss is dead: the night is over
     this.time += dt;
+    if (this.finished) {
+      // Overtime: the spawn rate doubles and doubles again, they get tougher, and they come up closer to you.
+      this.overtime += dt;
+      const wave = H.bossWave + Math.floor(this.overtime / H.overtimeWave);
+      if (wave !== this.wave) {
+        this.wave = wave;
+        this.events.push({ type: 'wave', wave });
+      }
+      const close = 1 - 0.45 * (1 - Math.exp(-this.overtime / 40)), heading = Math.atan2(player.vel.x, player.vel.z);
+      this.spawnDebt = Math.min(MAX, this.spawnDebt + H.overtimeSpawnRate * 2 ** (this.overtime / H.overtimeDoubling) * dt);
+      while (this.spawnDebt >= 1 && this.enemies.length < MAX) {   // (only the hard cap holds them back now)
+        this.spawnDebt -= 1;
+        this.spawn(this.pickType(), player, heading + (Math.random() - 0.5) * Math.PI * 1.4, H.spawnDistance * close * (0.7 + Math.random() * 0.5));
+      }
+      return;
+    }
 
     const wave = Math.min(H.bossWave, 1 + Math.floor(this.time / H.waveLength));   // the boss wave is the last
     if (wave !== this.wave) {
@@ -204,6 +223,7 @@ export class Horde {
       this.draw(dt);
       return 0;
     }
+    this.player = player;
     this.direct(dt, player);
 
     // Bucket everyone for neighbour and bullet checks.
@@ -217,7 +237,7 @@ export class Horde {
     const H = config.horde, px = player.pos.x, pz = player.pos.z;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      if (!e) continue;   // (the boss died this frame and took everyone with him)
+      if (!e || e.dead) continue;   // (the boss died this frame and took the ones near you with him)
       let dx = px - e.x, dz = pz - e.z;
       const dist = Math.hypot(dx, dz) || 1;
 
@@ -319,9 +339,7 @@ export class Horde {
       const tx = player.pos.x + player.vel.x * lead - (player.vel.z / speed) * side;
       const tz = player.pos.z + player.vel.z * lead + (player.vel.x / speed) * side;
       b.vel.set((tx - b.pos.x) / flight, (heightAt(tx, tz) - b.pos.y + 0.5 * BLOB_GRAVITY * flight * flight) / flight, (tz - b.pos.z) / flight);
-      this.blobMesh.setColorAt(i, k ? BROWN : BLOOD);
     }
-    this.blobMesh.instanceColor.needsUpdate = true;
     this.events.push({ type: 'bossThrow' });
   }
 
@@ -405,12 +423,16 @@ export class Horde {
     if (e.T.boss) this.bossDied(e);
   }
 
-  // The boss is dead: everything else dies with him, and nothing more will come.
+  // The boss is dead: the monsters near you die with him, and the escape begins.
   bossDied(boss) {
+    const H = config.horde, p = this.player.pos;
     this.boss = null;
     this.finished = true;
+    this.overtime = 0;
+    this.spawnDebt = 0;
     for (const b of this.blobs) b.life = 0;
-    for (const e of this.enemies) {
+    this.enemies = this.enemies.filter((e) => {
+      if (Math.hypot(e.x - p.x, e.z - p.z) > H.bossClearRadius) return true;
       e.dead = true;
       this.kills++;
       for (let k = 0; k < 3; k++) {
@@ -419,9 +441,17 @@ export class Horde {
         g.pos.set(e.x, e.y + 0.5 + Math.random(), e.z);
         g.vel.set((Math.random() - 0.5) * 8, 3 + Math.random() * 6, (Math.random() - 0.5) * 8);
       }
+      return false;
+    });
+    // The portal opens a good ride away, on open ground: beyond the boss, as seen from you.
+    const away = Math.atan2(boss.x - p.x, boss.z - p.z);
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 12; tries++) {
+      const a = away + (tries ? (Math.random() - 0.5) * 1.6 : 0);
+      x = p.x + Math.sin(a) * H.escapeDistance; z = p.z + Math.cos(a) * H.escapeDistance;
+      if (heightAt(x, z) - groundAt(x, z) < 0.4) break;   // not on top of a tomb or a ramp
     }
-    this.enemies.length = 0;
-    this.events.push({ type: 'bossDead', name: boss.T.title, x: boss.x, y: heightAt(boss.x, boss.z), z: boss.z });
+    this.events.push({ type: 'bossDead', name: boss.T.title, x, y: heightAt(x, z), z });
   }
 
   // Damages every monster within `radius` of a point (Shockwave Landing).

@@ -28,6 +28,7 @@ import { createTweakPanel } from './ui/tweakPanel.js';
 import { syncAudioControls } from './ui/audioControls.js';
 import { MenuScene } from './menu/menuScene.js';
 import { menu } from './menu/menu.js';
+import { leaderboard } from './ui/leaderboard.js';
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
 
@@ -98,6 +99,7 @@ function restart() {
   portal.reset();
   hud.boss(null);
   hud.hideBossIntro();
+  hud.escape(null);
   hud.portalMarker(null);
   won = false;
   powerups.reset();
@@ -106,6 +108,7 @@ function restart() {
   shield = 0;
   freeUpgrades = 0;
   resetStats();
+  leaderboard.hideEnd();
   levelUp.hide();
   pendingLevels = 0;
   choosing = false;
@@ -139,16 +142,26 @@ function hurt(amount) {
   hud.flashHurt();
   playHurt();
   score.onHurt();
-  if (hp <= 0) {
-    dead = true;
-    paused = true;
-    document.exitPointerLock?.();
-    const record = !creative && score.finish();   // Creative runs don't count toward your best
-    const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
-    hud.showOverlay('You died', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
+  if (hp <= 0) die();
+}
+
+// The run is over.
+function die() {
+  dead = true;
+  paused = true;
+  document.exitPointerLock?.();
+  const record = !creative && score.finish();   // Creative runs don't count toward your best
+  const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
+  hud.showOverlay('You died', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Survived ${hud.clock(horde.time)}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 Click to try again`);
-  }
+  offerPost(false);
+}
+
+// The end screen offers to put a real run's score on the shared leaderboard (not Creative runs).
+function offerPost(escaped) {
+  const points = Math.floor(score.points);
+  if (!creative && points > 0) leaderboard.showEnd({ score: points, wave: horde.wave, time: Math.floor(horde.time), won: escaped });
 }
 
 // Through the exit portal: the level is done.
@@ -163,6 +176,7 @@ function levelComplete() {
   hud.showOverlay('Level 1 complete', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Out in ${hud.clock(runTime)}  ·  XP level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 Click to return to the menu`);
+  offerPost(true);
 }
 
 // Level up: stop the game and offer three upgrades.
@@ -199,6 +213,7 @@ function showMenu() {
   paused = true;
   document.exitPointerLock?.();
   hud.hideOverlay();
+  leaderboard.hideEnd();
   levelUp.hide();
   horde.reset();
   loot.reset();
@@ -206,6 +221,7 @@ function showMenu() {
   portal.reset();
   hud.boss(null);
   hud.hideBossIntro();
+  hud.escape(null);
   hud.portalMarker(null);
   powerups.reset();
   xp.reset();
@@ -221,6 +237,7 @@ function showMenu() {
   model.setVisible(false);
   menuScene.setVisible(true);
   menu.show(score.best);
+  leaderboard.showMenu();
 }
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
@@ -342,7 +359,7 @@ function handleEvents() {
   skater.events.length = 0;
 
   for (const e of horde.events) {
-    if (e.type === 'wave') { if (e.wave < config.horde.bossWave) hud.popup(`Wave ${e.wave}`, 'alert'); }   // (the boss announces the last one himself)
+    if (e.type === 'wave') { if (e.wave !== config.horde.bossWave) hud.popup(`Wave ${e.wave}`, 'alert'); }   // (the boss announces the last one himself)
     else if (e.type === 'swarm') hud.popup('Swarm!', 'alert');
     else if (e.type === 'elite') hud.popup('Something big is coming', 'alert');
     else if (e.type === 'wraiths') hud.popup('They can fly now', 'alert');
@@ -358,7 +375,7 @@ function handleEvents() {
       playBossDeath();
       playPortal();
       chase.shake = 0.8;
-      hud.popup(`${e.name} is dead. Get to the portal`, 'loot');
+      hud.popup(`${e.name} is dead. The portal is open`, 'loot');
     }
     else if (e.type === 'kill') {
       playKill();
@@ -420,11 +437,11 @@ function frame(now) {
       if (weapon.def.beam) {
         playSniper();
         hud.scopeFlash();
-      } else playShot(weapon.def.pitch, weapon.def.loud);
+      } else playShot(weapon.def.id);
     }
 
     handleEvents();
-    runTime = horde.finished ? runTime + dt : horde.time;   // (the horde's clock stops when the boss dies)
+    runTime = horde.time;
     hud.boss(horde.boss ? horde.boss.hp / horde.boss.maxHp : null, horde.boss?.T.title);
 
     // The exit portal (open once the boss is dead): ride into it to finish the level.
@@ -432,6 +449,7 @@ function frame(now) {
     if (portal.active) hud.portalMarker(...onScreen(portal.position, 3), Math.hypot(portal.position.x - skater.pos.x, portal.position.z - skater.pos.z));
     else hud.portalMarker(null);
     if (exit && !dead) levelComplete();
+    hud.escape(horde.finished && !won ? horde.overtime : null);
 
     score.update(dt, skater.speed);
     hud.score(score);

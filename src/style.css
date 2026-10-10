@@ -337,3 +337,37 @@ body.boss-fight #capture { top: 44%; }
 
 #portal-marker { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: var(--text); font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #7dffb0; }
 #portal-marker i { width: 20px; height: 20px; border: 4px solid #7dffb0; border-radius: 50%; box-shadow: 0 0 14px #7dffb0, inset 0 0 8px #7dffb0; animation: lowhp 0.5s ease-in-out infinite alternate; }
+
+/* ---- The escape countdown ---- */
+#escape { position: absolute; left: 0; right: 0; top: 62px; text-align: center; }
+#escape.hidden { display: none; }
+#escape small { display: block; font-family: var(--text); font-size: 15px; font-weight: 700; letter-spacing: 7px; text-transform: uppercase; color: #7dffb0; }
+#escape span { display: inline-block; min-width: 3ch; font-family: var(--display); font-size: 76px; line-height: 1; letter-spacing: 3px; font-variant-numeric: tabular-nums; color: var(--bone); text-shadow: 4px 4px 0 #1c7a4c, 8px 8px 0 var(--ink); transform: skewX(-9deg); }
+#escape.late small { color: #ff6a4a; }
+#escape.late span { color: #ff6a4a; text-shadow: 4px 4px 0 var(--blood), 8px 8px 0 var(--ink); animation: escapelate 1s ease-out infinite; }
+@keyframes escapelate { from { transform: skewX(-9deg) scale(1.12); } to { transform: skewX(-9deg) scale(1); } }
+body.escaping #score { top: 190px; }
+body.escaping #popups { top: 36%; }
+body.escaping #capture { top: 44%; }
+
+/* ---- Leaderboard ---- */
+.board { list-style: none; margin: 10px 0 0; padding: 0; font-family: var(--text); font-size: 17px; font-weight: 600; letter-spacing: 1px; text-align: left; cursor: default; }
+.board li { display: grid; grid-template-columns: 30px 1fr auto 96px; gap: 10px; align-items: baseline; padding: 4px 10px; border-left: 4px solid transparent; background: rgba(12, 12, 14, 0.55); }
+.board li:nth-child(odd) { background: rgba(28, 29, 33, 0.7); }
+.board li:nth-child(1) .rank, .board li:nth-child(1) .pts { color: var(--amber); }
+.board li.mine { border-left-color: var(--amber); color: var(--amber); }
+.board li.empty { display: block; opacity: 0.7; font-weight: 500; }
+.board .rank { font-family: var(--display); font-weight: 400; opacity: 0.8; }
+.board .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.board .how { font-size: 13px; opacity: 0.6; text-transform: uppercase; }
+.board .pts { font-family: var(--display); font-weight: 400; font-size: 19px; text-align: right; font-variant-numeric: tabular-nums; }
+#run-over { width: min(520px, 86vw); margin-top: 26px; cursor: default; }
+#run-over.hidden { display: none; }
+#post { display: flex; gap: 14px; }
+#post-name { flex: 1; min-width: 0; padding: 8px 14px; font-family: var(--display); font-size: 24px; letter-spacing: 2px; text-transform: uppercase; color: var(--bone); background: #17181c; border: 3px solid var(--bone); border-radius: 0; outline: none; box-shadow: 6px 6px 0 var(--ink); transform: skewX(-9deg); }
+#post-name:focus { border-color: var(--amber); }
+#overlay #post-send { padding: 8px 22px; font-size: 22px; color: var(--ink); background: var(--amber); border-color: var(--ink); box-shadow: 6px 6px 0 var(--bone); }
+#overlay #post-send:disabled { opacity: 0.45; pointer-events: none; }
+#post-status { min-height: 22px; margin-top: 12px; font-family: var(--text); font-size: 16px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--amber); text-align: center; }
+/* The end screen shows the leaderboard instead of the controls list. */
+body.run-over #controls { display: none; }

@@ -53,6 +53,7 @@
         <div id="boss-name"></div>
         <div id="boss-bar"><div id="boss-lag"></div><div id="boss-fill"></div><i></i><i></i><i></i></div>
       </div>
+      <div id="escape" class="hidden"><small>Overtime</small><span></span></div>
       <div id="boss-intro" class="hidden"><small>Final boss</small><span></span></div>
       <div id="capture" class="hidden"><span id="capture-label">HotBox Zone</span><div class="bar"><div id="capture-fill"></div></div></div>
       <div id="crosshair"><i></i><i></i><i></i><i></i></div>
@@ -86,6 +87,8 @@
           <span class="level-desc">The Cemetery &middot; endless waves</span>
         </button>
         <div id="menu-best"></div>
+        <div class="menu-label">Leaderboard</div>
+        <ol id="menu-board" class="board"></ol>
       </div>
       <div id="menu-launch" class="hidden">
         <h2>Level 1</h2>
@@ -119,6 +122,14 @@
     <div id="overlay">
       <div id="overlay-title">Deadglide</div>
       <div id="overlay-hint">Click to skate</div>
+      <div id="run-over" class="hidden">
+        <div id="post">
+          <input id="post-name" type="text" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false">
+          <button id="post-send" type="button">Post score</button>
+        </div>
+        <div id="post-status"></div>
+        <ol id="board" class="board"></ol>
+      </div>
       <div id="controls">
         <div><b>Q</b> push</div><div><b>W</b> roll</div>
         <div><b>A / D</b> carve (spin in the air)</div><div><b>S</b> brake, then reverse</div>

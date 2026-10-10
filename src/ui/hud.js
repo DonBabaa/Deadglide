@@ -148,6 +148,15 @@ export const hud = {
     $('boss-fill').style.width = $('boss-lag').style.width = `${Math.max(0, health) * 100}%`;   // (the lagging bar catches up slowly, in CSS)
     el.classList.toggle('enraged', health < 0.4);
   },
+  // The overtime clock (seconds since the boss died), or null to hide it.
+  escape(seconds) {
+    const el = $('escape'), on = seconds !== null;
+    document.body.classList.toggle('escaping', on);
+    el.classList.toggle('hidden', !on);
+    if (!on) return;
+    el.querySelector('span').textContent = this.clock(seconds);
+    el.classList.toggle('late', seconds > 40);   // by now they're coming thick and fast
+  },
   // His name slams onto the middle of the screen when he arrives.
   bossIntro(name) {
     const el = $('boss-intro');
