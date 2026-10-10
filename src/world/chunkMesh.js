@@ -38,11 +38,13 @@ export function createChunkBuilder() {
   function build(c) {
     const group = new THREE.Group();
     group.add(buildGround(c, mat));
-    for (const b of c.bowls) {   // steel coping round each bowl
-      const coping = new THREE.Mesh(new THREE.TorusGeometry(b.outer, 0.06, 8, 72), mat.steel);
-      coping.rotation.x = Math.PI / 2;
-      coping.position.set(b.x, 0.02, b.z);
-      group.add(coping);
+    for (const b of c.bowls) {   // steel coping round each bowl, following the ground at its lip
+      const ring = [];
+      for (let k = 0; k <= 72; k++) {
+        const a = (k / 72) * Math.PI * 2, x = b.x + Math.cos(a) * b.outer, z = b.z + Math.sin(a) * b.outer;
+        ring.push(new THREE.Vector3(x, chunkBase(c, b.x + Math.cos(a) * (b.outer + 0.2), b.z + Math.sin(a) * (b.outer + 0.2)) + 0.02, z));
+      }
+      group.add(new THREE.Mesh(mergeGeometries(ring.slice(1).map((pt, k) => tubeGeometry(ring[k], pt, 0.06))), mat.steel));
     }
 
     const stones = [[], [], []];
@@ -50,7 +52,7 @@ export function createChunkBuilder() {
       if (p.type === 'headstone') stones[p.kind].push(p);
       else if (p.type === 'tree') {
         const tree = new THREE.Mesh(trees[p.variant], mat.bark);
-        tree.position.set(p.x, -0.1, p.z);
+        tree.position.set(p.x, p.y0 - 0.5, p.z);
         tree.rotation.y = p.variant * 1.7 + p.x;
         tree.scale.setScalar(p.scale);
         tree.castShadow = true;
@@ -60,14 +62,14 @@ export function createChunkBuilder() {
       else if (p.type === 'monument') group.add(buildMonument(p, mat));
       else if (p.type === 'chapel') group.add(buildChapel(p, mat));
       else if (p.type === 'lamp') group.add(buildLamp(p, mat));
-      else group.add(buildProp(p, mat));
+      else group.add(buildProp(p, mat, c));
     }
 
     // Headstones: one instanced mesh per shape.
     stones.forEach((list, kind) => {
       if (!list.length) return;
       const mesh = new THREE.InstancedMesh(headstones[kind], mat.stone, list.length);
-      list.forEach((p, i) => mesh.setMatrixAt(i, m.compose(v.set(p.x, 0, p.z), q.setFromAxisAngle(Y, p.yaw), sc.setScalar(p.scale))));
+      list.forEach((p, i) => mesh.setMatrixAt(i, m.compose(v.set(p.x, p.y0 - 0.12, p.z), q.setFromAxisAngle(Y, p.yaw), sc.setScalar(p.scale))));
       mesh.castShadow = mesh.receiveShadow = true;
       group.add(mesh);
     });
@@ -75,14 +77,21 @@ export function createChunkBuilder() {
     // Grave plots: a stone kerb round each, fresh dirt mounds, candles.
     const kerbs = [];
     for (const plot of c.plots) {
-      for (const [w, d, dx, dz] of [[plot.w + 0.5, 0.25, 0, plot.d / 2], [plot.w + 0.5, 0.25, 0, -plot.d / 2], [0.25, plot.d, plot.w / 2, 0], [0.25, plot.d, -plot.w / 2, 0]]) {
-        kerbs.push(new THREE.BoxGeometry(w, 0.1, d).translate(plot.x + dx, 0.05, plot.z + dz));
+      // Walk round the plot's edge in short pieces so the kerb follows the slope.
+      const hw = plot.w / 2, hd = plot.d / 2, corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd], [-hw, -hd]];
+      for (let k = 0; k < 4; k++) {
+        const [ax, az] = corners[k], [bx, bz] = corners[k + 1], steps = Math.ceil(Math.hypot(bx - ax, bz - az) / 2);
+        const at = (t) => {
+          const x = plot.x + ax + (bx - ax) * t, z = plot.z + az + (bz - az) * t;
+          return new THREE.Vector3(x, chunkBase(c, x, z) + 0.04, z);
+        };
+        for (let s = 0; s < steps; s++) kerbs.push(tubeGeometry(at(s / steps), at((s + 1) / steps), 0.11));
       }
     }
     if (kerbs.length) group.add(new THREE.Mesh(mergeGeometries(kerbs), mat.stone));
     if (c.dirt.length) {
       const mounds = new THREE.InstancedMesh(moundGeo, mat.dirt, c.dirt.length);
-      c.dirt.forEach(([x, z], i) => mounds.setMatrixAt(i, m.compose(v.set(x, 0, z), q.identity(), sc.set(0.5, 0.16, 0.95))));
+      c.dirt.forEach(([x, z, y], i) => mounds.setMatrixAt(i, m.compose(v.set(x, y, z), q.identity(), sc.set(0.5, 0.16, 0.95))));
       mounds.receiveShadow = true;
       group.add(mounds);
     }
@@ -151,11 +160,24 @@ function buildGround(c, mat) {
 
 // ---- Ramps, pipes, tombs -------------------------------------------------------
 
-// Mesh for one prop: top surface from its height function, plus side walls.
-function buildProp(p, mat) {
-  const { us, ws } = p, pos = [], uv = [];
-  const P = (i, j) => [us[i], p.localHeight(us[i], ws[j]), ws[j]];
-  const floor = ([x, , z]) => [x, 0, z];
+// Grid lines no more than `max` apart (keeping the originals), so a big flat
+// prop still bends with the ground under it.
+function refine(lines, max = 2) {
+  const out = [lines[0]];
+  for (let i = 1; i < lines.length; i++) {
+    const a = lines[i - 1], b = lines[i], n = Math.ceil((b - a) / max);
+    for (let k = 1; k <= n; k++) out.push(a + ((b - a) * k) / n);
+  }
+  return out;
+}
+
+// Mesh for one skate prop: its top surface laid over the ground, plus side walls.
+function buildProp(p, mat, c) {
+  const us = refine(p.us), ws = refine(p.ws), pos = [], uv = [];
+  // Ground height under a point given in the prop's own coordinates.
+  const ground = (u, w) => chunkBase(c, p.x + u * p.cos + w * p.sin, p.z - u * p.sin + w * p.cos);
+  const P = (i, j) => [us[i], ground(us[i], ws[j]) + p.localHeight(us[i], ws[j]), ws[j]];
+  const floor = ([x, , z]) => [x, ground(x, z) - 0.4, z];
   const tri = (a, b, c, side) => {
     pos.push(...a, ...b, ...c);
     for (const v of [a, b, c]) uv.push(side ? (v[0] + v[2]) / 3 : v[0] / 3, side ? v[1] / 3 : v[2] / 3);
@@ -184,10 +206,8 @@ function buildProp(p, mat) {
 
   // Steel coping along quarter-pipe lips.
   if (p.type === 'quarter') {
-    const coping = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, p.w1 - p.w0, 8), mat.steel);
-    coping.rotation.x = Math.PI / 2;
-    coping.position.set(p.lipU, p.lipY, 0);
-    mesh.add(coping);
+    const lip = ws.map((w) => new THREE.Vector3(p.lipU, ground(p.lipU, w) + p.lipY, w));
+    mesh.add(new THREE.Mesh(mergeGeometries(lip.slice(1).map((pt, k) => tubeGeometry(lip[k], pt, 0.06))), mat.steel));
   }
   mesh.position.set(p.x, 0.01, p.z);
   mesh.rotation.y = p.yaw;
@@ -217,7 +237,7 @@ function texturedBox(w, h, d, material, tile = 4) {
 
 // Puts a group where its solid prop is. Prop local +u is the group's +X.
 function placed(group, p) {
-  group.position.set(p.x, 0, p.z);
+  group.position.set(p.x, p.y0, p.z);
   group.rotation.y = p.yaw;
   return group;
 }
@@ -274,7 +294,9 @@ function buildMausoleum(p, mat) {
   cornice.position.y = h - 0.18;
   const step = texturedBox(l + 0.8, 0.2, w + 0.8, mat.stone, 3);
   step.position.y = 0.1;
-  house.add(body, cornice, step);
+  const footing = texturedBox(l + 0.8, 3, w + 0.8, mat.stone, 3);
+  footing.position.y = -1.5;
+  house.add(body, cornice, step, footing);
   // Front (+u side): door, columns, a cross on the roof.
   const door = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.7), mat.iron);
   door.position.set(l / 2 + 0.02, 1.35, 0);
@@ -299,7 +321,9 @@ function buildMonument(p, mat) {
   base.position.y = 0.15;
   const pedestal = texturedBox(1.6, 1.6, 1.6, mat.stone, 2);
   pedestal.position.y = 0.8;
-  monument.add(base, pedestal);
+  const footing = texturedBox(1.9, 2, 1.9, mat.stone, 2);
+  footing.position.y = -1;
+  monument.add(base, pedestal, footing);
   const add = (geo, x, y, z, rz = 0) => {
     const mesh = new THREE.Mesh(geo, mat.stone);
     mesh.position.set(x, y, z);
@@ -340,7 +364,9 @@ function buildChapel(p, mat) {
   spire.rotation.y = Math.PI / 4;
   const door = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 4), mat.iron);
   door.position.set(0, 2, 12.03);
-  chapel.add(nave, roof, tower, spire, door);
+  const footing = texturedBox(13.6, 5, 24.6, mat.stone);
+  footing.position.y = -2.5;
+  chapel.add(nave, roof, tower, spire, door, footing);
   for (const [x, y, z, ry] of [[0, 17, 12.03, 0], [6.53, 5, -6, Math.PI / 2], [6.53, 5, 0, Math.PI / 2], [-6.53, 5, -6, -Math.PI / 2], [-6.53, 5, 0, -Math.PI / 2]]) {
     const win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.8), mat.window);
     win.position.set(x, y, z);
@@ -354,7 +380,7 @@ function buildChapel(p, mat) {
 function buildLamp(p, mat) {
   const lamp = new THREE.Group();
   const pole = new THREE.Mesh(mergeGeometries([
-    tubeGeometry(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 7, 0), 0.09),
+    tubeGeometry(new THREE.Vector3(0, -1.5, 0), new THREE.Vector3(0, 7, 0), 0.09),
     tubeGeometry(new THREE.Vector3(0, 7, 0), new THREE.Vector3(-1.6, 6.8, -1.6), 0.06),
     new THREE.CylinderGeometry(0.2, 0.26, 0.5, 8).translate(0, 0.25, 0),
   ]), mat.iron);
@@ -365,7 +391,7 @@ function buildLamp(p, mat) {
   flare.position.copy(bulb.position);
   flare.scale.setScalar(5);
   lamp.add(pole, bulb, flare);
-  lamp.position.set(p.x, 0, p.z);
+  lamp.position.set(p.x, p.y0, p.z);
   return lamp;
 }
 const BULB = new THREE.SphereGeometry(0.22, 10, 8);

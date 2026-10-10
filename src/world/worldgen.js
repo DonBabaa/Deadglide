@@ -3,20 +3,27 @@
 // grave plot, a bowl...) picked by the chunk's district type. Everything is
 // driven by the world seed, so the same seed always builds the same world.
 //
+// The land itself rolls (see noise.js) and is never flattened. Skate features
+// (ramps, pipes, tombs, bowls) are laid over the slope and follow it; rigid
+// things (headstones, buildings, trees) stand upright on the ground at their
+// centre. Slots on ground too steep to build on are left as open hillside.
+//
 // To change what the world is made of: edit DISTRICTS (how often each feature
 // appears) or add a function to FEATURES.
 import { seededRandom } from './random.js';
 import * as F from './features.js';
+import { hillHeight } from './noise.js';
 
 export const CHUNK = 96;        // metres per chunk
 export const SLOT = CHUNK / 3;  // metres per feature slot
 const PATH = 2.5;               // half-width of the paved lanes between slots
+const TOO_STEEP = 0.2;          // slots sloping more than this (rise / run) are left empty
 
 // Feature weights per district type.
 const DISTRICTS = {
-  park: { funbox: 2, kicker: 3, rail: 3, quarter: 2, halfpipe: 1, bowl: 2, mound: 1, platform: 2, tombs: 1, graves: 1, empty: 2 },
-  graveyard: { graves: 6, mausoleum: 2, monument: 2, trees: 2, tombs: 2, rail: 1, kicker: 1, empty: 2 },
-  mixed: { graves: 3, funbox: 1, kicker: 2, rail: 2, quarter: 1, bowl: 1, mound: 2, platform: 1, mausoleum: 1, monument: 1, trees: 1, tombs: 1, empty: 2 },
+  park: { funbox: 2, kicker: 3, rail: 3, quarter: 2, halfpipe: 1, bowl: 2, mound: 1, platform: 2, tombs: 1, graves: 1, empty: 3 },
+  graveyard: { graves: 6, mausoleum: 2, monument: 2, trees: 2, tombs: 2, rail: 1, kicker: 1, empty: 3 },
+  mixed: { graves: 3, funbox: 1, kicker: 2, rail: 2, quarter: 1, bowl: 1, mound: 2, platform: 1, mausoleum: 1, monument: 1, trees: 1, tombs: 1, empty: 4 },
 };
 
 const DIRS = [0, 90, 180, 270];
@@ -154,9 +161,9 @@ const FEATURES = {
 
 // ---- Per-chunk height sampling ----------------------------------------------
 
-// The ground itself (bowls and mounds), without props.
+// The ground itself (hills, bowls and mounds), without props.
 export function chunkBase(c, x, z) {
-  let h = 0;
+  let h = hillHeight(x, z, c.seed);
   for (const b of c.bowls) h += F.bowlHeight(b, x, z);
   for (const m of c.mounds) h += F.moundHeight(m, x, z);
   return h;
@@ -180,7 +187,8 @@ function buildGrid(c) {
 }
 
 export function chunkHeight(c, x, z) {
-  let h = chunkBase(c, x, z);
+  const base = chunkBase(c, x, z);
+  let h = base;
   const i = Math.floor((x - c.x0) / CELL), j = Math.floor((z - c.z0) / CELL);
   if (i < 0 || i >= CELLS || j < 0 || j >= CELLS) return h;
   for (const p of c.grid[j * CELLS + i]) {
@@ -189,7 +197,7 @@ export function chunkHeight(c, x, z) {
     if (u < p.u0 || u > p.u1) continue;
     const w = dx * p.sin + dz * p.cos;
     if (w < p.w0 || w > p.w1) continue;
-    const ph = p.localHeight(u, w);
+    const ph = (p.drape ? base : p.y0) + p.localHeight(u, w);
     if (ph > h) h = ph;
   }
   return h;
@@ -214,7 +222,7 @@ function chunkSeed(cx, cz, seed) {
 export function generateChunk(cx, cz, seed) {
   const rand = seededRandom(chunkSeed(cx, cz, seed));
   const c = {
-    cx, cz, x0: cx * CHUNK, z0: cz * CHUNK,
+    cx, cz, seed, x0: cx * CHUNK, z0: cz * CHUNK,
     props: [], rails: [], railSpecs: [], bowls: [], mounds: [], plots: [],
     dirt: [], flames: [], lamps: [], paved: new Uint8Array(9),
   };
@@ -228,16 +236,29 @@ export function generateChunk(cx, cz, seed) {
       let feature = slot === landmark ? 'chapel' : weighted(rand, DISTRICTS[c.district]);
       if (home && slot === 4) feature = 'empty';    // clear ground to spawn on...
       if (home && slot === 1) feature = 'funbox';   // ...with a funbox straight ahead
+      // Too steep to build on? Leave it as open hillside.
+      const rise = Math.max(
+        Math.abs(hillHeight(x + 12, z, seed) - hillHeight(x - 12, z, seed)),
+        Math.abs(hillHeight(x, z + 12, seed) - hillHeight(x, z - 12, seed)));
+      if (!home && rise / 24 > TOO_STEEP) feature = 'empty';
       if (FEATURES[feature](c, x, z, rand) || (home && slot === 4)) c.paved[slot] = 1;
     }
   }
+
+  // Stand everything on the ground: rigid props at the height under their centre,
+  // candles and dirt mounds wherever they are.
+  for (const p of c.props) p.y0 = chunkBase(c, p.x, p.z);
+  for (let k = 0; k < c.flames.length; k += 3) c.flames[k + 1] += chunkBase(c, c.flames[k], c.flames[k + 2]);
+  for (const d of c.dirt) d.push(chunkBase(c, d[0], d[1]));
 
   // A couple of street lamps where the lanes cross.
   for (let n = 0; n < 2; n++) {
     const x = c.x0 + pick(rand, [1, 2]) * SLOT + 3.2, z = c.z0 + pick(rand, [1, 2]) * SLOT + 3.2;
     if (c.lamps.some((l) => l.x === x && l.z === z)) continue;
-    c.lamps.push({ x, z });
-    c.props.push(F.lamp({ x, z }));
+    const post = F.lamp({ x, z });
+    post.y0 = chunkBase(c, x, z);
+    c.lamps.push({ x, z, y: post.y0 });
+    c.props.push(post);
   }
 
   buildGrid(c);

@@ -4,16 +4,23 @@ import { config } from '../config.js';
 const $ = (id) => document.getElementById(id);
 const speedFill = $('speed-fill'), speedText = $('speed-text'), chargeFill = $('charge-fill');
 const state = $('state'), popups = $('popups'), overlay = $('overlay'), crosshair = $('crosshair');
-const heartsEl = $('hearts'), statsEl = $('stats'), hurtEl = $('hurt'), xpFill = $('xp-fill'), xpLevel = $('xp-level');
+const scorePoints = $('score-points'), scoreMult = $('score-mult'), scoreHeat = $('score-heat'), weaponsEl = $('weapons');
+let shownMult = 1, shownWeapons = '';
+const chestMarker = $('chest-marker'), chestLabel = chestMarker.querySelector('span');
+const hpFill = $('hp-fill'), hpText = $('hp-text'), statsEl = $('stats'), hurtEl = $('hurt'), xpFill = $('xp-fill'), xpLevel = $('xp-level'), buffsEl = $('buffs');
 
 export const hud = {
   clock: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`,
 
-  update(skater, aiming, hearts, horde, xp, maxHearts) {
+  update(skater, aiming, hp, horde, xp, maxHp, buffs) {
+    // Active timed effects, e.g. "Frenzy 7s".
+    buffsEl.textContent = Object.entries(buffs).filter(([, t]) => t > 0).map(([name, t]) => `${name} ${Math.ceil(t)}s`).join('   ');
     xpFill.style.width = `${Math.min(100, (xp.xp / xp.needed) * 100)}%`;
     xpLevel.textContent = `Level ${xp.level}`;
     crosshair.classList.toggle('aiming', aiming);
-    heartsEl.textContent = '\u2665'.repeat(Math.max(0, hearts)) + '\u2661'.repeat(Math.max(0, maxHearts - hearts));
+    hpFill.style.width = `${Math.max(0, (hp / maxHp) * 100)}%`;
+    hpFill.classList.toggle('low', hp / maxHp < 0.3);
+    hpText.textContent = `${Math.ceil(hp)} / ${maxHp}`;
     statsEl.textContent = `${this.clock(horde.time)}   Wave ${horde.wave}   ${horde.kills} kills`;
     const speed = skater.speed;
     speedFill.style.width = `${Math.min(100, (speed / config.skate.maxSpeed) * 100)}%`;
@@ -21,6 +28,68 @@ export const hud = {
     speedText.textContent = Math.round(speed * 3.6);
     chargeFill.style.width = `${skater.charge * 100}%`;
     state.textContent = skater.grinding ? 'Grind' : !skater.grounded && skater.airTime > 0.1 ? 'Air' : skater.drifting && skater.speed > 3 ? 'Slide' : '';
+  },
+
+  // Sniper scope overlay: up while aiming a scoped gun.
+  scope(up) { $('scope').classList.toggle('up', up); },
+  // The glass whites out for an instant when the laser fires.
+  scopeFlash() {
+    const glass = $('scope-glass');
+    glass.classList.remove('flash');
+    void glass.offsetWidth;
+    glass.classList.add('flash');
+  },
+
+  // Score, multiplier and style meter.
+  score(score) {
+    scorePoints.textContent = Math.floor(score.points).toLocaleString();
+    scoreHeat.style.width = `${score.heat * 100}%`;
+    if (score.multiplier !== shownMult) {
+      scoreMult.textContent = `x${score.multiplier}`;
+      if (score.multiplier > shownMult) {   // pop when it goes up
+        scoreMult.classList.remove('bump');
+        void scoreMult.offsetWidth;
+        scoreMult.classList.add('bump');
+      }
+      shownMult = score.multiplier;
+    }
+  },
+
+  // The guns you own, numbered, with the one in hand highlighted.
+  weapons(weapon, all) {
+    const key = weapon.owned.join() + weapon.def.id;
+    if (key === shownWeapons) return;
+    shownWeapons = key;
+    weaponsEl.replaceChildren(...weapon.owned.map((id, i) => {
+      const row = document.createElement('div');
+      row.className = id === weapon.def.id ? 'current' : '';
+      row.innerHTML = `<b>${i + 1}</b>`;
+      row.append(all[id].name);
+      return row;
+    }));
+  },
+
+  // Flash the crosshair when a shot lands.
+  hitMarker(headshot) {
+    crosshair.classList.remove('hit', 'crit');
+    void crosshair.offsetWidth;
+    crosshair.classList.add(headshot ? 'crit' : 'hit');
+  },
+
+  // Points at a chest: x / y are screen fractions (0..1), or pass null to hide it.
+  chestMarker(x, y, metres) {
+    chestMarker.classList.toggle('hidden', x === null);
+    if (x === null) return;
+    chestMarker.style.transform = `translate(${x * window.innerWidth - 6}px, ${y * window.innerHeight - 6}px)`;
+    chestLabel.textContent = `${Math.round(metres)} m`;
+  },
+
+  // The HP bar glows green for a moment when you heal.
+  flashHeal() {
+    const bar = $('hp');
+    bar.classList.remove('heal');
+    void bar.offsetWidth;
+    bar.classList.add('heal');
   },
 
   // Red flash round the edges when you take a hit.

@@ -11,10 +11,11 @@ const BASE = {
   pickupRadius: 1,    // XP pickup radius multiplier
   xpGain: 1,          // XP multiplier
   topSpeed: 1,        // push top-speed multiplier
-  maxHearts: 0,       // extra hearts on top of config.player.hearts
+  maxHp: 0,           // extra HP on top of config.player.maxHp
   invulnerable: 0,    // extra seconds of safety after a hit
   trickBuff: 0,       // seconds of double damage after landing a trick
   shockwave: 0,       // damage of the ring released when you land a trick (0 = none)
+  frenzy: 0,          // seconds of double fire rate left (from the Energy Drink chest item)
 };
 
 export const stats = { ...BASE, taken: {} };   // taken: upgrade id -> how many times picked

@@ -20,6 +20,7 @@ export class ChaseCamera {
     this.aimYaw = 0;              // mouse offsets
     this.aimPitch = 0;
     this.aim = 0;                 // 0..1 blend into the over-the-shoulder view
+    this.scope = 0;               // 0..1 blend into looking down a scope
     this.fov = config.camera.fov;
     this.dip = 0;                 // landing thump
     this.shake = 0;
@@ -31,12 +32,14 @@ export class ChaseCamera {
     this.aimYaw = this.aimPitch = 0;
   }
 
-  update(dt, skater, target, mouseDX, mouseDY, aiming) {
+  // scoped: aiming with a scoped gun (the view goes to Kirky's eye and zooms right in).
+  update(dt, skater, target, mouseDX, mouseDY, aiming, scoped = false) {
     const c = config.camera;
     const speed01 = Math.min(1, skater.speed / config.skate.maxSpeed);
     this.aim = lerp(this.aim, aiming ? 1 : 0, damp(12, dt));
+    this.scope = lerp(this.scope, scoped ? 1 : 0, damp(scoped ? 9 : 16, dt));
 
-    const sens = c.mouseSensitivity * lerp(1, c.aimSensitivity, this.aim);
+    const sens = c.mouseSensitivity * lerp(lerp(1, c.aimSensitivity, this.aim), c.scopeSensitivity, this.scope);
     this.aimYaw = wrap(this.aimYaw - mouseDX * sens);
     this.aimPitch = MathUtils.clamp(this.aimPitch + mouseDY * sens, -0.9, 0.9);
 
@@ -65,14 +68,14 @@ export class ChaseCamera {
     const pitch = rad(c.pitch) + this.aimPitch;
     const elevation = Math.max(pitch, -0.08);
     const viewPitch = rad(c.viewTilt) - pitch;   // + = looking up
-    const dist = lerp(lerp(c.distance, c.distanceFast, speed01), c.aimDistance, this.aim);
+    const dist = lerp(lerp(lerp(c.distance, c.distanceFast, speed01), c.aimDistance, this.aim), -0.35, this.scope);   // scoped: just in front of his face
     // Over-the-shoulder: slide the camera and its look point sideways together.
-    const shoulder = c.aimShoulder * this.aim, rx = -Math.cos(yaw) * shoulder, rz = Math.sin(yaw) * shoulder;
+    const shoulder = lerp(c.aimShoulder * this.aim, 0.12, this.scope), rx = -Math.cos(yaw) * shoulder, rz = Math.sin(yaw) * shoulder;
 
     const cam = this.camera;
     cam.position.set(
       this.focus.x + rx - Math.sin(yaw) * Math.cos(elevation) * dist,
-      this.focus.y + c.lookHeight + Math.sin(elevation) * dist,
+      this.focus.y + lerp(c.lookHeight, 1.58, this.scope) + Math.sin(elevation) * dist,
       this.focus.z + rz - Math.cos(yaw) * Math.cos(elevation) * dist);
 
     // Stay above the ground.
@@ -88,12 +91,15 @@ export class ChaseCamera {
     cam.lookAt(look);
 
     const speedFov = lerp(c.fov, c.fovFast, Math.pow(speed01, 1.3));
-    this.fov = lerp(this.fov, lerp(speedFov, c.aimFov, this.aim), damp(8, dt));
+    this.fov = lerp(this.fov, lerp(lerp(speedFov, c.aimFov, this.aim), c.scopeFov, this.scope), damp(10, dt));
     cam.fov = this.fov;
     cam.updateProjectionMatrix();
   }
 
   onLand(impact) { this.dip = Math.min(0.7, impact * config.camera.landingDip); }
   onSloppy() { this.shake = config.camera.sloppyShake; }
-  onShot() { this.shake = Math.max(this.shake, config.gun.recoil); }
+  onShot(kick = 1) {
+    this.shake = Math.max(this.shake, config.gun.recoil * kick * lerp(1, 0.25, this.scope));   // (shake is magnified by the zoom, so tone it down when scoped)
+    this.fov += kick * lerp(0.6, 0.9, this.scope);   // the view punches out for an instant
+  }
 }

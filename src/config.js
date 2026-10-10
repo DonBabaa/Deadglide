@@ -82,8 +82,8 @@ export const config = {
   },
 
   player: {
-    hearts: 5,
-    invulnerableTime: 1.2,   // seconds of safety after taking a hit
+    maxHp: 100,
+    invulnerableTime: 0.8,   // seconds of safety after taking a hit
   },
 
   // The monster spawn director (see enemies/horde.js).
@@ -96,6 +96,8 @@ export const config = {
     baseSpawnRate: 3,     // monsters per second while topping up
     spawnRatePerWave: 1,
     hpGrowth: 0.15,       // extra monster health per wave (0.15 = +15%)
+    damageGrowth: 0.05,   // extra monster damage per wave
+    eliteDamage: 2.5,     // elites hit this many times harder
     spawnDistance: 48,    // how far away they claw out of the ground
     despawnDistance: 115, // left this far behind, they are recycled ahead of you
     riseTime: 0.7,        // seconds to climb out of the ground
@@ -116,15 +118,35 @@ export const config = {
     gemLifetime: 45,      // seconds before an uncollected gem fades
   },
 
+  loot: {
+    chestChance: 0.03,    // chance a (non-elite) monster drops a chest; elites always do
+    heartChance: 0.06,    // chance a monster drops a small heart
+    heartHeal: 10,        // HP a heart restores
+    heartLifetime: 30,    // seconds before an uncollected heart fades
+    heartPull: 5,         // hearts this close drift toward you
+    weaponWeight: 1.5,    // how often each unowned gun turns up in a chest (ordinary items are 1 to 4)
+    pickupRadius: 2.4,    // ride this close to open one
+    chestLifetime: 60,    // seconds before an unopened chest disappears
+  },
+
+  // Settings shared by every gun. Each gun's own numbers are in player/weapons.js.
   gun: {
-    damage: 10,
     aimAssist: 4,         // degrees: shots this close to a monster are pulled onto it (0 = off)
-    fireRate: 10,         // shots per second while holding left mouse
-    bulletSpeed: 170,
-    bulletLife: 1.2,      // seconds before a bullet fizzles out
-    spreadHip: 1.6,       // degrees of scatter firing from the hip
-    spreadAim: 0.3,       // ...and while aiming
+    headshotMult: 2.5,    // damage multiplier for hitting a monster in the head
     recoil: 0.05,         // camera kick per shot
+  },
+
+  score: {
+    maxMultiplier: 8,
+    killHeat: 0.12,       // how much one kill fills the style meter (1 = a whole multiplier)
+    trickHeat: 0.3,       // ...and one landed trick
+    cooling: 0.1,         // how fast the meter drains per second (much slower at speed)
+    trickPoints: 40,      // points per m/s of trick boost
+    grindPoints: 8,       // points per metre of grind
+    speedThreshold: 15,   // going faster than this (m/s) earns points every second...
+    speedPoints: 1.5,     // ...this many per m/s over it
+    headshotBonus: 2,     // kill-score multipliers
+    airKillBonus: 1.5,
   },
 
   audio: {
@@ -150,6 +172,8 @@ export const config = {
     aimShoulder: 0.9,
     aimFov: 52,           // ...and zooms
     aimSensitivity: 0.7,  // mouse sensitivity multiplier while aiming
+    scopeFov: 13,         // sniper scope: how far it zooms...
+    scopeSensitivity: 0.22,   // ...and how much it slows the mouse
     landingDip: 0.03,
     sloppyShake: 0.35,
   },

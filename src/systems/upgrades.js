@@ -3,7 +3,7 @@
 //   rarity: 'common' | 'rare'   (rare ones turn up about a third as often)
 //   max:    how many times it can be taken
 //   apply(stats, run): change the player's stats (see player/stats.js);
-//                      `run` has heal(n) for upgrades that restore hearts.
+//                      `run` has heal(n) for upgrades that restore HP.
 import { stats } from '../player/stats.js';
 
 export const UPGRADES = [
@@ -18,8 +18,8 @@ export const UPGRADES = [
   { id: 'magnet', name: 'Bone Magnet', description: '+50% XP pickup range.', rarity: 'common', max: 4, apply: (s) => { s.pickupRadius += 0.5; } },
   { id: 'xp', name: 'Quick Learner', description: '+20% XP from everything.', rarity: 'common', max: 5, apply: (s) => { s.xpGain += 0.2; } },
   { id: 'speed', name: 'Hot Wheels', description: '+10% top pushing speed.', rarity: 'common', max: 5, apply: (s) => { s.topSpeed += 0.1; } },
-  { id: 'heart', name: 'Second Wind', description: '+1 maximum heart, and heal one.', rarity: 'rare', max: 5, apply: (s, run) => { s.maxHearts += 1; run.heal(1); } },
-  { id: 'heal', name: 'Patch Up', description: 'Heal two hearts.', rarity: 'common', max: 99, apply: (s, run) => run.heal(2) },
+  { id: 'heart', name: 'Second Wind', description: '+20 maximum HP, and heal 20.', rarity: 'rare', max: 5, apply: (s, run) => { s.maxHp += 20; run.heal(20); } },
+  { id: 'heal', name: 'Patch Up', description: 'Heal 35 HP.', rarity: 'common', max: 99, apply: (s, run) => run.heal(35) },
   { id: 'skin', name: 'Thick Skin', description: '+0.5 s of safety after taking a hit.', rarity: 'common', max: 3, apply: (s) => { s.invulnerable += 0.5; } },
 ];
 

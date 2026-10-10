@@ -1,7 +1,7 @@
 // The ground as a pure height function over an endless, procedurally
 // generated world: heightAt(x, z), normalAt(x, z) and the rails near a point.
 // Physics samples this directly; chunkMesh.js builds matching meshes.
-import { CHUNK, generateChunk, chunkHeight, chunkPaved } from './worldgen.js';
+import { CHUNK, generateChunk, chunkHeight, chunkBase, chunkPaved } from './worldgen.js';
 
 // World seed: random each run, or fixed with ?seed=1234 in the URL.
 const fromUrl = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('seed')) : 0;
@@ -27,6 +27,7 @@ export function getChunk(cx, cz) {
 export const chunkAt = (x, z) => getChunk(Math.floor(x / CHUNK), Math.floor(z / CHUNK));
 
 export const heightAt = (x, z) => chunkHeight(chunkAt(x, z), x, z);
+export const groundAt = (x, z) => chunkBase(chunkAt(x, z), x, z);   // the land alone, ignoring props
 export const pavedAt = (x, z) => chunkPaved(chunkAt(x, z), x, z);
 export const railsNear = (x, z) => chunkAt(x, z).rails;
 

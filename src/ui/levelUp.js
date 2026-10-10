@@ -14,17 +14,20 @@ function pick(i) {
 
 window.addEventListener('keydown', (e) => {
   const i = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
-  if (i >= 0) pick(i);
+  if (i >= 0 && onPick) {
+    e.preventDefault();   // tells main.js this key press was used up here (so it doesn't also switch guns)
+    pick(i);
+  }
 });
 
 export const levelUp = {
   get open() { return onPick !== null; },
 
   // stacks(upgrade) -> how many of it the player already has.
-  show(level, upgrades, stacks, callback) {
+  show(heading, upgrades, stacks, callback) {
     choices = upgrades;
     onPick = callback;
-    title.textContent = `Level ${level}`;
+    title.textContent = heading;
     cards.replaceChildren(...upgrades.map((u, i) => {
       const card = document.createElement('button');
       card.type = 'button';

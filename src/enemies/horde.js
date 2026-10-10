@@ -8,7 +8,7 @@
 // into fresh spawns ahead, so you are never alone for long.
 import * as THREE from 'three';
 import { config } from '../config.js';
-import { heightAt } from '../world/terrain.js';
+import { heightAt, groundAt } from '../world/terrain.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
 import { ENEMY_GEOMETRY } from './enemyModels.js';
@@ -84,7 +84,7 @@ export class Horde {
     if (this.enemies.length >= MAX) return;
     const x = player.pos.x + Math.sin(angle) * dist, z = player.pos.z + Math.cos(angle) * dist;
     const y = heightAt(x, z);
-    if (y > 2.5) return;
+    if (y - groundAt(x, z) > 2.5) return;
     const T = ENEMY_TYPES[name], tough = 1 + config.horde.hpGrowth * (this.wave - 1);
     this.enemies.push({
       name, T, x, y, z, elite,
@@ -226,7 +226,7 @@ export class Horde {
             e.ramWait = 0.3;
             this.damage(e, stats.ramDamage, -dx, -dz);
           }
-        } else damage = Math.max(damage, e.T.damage * (e.elite ? 2 : 1));
+        } else damage = Math.max(damage, e.T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)));
       }
     }
 
@@ -251,20 +251,20 @@ export class Horde {
     return null;
   }
 
-  damage(e, amount, dirX, dirZ) {
+  damage(e, amount, dirX, dirZ, headshot = false, knock = 1) {
     e.hp -= amount;
     e.flash = 1;
-    const push = e.elite ? 1.5 : 6;
+    const push = (e.elite ? 1.5 : 6) * knock;
     e.kx += dirX * push; e.kz += dirZ * push;
     if (e.hp > 0) {
-      this.events.push({ type: 'hit' });
+      this.events.push({ type: 'hit', headshot });
       return;
     }
     const i = this.enemies.indexOf(e);
     if (i >= 0) { this.enemies[i] = this.enemies[this.enemies.length - 1]; this.enemies.pop(); }
     this.kills++;
     this.score += e.T.score * (e.elite ? 10 : 1);
-    this.events.push({ type: 'kill', elite: e.elite, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
+    this.events.push({ type: 'kill', elite: e.elite, headshot, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
     for (let k = 0; k < (e.elite ? 30 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
       g.life = 0.5 + Math.random() * 0.5;
@@ -291,11 +291,19 @@ export class Horde {
     let best = Math.cos((degrees * Math.PI) / 180), found = false;
     for (const e of this.enemies) {
       if (e.rise < 0.6) continue;
-      v.set(e.x - origin.x, e.y + e.T.height * e.scale * 0.6 - origin.y, e.z - origin.z);
+      const tall = e.T.height * e.scale;
+      v.set(e.x - origin.x, e.y + tall * 0.6 - origin.y, e.z - origin.z);
       const d = v.length();
       if (d > 140 || d < 1) continue;
       const cos = v.dot(dir) / d;
-      if (cos > best) { best = cos; out.copy(v).add(origin); found = true; }
+      if (cos > best) {
+        best = cos;
+        // Pull the shot onto the monster sideways, but keep the height you were
+        // aiming at (within its body), so headshots stay yours to earn.
+        const aimedY = origin.y + dir.y * d;
+        out.set(e.x, Math.max(e.y + tall * 0.15, Math.min(e.y + tall * 0.97, aimedY)), e.z);
+        found = true;
+      }
     }
     return found;
   }

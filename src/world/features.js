@@ -30,6 +30,8 @@ function prop(type, { x, z, facing = 0 }, us, ws, localHeight, extra = {}) {
   return {
     type, x, z, yaw, cos: Math.cos(yaw), sin: Math.sin(yaw),
     us, ws, u0: us[0], u1: us[us.length - 1], w0: ws[0], w1: ws[ws.length - 1],
+    y0: 0,          // rigid props: height of the ground at their centre (set by worldgen)
+    drape: false,   // skate props: follow the ground underneath instead, so they sit cleanly on slopes
     localHeight, ...extra,
   };
 }
@@ -40,7 +42,7 @@ const solidBox = (type, at, length, width, height, extra) =>
 export function kicker({ width = 5, radius = 9, angle = 35, ...at }) {
   const a = rad(angle), W = transitionWidth(radius, a);
   return prop('kicker', at, linspace(0, W, Math.ceil(W / 0.3)), [-width / 2, width / 2],
-    (u) => transition(u, radius, a), { lipU: W, lipY: transitionHeight(radius, a) });
+    (u) => transition(u, radius, a), { lipU: W, lipY: transitionHeight(radius, a), drape: true });
 }
 
 // Quarter pipe: transition, then a deck. `vert` adds a wall above the lip so
@@ -49,7 +51,7 @@ export function quarter({ width = 14, radius = 5, angle = 72, deck = 4, vert = 0
   const a = rad(angle), W = transitionWidth(radius, a), H = transitionHeight(radius, a);
   const us = [...linspace(0, W - 1e-4, Math.ceil(W / 0.25)), W + 1e-4, W + deck];
   return prop('quarter', at, us, [-width / 2, width / 2],
-    (u) => (u < W ? transition(u, radius, a) : H + vert), { lipU: W, lipY: H });
+    (u) => (u < W ? transition(u, radius, a) : H + vert), { lipU: W, lipY: H, drape: true });
 }
 
 // Pyramid / funbox: ramps on all four sides, flat top.
@@ -57,11 +59,11 @@ export function funbox({ length = 16, width = 12, radius = 7, angle = 35, ...at 
   const a = rad(angle), L = length / 2, Wd = width / 2;
   const t = (d) => transition(d, radius, a);
   return prop('funbox', at, linspace(-L, L, Math.ceil(length / 0.4)), linspace(-Wd, Wd, Math.ceil(width / 0.4)),
-    (u, w) => Math.min(t(u + L), t(L - u), t(w + Wd), t(Wd - w)), { topY: transitionHeight(radius, a) });
+    (u, w) => Math.min(t(u + L), t(L - u), t(w + Wd), t(Wd - w)), { topY: transitionHeight(radius, a), drape: true });
 }
 
 // Stone tomb / platform: a plain box you can ollie onto.
-export const box = ({ length = 6, width = 4, height = 1.2, ...at }) => solidBox('box', at, length, width, height);
+export const box = ({ length = 6, width = 4, height = 1.2, ...at }) => solidBox('box', at, length, width, height, { drape: true });
 
 // Headstone. kind: 0 = rounded slab, 1 = cross, 2 = obelisk.
 const HEADSTONE_SIZES = [[0.8, 0.22, 1.3], [0.9, 0.25, 1.7], [0.8, 0.8, 3.2]];   // length, width, height

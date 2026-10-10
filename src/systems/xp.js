@@ -35,6 +35,9 @@ export class Xp {
     this.gems.push({ x, y: y + 0.5, z, amount, age: 0, pulled: false });
   }
 
+  // Every gem on the ground starts flying to the player (Grave Magnet).
+  pullAll() { for (const g of this.gems) g.pulled = true; }
+
   // Returns how many levels were gained this frame.
   update(dt, player) {
     const X = config.xp, radius = X.pickupRadius * stats.pickupRadius;

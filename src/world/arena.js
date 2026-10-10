@@ -2,7 +2,7 @@
 // around the player. Chunks are built as you approach and dropped behind you,
 // so the world goes on for as long as you keep skating.
 import * as THREE from 'three';
-import { getChunk } from './terrain.js';
+import { getChunk, groundAt } from './terrain.js';
 import { CHUNK } from './worldgen.js';
 import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
@@ -71,7 +71,7 @@ export function buildArena(scene) {
     }
     if (!centre || centre[0] !== pcx || centre[1] !== pcz) {
       centre = [pcx, pcz];
-      far.position.set((pcx + 0.5) * CHUNK, -0.03, (pcz + 0.5) * CHUNK);
+      far.position.set((pcx + 0.5) * CHUNK, -1, (pcz + 0.5) * CHUNK);
     }
   }
 
@@ -85,7 +85,7 @@ export function buildArena(scene) {
     lamps.sort((a, b) => a[0] - b[0]);
     lampLights.forEach((light, i) => {
       if (i < lamps.length) {
-        light.position.set(lamps[i][1].x - 1.6, 6.4, lamps[i][1].z - 1.6);
+        light.position.set(lamps[i][1].x - 1.6, lamps[i][1].y + 6.4, lamps[i][1].z - 1.6);
         light.intensity = 900;
       } else light.intensity = 0;
     });
@@ -170,6 +170,7 @@ function buildMist() {
     const size = 30 + rand() * 30;
     puff.scale.set(size, size * 0.22, 1);
     puff.userData.speed = 0.6 + rand() * 1.2;
+    puff.userData.height = puff.position.y;
     puffs.push(puff);
     group.add(puff);
   }
@@ -181,6 +182,7 @@ function buildMist() {
       for (const puff of puffs) {
         puff.position.x = wrap(puff.position.x + puff.userData.speed * dt, pos.x);
         puff.position.z = wrap(puff.position.z, pos.z);
+        puff.position.y = groundAt(puff.position.x, puff.position.z) + puff.userData.height;   // hug the hills
       }
     },
   };
