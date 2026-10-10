@@ -10,9 +10,11 @@ import { SkaterModel } from './player/skaterModel.js';
 import { ChaseCamera } from './player/chaseCamera.js';
 import { Weapon } from './player/weapon.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, playShot, playHit, playKill, playHurt } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand } from './fx/audio.js';
+import { startMusic } from './fx/music.js';
 import { hud } from './ui/hud.js';
 import { createTweakPanel } from './ui/tweakPanel.js';
+import { syncAudioControls } from './ui/audioControls.js';
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
 
@@ -77,11 +79,12 @@ function resume() {
   if (dead) restart();
   paused = false;
   hud.hideOverlay();
-  unlockAudio();
+  if (unlockAudio()) startMusic();
   if (!panel.open) lockPointer();
 }
 function pause() {
   paused = true;
+  syncAudioControls();   // pick up changes made with the M key or the tuning panel
   hud.showOverlay('Paused', 'Click to resume');
 }
 
@@ -97,6 +100,9 @@ window.addEventListener('keydown', (e) => {
     if (panel.open) document.exitPointerLock?.();   // free the mouse for the sliders; the game keeps running
   } else if (e.code === 'Escape' && !document.pointerLockElement && !dead) {
     paused ? resume() : pause();
+  } else if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) {
+    hud.popup(toggleMusic() ? 'Music on' : 'Music off', 'pending');
+    syncAudioControls();
   } else if (e.code === 'Backspace' && !(e.target instanceof HTMLInputElement)) {
     restart();
   }
@@ -120,12 +126,16 @@ function handleEvents() {
   for (const e of skater.events) {
     if (e.type === 'land') {
       chase.onLand(e.impact);
-      if (e.trick) hud.popup(`${e.trick}  ${kmh(e.boost)}`, 'trick');
+      if (e.trick) {
+        hud.popup(`${e.trick}  ${kmh(e.boost)}`, 'trick');
+        playTrickLand(e.boost);
+      }
     } else if (e.type === 'sloppy') {
       chase.onSloppy();
       hud.popup('Sloppy landing', 'sloppy');
     } else if (e.type === 'grind') {
       hud.popup(e.trick ? `${e.trick} to grind  ${kmh(e.boost)}` : 'Grind', 'trick');
+      if (e.trick) playTrickLand(e.boost);
     } else if (e.type === 'trick') {
       hud.popup(e.name, 'pending');
     }

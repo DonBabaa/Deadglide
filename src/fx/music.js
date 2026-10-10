@@ -1,0 +1,275 @@
+// Generated background music: haunted drum & bass / jungle at 172 BPM.
+// Nothing is recorded. A small sequencer schedules synthesized drums and sub
+// bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
+// a wailing ghost voice, a broken music box and gusts of wind.
+// To change the groove, edit the patterns below (16 steps = one bar,
+// numbers are how hard each hit is played, 0 = silent).
+import { audio, applyVolume } from './audio.js';
+
+const BPM = 172, STEP = 60 / BPM / 4, BAR = STEP * 16;
+const midi = (n) => 440 * 2 ** ((n - 69) / 12);
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+//             1 . . .  2 . . .  3 . . .  4 . . .
+const KICK = [
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+  [1, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0.5, 0, 0],
+];
+const SNARE = [
+  [0, 0, 0, 0, 1, 0, 0, 0.25, 0, 0.2, 0, 0, 1, 0, 0, 0],
+  [0, 0, 0, 0, 1, 0, 0, 0.3, 0, 0.3, 0, 0, 1, 0, 0.35, 0.5],
+];
+const FILL_KICK = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const FILL_SNARE = [0, 0, 0, 0, 1, 0, 0, 0.4, 0.5, 0, 0.6, 0, 0.7, 0.8, 0.9, 1];
+const BASS_HITS = [[0, 5], [6, 3], [10, 5]];   // [step, length in steps]
+
+// Two bars per chord. F minor, leaning on the notes that make it uneasy:
+// the flat second (Gb), the tritone, a diminished chord to finish.
+const CHORDS = [
+  { root: 29, notes: [53, 56, 60, 64, 67] },   // F minor with a major 7th
+  { root: 30, notes: [54, 58, 61, 65, 72] },   // Gb major 7 (#11): a half-step shadow
+  { root: 25, notes: [49, 52, 56, 59, 63] },   // Db minor
+  { root: 24, notes: [48, 51, 54, 57, 61] },   // C diminished (b9)
+];
+const SCALE = [77, 79, 80, 82, 84, 85, 88, 89];              // F harmonic minor, for the music box
+const WAILS = [[77, 76, 80, 79], [84, 83, 80, 76], [72, 78, 77, 73]];   // ghost-voice phrases, one note per bar
+
+let started = false, step = 0, nextTime = 0, echo = null;
+
+export function startMusic() {
+  if (started || !audio.ctx) return;
+  started = true;
+  const ctx = audio.ctx;
+
+  // Long, dark echo for everything atmospheric.
+  echo = ctx.createGain();
+  const delay = ctx.createDelay(1), feedback = ctx.createGain(), damp = ctx.createBiquadFilter();
+  delay.delayTime.value = STEP * 3;
+  feedback.gain.value = 0.6;
+  damp.type = 'lowpass';
+  damp.frequency.value = 1900;
+  echo.connect(delay);
+  delay.connect(damp).connect(feedback).connect(delay);
+  damp.connect(audio.music);
+
+  nextTime = ctx.currentTime + 0.1;
+  setInterval(() => {
+    applyVolume();
+    // Schedule a little ahead; further when the tab is in the background and timers run slow.
+    const horizon = ctx.currentTime + (document.hidden ? 1.5 : 0.25);
+    if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;   // fell behind (tab was asleep)
+    while (nextTime < horizon) {
+      schedule(step++, nextTime);
+      nextTime += STEP;
+    }
+  }, 60);
+}
+
+function schedule(index, t) {
+  const bar = Math.floor(index / 16), s = index % 16;
+  const chord = CHORDS[Math.floor(bar / 2) % CHORDS.length];
+  const intro = bar < 4;                          // atmosphere and hats only
+  const breakdown = !intro && bar % 32 < 2;       // every so often the drums drop out
+  const fill = bar % 8 === 7;                     // roll into the next phrase
+
+  if (s === 0) {
+    if (bar % 2 === 0) pad(t, BAR * 2, chord.notes);          // a new chord every two bars
+    if (bar % 8 === 0) bell(t, 41);                           // the chapel bell tolls
+    if (bar % 4 === 2) wind(t, BAR * 2);
+    if (bar % 8 === 4) wail(t, pick(WAILS));                  // something is singing out there
+  }
+  // Music box: stray notes, slightly out of tune, lost in the echo.
+  if (s % 2 === 0 && Math.random() < 0.11) musicBox(t, pick(SCALE));
+
+  // Hats run throughout, a touch looser on the off-steps.
+  const hatLevel = s % 2 === 0 ? 0.55 : Math.random() < 0.7 ? 0.22 : 0;
+  if (hatLevel) hat(t, hatLevel * (intro ? 0.6 : 1), !intro && bar % 2 === 1 && (s === 6 || s === 14));
+
+  if (intro || breakdown) return;
+  const kick = fill ? FILL_KICK[s] : KICK[bar % 2][s];
+  const snare = fill ? FILL_SNARE[s] : SNARE[bar % 2][s];
+  if (kick) drumKick(t, kick);
+  if (snare) drumSnare(t, snare);
+  for (const [at, length] of BASS_HITS) if (s === at) bass(t, STEP * length, chord.root);
+}
+
+// ---- Helpers -----------------------------------------------------------------
+
+function envelope(gain, t, peak, attack, end) {
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+}
+
+// A slow wobble applied to an oscillator's pitch (in cents).
+function vibrato(osc, t, end, rate, cents) {
+  const ctx = audio.ctx, lfo = ctx.createOscillator(), depth = ctx.createGain();
+  lfo.frequency.value = rate;
+  depth.gain.value = cents;
+  lfo.connect(depth).connect(osc.detune);
+  lfo.start(t);
+  lfo.stop(end);
+}
+
+function noiseBurst(t, time, volume, filterType, frequency, rate = 1) {
+  const ctx = audio.ctx, src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = audio.noise;
+  src.playbackRate.value = rate;
+  filter.type = filterType;
+  filter.frequency.value = frequency;
+  envelope(gain, t, volume, 0.002, t + time);
+  src.connect(filter).connect(gain).connect(audio.music);
+  src.start(t, Math.random() * 0.5);
+  src.stop(t + time + 0.02);
+}
+
+// ---- Drums and bass ------------------------------------------------------------
+
+function drumKick(t, level) {
+  const ctx = audio.ctx, osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.frequency.setValueAtTime(165, t);
+  osc.frequency.exponentialRampToValueAtTime(46, t + 0.09);
+  envelope(gain, t, 0.9 * level, 0.003, t + 0.24);
+  osc.connect(gain).connect(audio.music);
+  osc.start(t);
+  osc.stop(t + 0.26);
+}
+
+function drumSnare(t, level) {
+  const ctx = audio.ctx, osc = ctx.createOscillator(), gain = ctx.createGain();
+  noiseBurst(t, 0.15, 0.5 * level, 'highpass', 1400, 0.9 + Math.random() * 0.25);   // the crack
+  osc.type = 'triangle';                                                            // the body
+  osc.frequency.setValueAtTime(230, t);
+  osc.frequency.exponentialRampToValueAtTime(170, t + 0.07);
+  envelope(gain, t, 0.3 * level, 0.002, t + 0.1);
+  osc.connect(gain).connect(audio.music);
+  osc.start(t);
+  osc.stop(t + 0.12);
+}
+
+const hat = (t, level, open) => noiseBurst(t, open ? 0.2 : 0.04, 0.16 * level, 'highpass', 8000);
+
+// Sub bass: a sine underneath, with two detuned saws an octave up so it still
+// comes through on small speakers.
+function bass(t, time, note) {
+  const ctx = audio.ctx, end = t + time, f = midi(note);
+  const out = ctx.createGain(), filter = ctx.createBiquadFilter();
+  envelope(out, t, 1, 0.012, end + 0.08);
+  out.connect(audio.music);
+  filter.type = 'lowpass';
+  filter.Q.value = 5;
+  filter.frequency.setValueAtTime(520, t);
+  filter.frequency.exponentialRampToValueAtTime(230, end);
+  filter.connect(out);
+  const voices = [['sine', f, 0, 0.5, out], ['sawtooth', f * 2, 9, 0.1, filter], ['sawtooth', f * 2, -9, 0.1, filter]];
+  for (const [type, freq, detune, level, target] of voices) {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    osc.detune.value = detune;
+    gain.gain.value = level;
+    osc.connect(gain).connect(target);
+    osc.start(t);
+    osc.stop(end + 0.1);
+  }
+}
+
+// ---- Atmosphere ----------------------------------------------------------------
+
+// Pad: widely detuned saws that swell in and sag out, each voice wavering a little.
+function pad(t, time, notes) {
+  const ctx = audio.ctx, end = t + time + 2.5;
+  const out = ctx.createGain(), filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(380, t);
+  filter.frequency.linearRampToValueAtTime(950, t + time * 0.6);
+  filter.frequency.linearRampToValueAtTime(420, end);
+  out.gain.setValueAtTime(0.0001, t);
+  out.gain.linearRampToValueAtTime(0.034, t + 1.4);
+  out.gain.setValueAtTime(0.034, t + time);
+  out.gain.linearRampToValueAtTime(0.0001, end);
+  filter.connect(out);
+  out.connect(audio.music);
+  out.connect(echo);
+  for (const note of notes) {
+    for (const detune of [-13, 11]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = midi(note);
+      osc.detune.value = detune;
+      vibrato(osc, t, end, 0.15 + Math.random() * 0.3, 9);
+      osc.connect(filter);
+      osc.start(t);
+      osc.stop(end + 0.05);
+    }
+  }
+}
+
+// Chapel bell: a cluster of clashing partials (with the minor third real bells have) ringing out.
+function bell(t, note) {
+  const ctx = audio.ctx, f = midi(note), out = ctx.createGain();
+  out.gain.value = 0.2;
+  out.connect(audio.music);
+  out.connect(echo);
+  for (const [ratio, level, ring] of [[0.5, 0.5, 4.5], [1, 1, 3.8], [1.19, 0.7, 3], [1.5, 0.4, 2.2], [2, 0.5, 1.8], [2.74, 0.25, 1.2], [4.07, 0.12, 0.8]]) {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = f * ratio;
+    envelope(gain, t, 0.3 * level, 0.004, t + ring);
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + ring + 0.05);
+  }
+}
+
+// Ghost voice: one thin, wavering tone that slides between four notes, a bar each.
+function wail(t, phrase) {
+  const ctx = audio.ctx, end = t + BAR * phrase.length, osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.frequency.setValueAtTime(midi(phrase[0]) * 0.94, t);   // scoop up into the first note
+  phrase.forEach((note, i) => {
+    osc.frequency.exponentialRampToValueAtTime(midi(note), t + BAR * i + 0.45);
+    osc.frequency.setValueAtTime(midi(note), t + BAR * (i + 1) - 0.2);
+  });
+  vibrato(osc, t, end + 1, 5.3, 22);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(0.03, t + 0.8);
+  gain.gain.setValueAtTime(0.03, end - 0.6);
+  gain.gain.linearRampToValueAtTime(0.0001, end + 0.8);
+  osc.connect(gain);
+  gain.connect(audio.music);
+  gain.connect(echo);
+  osc.start(t);
+  osc.stop(end + 1);
+}
+
+// Music box: a small glassy tone with an off-key overtone.
+function musicBox(t, note) {
+  const ctx = audio.ctx, f = midi(note) * (1 + (Math.random() - 0.5) * 0.012), out = ctx.createGain();
+  out.connect(audio.music);
+  out.connect(echo);
+  for (const [ratio, level, ring] of [[1, 0.05, 0.7], [3.01, 0.014, 0.25]]) {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = f * ratio;
+    envelope(gain, t, level, 0.003, t + ring);
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + ring + 0.05);
+  }
+}
+
+// Wind: filtered noise that rises and dies away.
+function wind(t, time) {
+  const ctx = audio.ctx, end = t + time, src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = audio.noise;
+  src.loop = true;
+  filter.type = 'bandpass';
+  filter.Q.value = 3;
+  filter.frequency.setValueAtTime(260, t);
+  filter.frequency.exponentialRampToValueAtTime(700 + Math.random() * 500, t + time * 0.5);
+  filter.frequency.exponentialRampToValueAtTime(300, end);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(0.07, t + time * 0.5);
+  gain.gain.linearRampToValueAtTime(0.0001, end);
+  src.connect(filter).connect(gain).connect(audio.music);
+  src.start(t);
+  src.stop(end + 0.05);
+}

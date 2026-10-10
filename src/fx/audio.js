@@ -1,59 +1,103 @@
-// Synthesized sound effects (WebAudio, no files).
-let ctx = null, noise = null;
+// Synthesized sound effects (WebAudio, no files). Music lives in music.js and
+// shares the audio context and volume controls set up here.
+import { config } from '../config.js';
+
+export const audio = { ctx: null, noise: null, sfx: null, music: null, muted: false };
+const midi = (n) => 440 * 2 ** ((n - 69) / 12);
 
 // Browsers only allow audio after a click/keypress; call this from one.
+// Returns true once sound is available.
 export function unlockAudio() {
-  if (!ctx) {
-    try { ctx = new AudioContext(); } catch { return; }
-    noise = ctx.createBuffer(1, ctx.sampleRate * 0.25, ctx.sampleRate);
-    const data = noise.getChannelData(0);
+  if (!audio.ctx) {
+    let ctx;
+    try { ctx = new AudioContext(); } catch { return false; }
+    audio.ctx = ctx;
+    // Everything goes through a gentle compressor so loud moments don't clip.
+    const master = ctx.createDynamicsCompressor();
+    master.connect(ctx.destination);
+    audio.sfx = ctx.createGain();
+    audio.music = ctx.createGain();
+    audio.sfx.connect(master);
+    audio.music.connect(master);
+    audio.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = audio.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    applyVolume();
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  if (audio.ctx.state === 'suspended') audio.ctx.resume();
+  return true;
 }
 
-export function playShot() {
-  if (!ctx || ctx.state !== 'running') return;
-  const t = ctx.currentTime;
-
-  // Crack: filtered noise burst.
-  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), crack = ctx.createGain();
-  src.buffer = noise;
-  src.playbackRate.value = 0.9 + Math.random() * 0.2;
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(5200, t);
-  filter.frequency.exponentialRampToValueAtTime(500, t + 0.14);
-  crack.gain.setValueAtTime(0.32, t);
-  crack.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-  src.connect(filter).connect(crack).connect(ctx.destination);
-  src.start(t);
-  src.stop(t + 0.2);
-
-  // Thump: short falling sine.
-  const osc = ctx.createOscillator(), thump = ctx.createGain();
-  osc.frequency.setValueAtTime(170, t);
-  osc.frequency.exponentialRampToValueAtTime(45, t + 0.1);
-  thump.gain.setValueAtTime(0.4, t);
-  thump.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-  osc.connect(thump).connect(ctx.destination);
-  osc.start(t);
-  osc.stop(t + 0.13);
+// Push the tuning-panel volumes (and the mute toggle) to the mixer.
+export function applyVolume() {
+  if (!audio.ctx) return;
+  const t = audio.ctx.currentTime;
+  audio.sfx.gain.setTargetAtTime(config.audio.sfxVolume, t, 0.05);
+  audio.music.gain.setTargetAtTime(audio.muted ? 0 : config.audio.musicVolume, t, 0.05);
+}
+export function toggleMusic() {
+  audio.muted = !audio.muted;
+  applyVolume();
+  return !audio.muted;
 }
 
-// A short pitched blip: the basis of the small combat sounds.
-function blip(type, from, to, time, volume) {
-  if (!ctx || ctx.state !== 'running') return;
-  const t = ctx.currentTime, osc = ctx.createOscillator(), gain = ctx.createGain();
+const ready = () => audio.ctx && audio.ctx.state === 'running';
+
+// ---- Building blocks ---------------------------------------------------------
+
+// A pitched tone that slides from one frequency to another and fades out.
+function tone(type, from, to, time, volume, at = 0) {
+  const ctx = audio.ctx, t = ctx.currentTime + at, osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(from, t);
   osc.frequency.exponentialRampToValueAtTime(to, t + time);
-  gain.gain.setValueAtTime(volume, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(volume, t + 0.006);
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(audio.sfx);
   osc.start(t);
-  osc.stop(t + time + 0.01);
+  osc.stop(t + time + 0.02);
 }
 
-export const playHit = () => blip('square', 900, 500, 0.04, 0.05);       // bullet hits a monster
-export const playKill = () => blip('triangle', 260, 60, 0.16, 0.3);      // monster goes down
-export const playHurt = () => blip('sawtooth', 180, 50, 0.35, 0.35);     // you got clawed
+// A burst of filtered noise whose filter sweeps from one frequency to another.
+function hiss(filterType, from, to, time, volume, at = 0) {
+  const ctx = audio.ctx, t = ctx.currentTime + at;
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 0.9 + Math.random() * 0.2;
+  filter.type = filterType;
+  filter.frequency.setValueAtTime(from, t);
+  filter.frequency.exponentialRampToValueAtTime(to, t + time);
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + time);
+  src.connect(filter).connect(gain).connect(audio.sfx);
+  src.start(t);
+  src.stop(t + time + 0.02);
+}
+
+// ---- Sounds ------------------------------------------------------------------
+
+export function playShot() {
+  if (!ready()) return;
+  hiss('lowpass', 5200, 500, 0.16, 0.32);   // crack
+  tone('sine', 170, 45, 0.11, 0.4);         // thump
+}
+
+export const playHit = () => ready() && tone('square', 900, 500, 0.04, 0.05);     // bullet hits a monster
+export const playKill = () => ready() && tone('triangle', 260, 60, 0.16, 0.3);    // monster goes down
+export const playHurt = () => ready() && tone('sawtooth', 180, 50, 0.35, 0.35);   // you got clawed
+
+// Landing a trick: a thump as the wheels hit, a rush of air, and a bright
+// rising chime (in the music's key). Bigger tricks ring more notes.
+const CHIME = [80, 84, 87, 92, 96, 99];   // Ab5 C6 Eb6 Ab6 C7 Eb7
+export function playTrickLand(boost = 3) {
+  if (!ready()) return;
+  tone('sine', 120, 50, 0.18, 0.5);
+  hiss('bandpass', 900, 7000, 0.3, 0.12);
+  const notes = Math.min(CHIME.length, 3 + Math.floor(boost / 4));
+  for (let i = 0; i < notes; i++) {
+    const f = midi(CHIME[i]), at = 0.03 + i * 0.055;
+    tone('sine', f, f, 0.55, 0.16, at);
+    tone('triangle', f * 2, f * 2, 0.25, 0.05, at);   // a little sparkle on top
+  }
+}

@@ -112,6 +112,11 @@ export const config = {
     recoil: 0.05,         // camera kick per shot
   },
 
+  audio: {
+    musicVolume: 0.55,
+    sfxVolume: 0.8,
+  },
+
   camera: {
     distance: 6,
     distanceFast: 9.5,    // pull back at maxSpeed
