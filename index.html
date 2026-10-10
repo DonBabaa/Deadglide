@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deadglide</title>
+    <!-- Inline icon (a headstone), so the browser doesn't go looking for /favicon.ico -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c2535'/%3E%3Cpath d='M9 27V13a7 7 0 0 1 14 0v14z' fill='%23b9bec4'/%3E%3Cpath d='M15 11h2v3h3v2h-3v6h-2v-6h-3v-2h3z' fill='%231c2535'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <div id="help">
+        <b>W</b> roll &nbsp; <b>Shift</b> kick-push &nbsp; <b>S</b> brake &nbsp; <b>A/D</b> carve (spin in the air)<br />
+        <b>Space</b> hold + release to ollie &nbsp; <b>E</b> trick (in the air) &nbsp; land on a rail to grind<br />
+        <b>Right mouse</b> aim &nbsp; <b>Left mouse</b> fire<br />
+        <b>`</b> tuning panel &nbsp; <b>Backspace</b> respawn &nbsp; <b>Esc</b> pause
+      </div>
+      <div id="hurt"></div>
+      <div id="top"><div id="hearts"></div><div id="stats"></div></div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div id="popups"></div>
+      <div id="speed">
+        <div><span id="speed-text">0</span><span id="speed-unit">km/h</span></div>
+        <div class="bar"><div id="speed-fill"></div></div>
+        <div class="label">Ollie</div>
+        <div class="bar"><div id="charge-fill"></div></div>
+      </div>
+      <div id="state"></div>
+      <div id="seed"></div>
+    </div>
+
+    <div id="overlay">
+      <div id="overlay-title">Deadglide</div>
+      <div id="overlay-hint">Click to skate</div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
