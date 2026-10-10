@@ -15,8 +15,8 @@ export const hud = {
   update(skater, aiming, hp, horde, xp, maxHp, buffs) {
     // Active timed effects, e.g. "Frenzy 7s".
     buffsEl.textContent = Object.entries(buffs).filter(([, t]) => t > 0).map(([name, t]) => `${name} ${Math.ceil(t)}s`).join('   ');
-    xpFill.style.width = `${Math.min(100, (xp.xp / xp.needed) * 100)}%`;
-    xpLevel.textContent = `Level ${xp.level}`;
+    xpFill.style.width = `${xp.maxed ? 100 : Math.min(100, (xp.xp / xp.needed) * 100)}%`;
+    xpLevel.textContent = xp.maxed ? `Level ${xp.level}  ·  max` : `Level ${xp.level}`;
     crosshair.classList.toggle('aiming', aiming);
     hpFill.style.width = `${Math.max(0, (hp / maxHp) * 100)}%`;
     hpFill.classList.toggle('low', hp / maxHp < 0.3);
@@ -128,6 +128,40 @@ export const hud = {
       return el;
     }));
   },
+
+  // Points at the exit portal. Pass null to hide it.
+  portalMarker(x, y, metres) {
+    const el = $('portal-marker');
+    el.classList.toggle('hidden', x === null);
+    if (x === null) return;
+    el.style.transform = `translate(${x * window.innerWidth - 13}px, ${y * window.innerHeight - 13}px)`;
+    el.querySelector('span').textContent = `Exit ${Math.round(metres)} m`;
+  },
+
+  // The boss's health bar across the top (health 0..1), or null to hide it.
+  boss(health, name = '') {
+    const el = $('boss'), on = health !== null;
+    document.body.classList.toggle('boss-fight', on);
+    el.classList.toggle('hidden', !on);
+    if (!on) return;
+    if (name) $('boss-name').textContent = name;
+    $('boss-fill').style.width = $('boss-lag').style.width = `${Math.max(0, health) * 100}%`;   // (the lagging bar catches up slowly, in CSS)
+    el.classList.toggle('enraged', health < 0.4);
+  },
+  // His name slams onto the middle of the screen when he arrives.
+  bossIntro(name) {
+    const el = $('boss-intro');
+    el.querySelector('span').textContent = name;
+    el.classList.remove('hidden');
+    void el.offsetWidth;   // restart the animation
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    hurtEl.classList.remove('on');
+    void hurtEl.offsetWidth;
+    hurtEl.classList.add('on');
+  },
+  hideBossIntro() { $('boss-intro').classList.add('hidden'); },
 
   // Points at a chest: x / y are screen fractions (0..1), or pass null to hide it.
   chestMarker(x, y, metres) {

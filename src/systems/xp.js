@@ -27,6 +27,8 @@ export class Xp {
     this.spin = 0;
   }
 
+  get maxed() { return this.level >= config.xp.maxLevel; }
+
   // XP needed to finish the current level.
   get needed() { return Math.round(config.xp.firstLevel + config.xp.perLevel * (this.level - 1)); }
 
@@ -38,7 +40,7 @@ export class Xp {
   // Every gem on the ground starts flying to the player (Grave Magnet).
   pullAll() { for (const g of this.gems) g.pulled = true; }
 
-  // Returns how many levels were gained this frame.
+  // Returns how many levels were gained this frame (and, at the level cap, the XP that spilled over).
   update(dt, player) {
     const X = config.xp, radius = X.pickupRadius * stats.pickupRadius;
     this.spin += dt * 3;
@@ -63,12 +65,13 @@ export class Xp {
       }
     }
 
-    let levels = 0;
-    while (this.xp >= this.needed) {
+    let levels = 0, spare = 0;
+    while (!this.maxed && this.xp >= this.needed) {
       this.xp -= this.needed;
       this.level++;
       levels++;
     }
+    if (this.maxed) { spare = this.xp; this.xp = 0; }   // at the cap, XP has nowhere to go: main.js turns it into points
 
     for (let i = 0; i < MAX_GEMS; i++) {
       const g = this.gems[i];
@@ -77,6 +80,6 @@ export class Xp {
       this.mesh.setMatrixAt(i, m.compose(v.set(g.x, g.y + Math.sin(this.spin + i) * 0.12, g.z), q.setFromEuler(e.set(0, this.spin + i, 0)), sc.setScalar(size)));
     }
     this.mesh.instanceMatrix.needsUpdate = true;
-    return { levels, collected: gained };
+    return { levels, collected: gained, spare };
   }
 }

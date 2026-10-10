@@ -171,6 +171,11 @@ export class Skater {
       this.events.push({ type: 'kick' });
     }
 
+    // S: brake while rolling forwards; once stopped, keep holding it to roll backwards.
+    const along = vel.dot(fwd);   // + = rolling forwards, - = backwards
+    const reversing = inp.brake && along < 0.6 && !this.drifting;
+    if (reversing) vel.addScaledVector(fwd, -s.reverseAccel * Math.max(0, 1 + along / s.reverseSpeed) * dt);
+
     // Grip + friction. Grip rotates velocity toward the heading (keeping speed);
     // slipping sideways scrubs a little speed off.
     let speed = vel.length();
@@ -181,13 +186,14 @@ export class Skater {
       dir.lerp(target, 1 - Math.exp(-(this.drifting ? s.driftGrip : s.grip) * dt)).normalize();
 
       let decel = s.rollFriction + s.rollDrag * speed + (this.drifting ? s.driftScrub : s.gripScrub) * slip * speed;
-      if (inp.brake) decel += s.brakeDecel;
+      if (inp.brake && !reversing) decel += s.brakeDecel;
       speed = Math.max(0, speed - decel * dt);
       vel.copy(dir).multiplyScalar(speed);
     }
 
-    // Rolling backwards (e.g. after stalling on a ramp): flip stance.
-    if (vel.dot(fwd) < -s.revertSpeed && !this.drifting) {
+    // Rolling backwards without meaning to (e.g. after stalling on a ramp): flip stance.
+    // Not while S is held: then you're reversing on purpose and keep facing forwards.
+    if (vel.dot(fwd) < -s.revertSpeed && !this.drifting && !inp.brake) {
       fwd.negate();
       this.events.push({ type: 'revert' });
     }

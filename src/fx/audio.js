@@ -201,5 +201,32 @@ export function playPowerup() {
   hiss('bandpass', 500, 5000, 0.45, 0.12);
   [65, 72, 77, 84].forEach((note, i) => tone('triangle', midi(note), midi(note), 0.7, 0.13, 0.12 + i * 0.05));
 }
+// The final boss arrives: a roar from under the ground.
+export function playBossIntro() {
+  if (!ready()) return;
+  tone('sawtooth', 95, 32, 2.2, 0.3);
+  tone('sawtooth', 142, 47, 2.0, 0.16, 0.05);
+  tone('sine', 60, 28, 2.4, 0.4);
+  hiss('lowpass', 900, 120, 2.2, 0.3);
+  [0.9, 1.5].forEach((at) => tone('sine', 70, 30, 0.5, 0.45, at));   // footfalls
+}
+// He throws: a wet heave.
+export const playBossThrow = () => ready() && (hiss('bandpass', 250, 900, 0.35, 0.16), tone('sawtooth', 110, 60, 0.3, 0.1));
+// ...and it lands.
+export const playSplat = () => ready() && (hiss('lowpass', 1400, 160, 0.28, 0.22), tone('sine', 130, 45, 0.22, 0.2));
+// He's dead: a long collapsing groan.
+export function playBossDeath() {
+  if (!ready()) return;
+  tone('sawtooth', 130, 24, 2.8, 0.3);
+  tone('sine', 80, 22, 3, 0.45);
+  hiss('lowpass', 2400, 80, 2.6, 0.35);
+  [0, 0.25, 0.55, 1].forEach((at) => hiss('bandpass', 700, 200, 0.4, 0.2, at));
+}
+// The exit portal tearing open, and the sound of going through it.
+export function playPortal() {
+  if (!ready()) return;
+  hiss('bandpass', 300, 4200, 1.4, 0.12);
+  [57, 64, 69, 76, 81].forEach((note, i) => tone('sine', midi(note), midi(note + 12), 1.2, 0.1, i * 0.12));
+}
 // The shield taking a hit for you: a glassy ping.
 export const playShieldHit = () => ready() && (tone('sine', 1900, 900, 0.18, 0.16), tone('triangle', 2850, 1400, 0.12, 0.07));

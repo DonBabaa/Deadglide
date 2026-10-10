@@ -301,3 +301,39 @@ body { font-family: var(--text); font-size: 16px; letter-spacing: 0.3px; color: 
 #shield-fill { height: 100%; background: #58b7ff; box-shadow: 0 0 8px #58b7ff; transition: width 0.15s; }
 #powers { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 300px; font-family: var(--text); font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
 .steppers { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 22px; padding: 2px 8px 8px 2px; }
+
+/* ---- The final boss ---- */
+#boss { position: absolute; left: 50%; top: 66px; width: min(820px, 68vw); transform: translateX(-50%); text-align: center; animation: bossbar 0.9s 2.2s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
+#boss.hidden, #boss-intro.hidden, #portal-marker.hidden { display: none; }
+#boss-kicker { font-family: var(--text); font-size: 14px; font-weight: 700; letter-spacing: 8px; text-transform: uppercase; color: var(--amber); }
+#boss-name { font-family: var(--display); font-size: 44px; line-height: 1; letter-spacing: 5px; text-transform: uppercase; color: var(--bone); text-shadow: 3px 3px 0 var(--blood), 6px 6px 0 var(--ink); transform: skewX(-9deg); }
+#boss-bar { position: relative; height: 26px; margin-top: 8px; border: 3px solid var(--bone); background: rgba(8, 4, 4, 0.8); box-shadow: 6px 6px 0 var(--ink), 0 0 26px rgba(200, 32, 27, 0.55); transform: skewX(-9deg); overflow: hidden; }
+#boss-fill, #boss-lag { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+#boss-fill { background: linear-gradient(#ff4a3a, var(--blood) 45%, #6d0d0a); transition: width 0.08s linear; }
+#boss-lag { background: var(--bone); transition: width 0.9s 0.35s ease-out; }
+#boss-bar i { position: absolute; top: 0; bottom: 0; width: 3px; background: rgba(12, 12, 14, 0.7); }
+#boss-bar i:nth-of-type(1) { left: 25%; } #boss-bar i:nth-of-type(2) { left: 50%; } #boss-bar i:nth-of-type(3) { left: 75%; }
+#boss.enraged #boss-name { color: #ff6a4a; animation: lowhp 0.35s ease-in-out infinite alternate; }
+#boss.enraged #boss-bar { animation: bossrage 0.35s ease-in-out infinite alternate; }
+@keyframes bossbar { from { opacity: 0; transform: translateX(-50%) scaleX(0.1); } to { opacity: 1; transform: translateX(-50%) scaleX(1); } }
+@keyframes bossrage { from { box-shadow: 6px 6px 0 var(--ink), 0 0 14px rgba(255, 60, 40, 0.5); } to { box-shadow: 6px 6px 0 var(--ink), 0 0 44px rgba(255, 60, 40, 1); } }
+/* Make room under the bar while he's alive. */
+body.boss-fight #score { top: 190px; }
+body.boss-fight #popups { top: 36%; }
+body.boss-fight #capture { top: 44%; }
+
+#boss-intro { position: absolute; left: 0; right: 0; top: 33%; text-align: center; animation: bossintro 3.2s ease-in forwards; }
+#boss-intro small { display: block; font-family: var(--text); font-size: 26px; font-weight: 700; letter-spacing: 16px; text-transform: uppercase; color: var(--amber); text-shadow: 2px 2px 0 var(--ink); }
+#boss-intro span { display: block; font-family: var(--display); font-size: min(8.6vw, 150px); line-height: 0.95; letter-spacing: 0.04em; white-space: nowrap; text-transform: uppercase; color: var(--bone); text-shadow: 6px 6px 0 var(--blood), 12px 12px 0 var(--ink); transform: skewX(-9deg); }
+@keyframes bossintro {
+  0% { opacity: 0; transform: scale(3.2); }
+  9% { opacity: 1; transform: scale(0.94); }
+  13% { transform: scale(1.04) translateX(-6px); }
+  17% { transform: scale(1) translateX(5px); }
+  21% { transform: none; }
+  78% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.25) translateY(-40px); }
+}
+
+#portal-marker { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: var(--text); font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #7dffb0; }
+#portal-marker i { width: 20px; height: 20px; border: 4px solid #7dffb0; border-radius: 50%; box-shadow: 0 0 14px #7dffb0, inset 0 0 8px #7dffb0; animation: lowhp 0.5s ease-in-out infinite alternate; }

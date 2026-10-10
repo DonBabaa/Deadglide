@@ -13,13 +13,14 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playSplat, playBossDeath, playPortal } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
 import { HotBox } from './systems/hotbox.js';
+import { Portal } from './systems/portal.js';
 import { Powerups, POWERUPS } from './player/powerups.js';
-import { UPGRADES, rollUpgrades, takeUpgrade } from './systems/upgrades.js';
+import { UPGRADES, rollUpgrades, takeUpgrade, describe } from './systems/upgrades.js';
 import { levelUp } from './ui/levelUp.js';
 import { startMusic } from './fx/music.js';
 import { hud } from './ui/hud.js';
@@ -51,6 +52,7 @@ const xp = new Xp(scene);
 const loot = new Loot(scene);
 const score = new Score();
 const hotbox = new HotBox(scene);
+const portal = new Portal(scene);
 const powerups = new Powerups(scene);
 const chase = new ChaseCamera(camera);
 const menuScene = new MenuScene(scene, camera);
@@ -59,6 +61,7 @@ const menuScene = new MenuScene(scene, camera);
 let inMenu = true;        // on the main menu (true) or in a run (false)
 let creative = null;      // the Creative-mode loadout for this run, or null for a normal run
 let hp = config.player.maxHp, invulnerable = 0, dead = false;
+let won = false;          // through the exit portal: the level is complete
 let pendingLevels = 0, choosing = false, trickBuff = 0, shield = 0;
 const maxHp = () => config.player.maxHp + stats.maxHp;
 const run = { heal: (n) => { hp = Math.min(maxHp(), hp + n); } };   // what upgrades may do to the run
@@ -92,6 +95,11 @@ function restart() {
   xp.reset();
   loot.reset();
   hotbox.reset();
+  portal.reset();
+  hud.boss(null);
+  hud.hideBossIntro();
+  hud.portalMarker(null);
+  won = false;
   powerups.reset();
   score.reset();
   weapon.reset();
@@ -119,7 +127,7 @@ function restart() {
 const panel = createTweakPanel({ onRespawn: () => { if (!inMenu) restart(); } });
 
 function hurt(amount) {
-  if (invulnerable > 0 || shield > 0 || dead || creative?.noDamage) return;
+  if (invulnerable > 0 || shield > 0 || dead || won || creative?.noDamage) return;
   if (powerups.absorb(amount)) {   // the HotBox shield takes it
     invulnerable = config.player.invulnerableTime + stats.invulnerable;
     playShieldHit();
@@ -143,6 +151,20 @@ Click to try again`);
   }
 }
 
+// Through the exit portal: the level is done.
+function levelComplete() {
+  won = true;
+  paused = true;
+  document.exitPointerLock?.();
+  playPortal();
+  score.add(config.score.levelBonus);
+  const record = !creative && score.finish();
+  const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
+  hud.showOverlay('Level 1 complete', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
+Out in ${hud.clock(runTime)}  ·  XP level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
+Click to return to the menu`);
+}
+
 // Level up: stop the game and offer three upgrades.
 function offerUpgrade() {
   choosing = true;
@@ -152,12 +174,13 @@ function offerUpgrade() {
   const fromLevels = pendingLevels - freeUpgrades;   // level-ups are offered first, then any free picks
   const title = fromLevels > 0 ? `Level ${xp.level - fromLevels + 1}` : 'Old Tome';
   if (fromLevels <= 0) freeUpgrades--;
-  levelUp.show(title, rollUpgrades(3), (u) => stats.taken[u.id] || 0, (upgrade) => {
+  levelUp.show(title, rollUpgrades(3), (u) => stats.taken[u.id] || 0, describe, (upgrade) => {
     takeUpgrade(upgrade, run);
     pendingLevels--;
     if (pendingLevels > 0) return offerUpgrade();
     choosing = false;
     paused = false;
+    shield = Math.max(shield, config.player.levelUpSafety);   // a few seconds to get your bearings
     last = performance.now();
     if (!panel.open) lockPointer();
   });
@@ -180,6 +203,10 @@ function showMenu() {
   horde.reset();
   loot.reset();
   hotbox.reset();
+  portal.reset();
+  hud.boss(null);
+  hud.hideBossIntro();
+  hud.portalMarker(null);
   powerups.reset();
   xp.reset();
   horde.update(0, skater);          // (these three just redraw, now that everything is cleared)
@@ -214,6 +241,7 @@ document.getElementById('menu').addEventListener('click', () => { if (unlockAudi
 
 // ---- Pause -------------------------------------------------------------------
 function resume() {
+  if (won) return showMenu();
   if (dead) restart();
   paused = false;
   hud.hideOverlay();
@@ -241,7 +269,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') {
     panel.toggle();
     if (panel.open) document.exitPointerLock?.();   // free the mouse for the sliders; the game keeps running
-  } else if (e.code === 'Escape' && !document.pointerLockElement && !dead && !choosing) {
+  } else if (e.code === 'Escape' && !document.pointerLockElement && !dead && !won && !choosing) {
     paused ? resume() : pause();
   } else if (/^Digit[1-9]$/.test(e.code) && !paused && !e.defaultPrevented) {
     if (weapon.equipSlot(Number(e.code.slice(5)) - 1)) weaponChanged();   // number keys pick a gun
@@ -253,9 +281,9 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Mouse wheel cycles through your guns.
+// Mouse wheel zooms the camera: up to come in closer, down to pull back.
 window.addEventListener('wheel', (e) => {
-  if (!paused && weapon.cycle(e.deltaY > 0 ? 1 : -1)) weaponChanged();
+  if (!paused && !inMenu) chase.zoomBy(Math.sign(e.deltaY));
 }, { passive: true });
 
 function resize() {
@@ -268,7 +296,7 @@ resize();
 
 // ---- Loop ------------------------------------------------------------------
 const renderPos = new THREE.Vector3(), aimPoint = new THREE.Vector3(), marker = new THREE.Vector3();
-let last = performance.now(), accumulator = 0;
+let last = performance.now(), accumulator = 0, runTime = 0;
 
 const kmh = (boost) => `+${Math.round(boost * 3.6)} km/h`;
 
@@ -314,10 +342,24 @@ function handleEvents() {
   skater.events.length = 0;
 
   for (const e of horde.events) {
-    if (e.type === 'wave') hud.popup(`Wave ${e.wave}`, 'alert');
+    if (e.type === 'wave') { if (e.wave < config.horde.bossWave) hud.popup(`Wave ${e.wave}`, 'alert'); }   // (the boss announces the last one himself)
     else if (e.type === 'swarm') hud.popup('Swarm!', 'alert');
     else if (e.type === 'elite') hud.popup('Something big is coming', 'alert');
     else if (e.type === 'wraiths') hud.popup('They can fly now', 'alert');
+    else if (e.type === 'boss') {
+      hud.bossIntro(e.name);
+      playBossIntro();
+      chase.shake = 0.6;
+    } else if (e.type === 'bossThrow') playBossThrow();
+    else if (e.type === 'splat') playSplat();
+    else if (e.type === 'bossDead') {
+      portal.open(e.x, e.y, e.z);
+      xp.pullAll();
+      playBossDeath();
+      playPortal();
+      chase.shake = 0.8;
+      hud.popup(`${e.name} is dead. Get to the portal`, 'loot');
+    }
     else if (e.type === 'kill') {
       playKill();
       if (e.headshot) playHeadshot();
@@ -358,7 +400,7 @@ function frame(now) {
     renderPos.lerpVectors(skater.prevPos, skater.pos, accumulator / STEP);
     const { aimHeld: aiming, fireHeld: firing } = input;
     const scoped = aiming && !!weapon.def.scope;
-    chase.update(dt, skater, renderPos, mouseDX, mouseDY, aiming, scoped);
+    chase.update(dt, skater, renderPos, mouseDX, mouseDY, aiming, scoped, firing);
     hud.scope(scoped && chase.scope > 0.35);
     camera.updateMatrixWorld();
 
@@ -382,6 +424,15 @@ function frame(now) {
     }
 
     handleEvents();
+    runTime = horde.finished ? runTime + dt : horde.time;   // (the horde's clock stops when the boss dies)
+    hud.boss(horde.boss ? horde.boss.hp / horde.boss.maxHp : null, horde.boss?.T.title);
+
+    // The exit portal (open once the boss is dead): ride into it to finish the level.
+    const exit = portal.update(dt, skater);
+    if (portal.active) hud.portalMarker(...onScreen(portal.position, 3), Math.hypot(portal.position.x - skater.pos.x, portal.position.z - skater.pos.z));
+    else hud.portalMarker(null);
+    if (exit && !dead) levelComplete();
+
     score.update(dt, skater.speed);
     hud.score(score);
     hud.streak(score, config.score.streakWindow);
@@ -433,7 +484,8 @@ function frame(now) {
     const gain = xp.update(dt, skater);
     if (gain.collected) playPickup();
     pendingLevels += gain.levels;
-    if (pendingLevels > 0 && !choosing && !dead) offerUpgrade();
+    if (gain.spare > 0) score.add(gain.spare * config.xp.cappedGemPoints);   // at the level cap, XP becomes points
+    if (pendingLevels > 0 && !choosing && !dead && !won) offerUpgrade();
 
     arena.update(dt, renderPos);
     hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': stats.frenzy, 'Invincible': shield, 'Double damage': trickBuff });
@@ -450,4 +502,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { skater, config, chase, weapon, horde, xp, loot, score, hotbox, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

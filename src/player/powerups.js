@@ -9,6 +9,7 @@
 // To add a power-up: add an entry here and make it act in update().
 import * as THREE from 'three';
 import { stats, POWER_IDS } from './stats.js';
+import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
 
 export const POWERUPS = {
@@ -152,7 +153,9 @@ export class Powerups {
 
   // A random power-up that can still be levelled, or null if everything is maxed.
   random() {
-    const open = POWER_IDS.filter((id) => level(id) < POWERUPS[id].max);
+    // Once you hold as many different ones as you're allowed, a zone can only level up what you have.
+    const full = POWER_IDS.filter((id) => level(id) > 0).length >= config.hotbox.maxPowers;
+    const open = POWER_IDS.filter((id) => level(id) < POWERUPS[id].max && (!full || level(id) > 0));
     return open.length ? open[Math.floor(Math.random() * open.length)] : null;
   }
 
@@ -226,10 +229,11 @@ export class Powerups {
       if (ticking) {
         for (const e of [...horde.enemies]) {
           if (e.rise < 1 || Math.abs(e.y - pos.y) > 6) continue;
-          let inGas = Math.hypot(e.x - pos.x, e.z - pos.z) < N.radius;
+          const girth = e.T.boss ? e.T.radius * e.scale : 0;   // the boss is far wider than the rest
+          let inGas = Math.hypot(e.x - pos.x, e.z - pos.z) < N.radius + girth;
           for (let i = 0; !inGas && i < this.trail.length; i++) {
             const t = this.trail[i];
-            inGas = t.life > 0 && Math.hypot(e.x - t.pos.x, e.z - t.pos.z) < patchRadius && Math.abs(e.y - t.pos.y) < 4;
+            inGas = t.life > 0 && Math.hypot(e.x - t.pos.x, e.z - t.pos.z) < patchRadius + girth && Math.abs(e.y - t.pos.y) < 4;
           }
           if (inGas) horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true);
         }
@@ -269,7 +273,7 @@ export class Powerups {
       for (const e of [...horde.enemies]) {
         if (e.rise < 1 || (e.burnAt || 0) > this.clock) continue;
         const dx = e.x - orb.position.x, dz = e.z - orb.position.z;
-        if (dx * dx + dz * dz < 1.5 && orb.position.y > e.y - 0.3 && orb.position.y < e.y + e.T.height * e.scale + 0.3) {
+        if (dx * dx + dz * dz < Math.max(1.5, (e.T.radius * e.scale) ** 2) && orb.position.y > e.y - 0.3 && orb.position.y < e.y + e.T.height * e.scale + 0.3) {
           e.burnAt = this.clock + 0.4;
           const d = Math.hypot(e.x - pos.x, e.z - pos.z) || 1;
           horde.damage(e, N.damage, (e.x - pos.x) / d, (e.z - pos.z) / d, false, 0.6, true);

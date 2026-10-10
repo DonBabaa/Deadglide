@@ -2,10 +2,21 @@
 // Add an upgrade by adding an entry:
 //   rarity: 'common' | 'rare'   (rare ones turn up about a third as often)
 //   max:    how many times it can be taken
+//   description: text, or a function of how many you already have (for upgrades whose
+//                later levels read differently from the first)
 //   requires: a HotBox power-up id; the upgrade is only offered once you own that power-up
 //   apply(stats, run): change the player's stats (see player/stats.js);
 //                      `run` has heal(n) for upgrades that restore HP.
 import { stats } from '../player/stats.js';
+import { config } from '../config.js';
+
+const RAM = 40;   // Deck Spikes: damage per level
+// Deck Spikes: the speed (km/h) you must be going to ram, at a given level. Each level needs less.
+export const ramSpeed = (level) => config.horde.ramSpeed * (1 - 0.12 * (Math.max(1, level) - 1));
+const ramKmh = (level) => Math.round(ramSpeed(level) * 3.6);
+
+// What taking an upgrade would do, given how many of it you already have.
+export const describe = (u, owned = 0) => (typeof u.description === 'function' ? u.description(owned) : u.description);
 
 export const UPGRADES = [
   { id: 'damage', name: 'Hollow Points', description: '+25% bullet damage.', rarity: 'common', max: 8, apply: (s) => { s.damage += 0.25; } },
@@ -13,9 +24,9 @@ export const UPGRADES = [
   { id: 'split', name: 'Split Shot', description: '+1 bullet per shot, fanned out.', rarity: 'rare', max: 4, apply: (s) => { s.projectiles += 1; } },
   { id: 'pierce', name: 'Grindstone', description: 'Bullets pass through one more monster.', rarity: 'common', max: 4, apply: (s) => { s.pierce += 1; } },
   { id: 'air', name: 'Air Superiority', description: '+50% damage while you are in the air.', rarity: 'common', max: 4, apply: (s) => { s.airDamage += 0.5; } },
-  { id: 'spikes', name: 'Deck Spikes', description: 'Riding into monsters at over 60 km/h hurts them instead of you.', rarity: 'rare', max: 4, apply: (s) => { s.ramDamage += 40; } },
-  { id: 'shockwave', name: 'Shockwave Landing', description: 'Landing a trick releases a ring that damages everything nearby.', rarity: 'rare', max: 4, apply: (s) => { s.shockwave += 40; } },
-  { id: 'style', name: 'Style Points', description: 'Landing a trick doubles your damage for 3 more seconds.', rarity: 'common', max: 3, apply: (s) => { s.trickBuff += 3; } },
+  { id: 'spikes', name: 'Deck Spikes', description: (n) => n ? `Ramming hits harder and needs less speed: ${RAM * n} to ${RAM * (n + 1)} damage, from ${ramKmh(n)} to ${ramKmh(n + 1)} km/h.` : `Riding into monsters at over ${ramKmh(1)} km/h deals ${RAM} damage to them instead of hurting you.`, rarity: 'rare', max: 4, apply: (s) => { s.ramDamage += RAM; } },
+  { id: 'shockwave', name: 'Shockwave Landing', description: (n) => n ? `The landing ring hits harder: ${40 * n} to ${40 * (n + 1)} damage.` : 'Landing a trick releases a ring that deals 40 damage to everything nearby.', rarity: 'rare', max: 4, apply: (s) => { s.shockwave += 40; } },
+  { id: 'style', name: 'Style Points', description: (n) => n ? `Double damage after a trick lasts longer: ${3 * n} to ${3 * (n + 1)} seconds.` : 'Landing a trick doubles your damage for 3 seconds.', rarity: 'common', max: 3, apply: (s) => { s.trickBuff += 3; } },
   { id: 'magnet', name: 'Bone Magnet', description: '+50% XP pickup range.', rarity: 'common', max: 4, apply: (s) => { s.pickupRadius += 0.5; } },
   { id: 'xp', name: 'Quick Learner', description: '+20% XP from everything.', rarity: 'common', max: 5, apply: (s) => { s.xpGain += 0.2; } },
   { id: 'speed', name: 'Hot Wheels', description: '+10% top pushing speed.', rarity: 'common', max: 5, apply: (s) => { s.topSpeed += 0.1; } },

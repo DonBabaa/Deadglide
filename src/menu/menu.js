@@ -2,7 +2,7 @@
 // The launch panel has a Creative mode switch; when it's on you choose what
 // you start with: guns, upgrades, and a couple of rule changes.
 import { WEAPONS } from '../player/weapons.js';
-import { UPGRADES } from '../systems/upgrades.js';
+import { UPGRADES, describe } from '../systems/upgrades.js';
 import { POWERUPS } from '../player/powerups.js';
 
 const $ = (id) => document.getElementById(id);
@@ -51,7 +51,7 @@ function buildLoadout() {
   };
   for (const u of UPGRADES) {
     if (u.id === 'heal' || u.requires) continue;   // healing is pointless at the start; power-up boosters come up in play
-    upgrades.append(stepper(loadout.upgrades, u.id, u.name, u.description, Math.min(u.max, 8)));
+    upgrades.append(stepper(loadout.upgrades, u.id, u.name, describe(u, 0), Math.min(u.max, 8)));
   }
   for (const [id, p] of Object.entries(POWERUPS)) $('loadout-powers').append(stepper(loadout.powers, id, p.name, p.description, p.max));
   rules.append(

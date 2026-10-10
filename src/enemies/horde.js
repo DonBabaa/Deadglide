@@ -6,11 +6,16 @@
 // faster types join in. On top of that come timed events: a swarm that rings
 // you in, and an elite. Outrun them and the stragglers are quietly recycled
 // into fresh spawns ahead, so you are never alone for long.
+//
+// When wave `bossWave` starts, the final boss arrives and throws filth at you
+// from range. Kill him and every other monster dies with him, nothing more
+// spawns, and main.js opens the exit portal.
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { heightAt, groundAt } from '../world/terrain.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
+import { ramSpeed } from '../systems/upgrades.js';
 import { ENEMY_PARTS } from './enemyModels.js';
 
 const MAX = 320;          // hard cap on monsters alive (and instances per type)
@@ -20,13 +25,15 @@ const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
+const BLOB_GRAVITY = 20;
+const BROWN = new THREE.Color(0x5a3416), BLOOD = new THREE.Color(0x6a0f0c);
 const cellKey = (x, z) => Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663;
 
 export class Horde {
   constructor(scene) {
     this.enemies = [];
     this.grid = new Map();
-    this.events = [];   // { type: 'wave' | 'swarm' | 'elite' | 'kill' | 'hit', ... } drained by main.js
+    this.events = [];   // { type: 'wave' | 'swarm' | 'elite' | 'kill' | 'hit' | 'boss' | 'bossDead', ... } drained by main.js
 
     // Each monster type is a few parts (body, arms, legs...), each one instanced mesh.
     this.meshes = {};
@@ -38,7 +45,7 @@ export class Horde {
       });
       const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });   // eyes: lit from within
       this.meshes[name] = ENEMY_PARTS[name]().map((p) => {
-        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, MAX);
+        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, T.boss ? 1 : MAX);
         mesh.castShadow = !p.glow;
         mesh.frustumCulled = false;
         mesh.count = 0;
@@ -63,11 +70,29 @@ export class Horde {
     this.ringLife = 0;
     scene.add(this.ring);
 
+    // What the boss throws, and the puddles it leaves.
+    this.blobs = Array.from({ length: 40 }, () => ({ life: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), spin: 0 }));
+    this.blobMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.6, 1), new THREE.MeshStandardMaterial({ roughness: 0.4 }), this.blobs.length);
+    this.blobMesh.frustumCulled = false;
+    this.blobMesh.castShadow = true;
+    this.splats = Array.from({ length: 30 }, () => ({ life: 0, x: 0, y: 0, z: 0, size: 1 }));
+    this.splatMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 14).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x35170b, transparent: true, opacity: 0.85, depthWrite: false }), this.splats.length);
+    this.splatMesh.frustumCulled = false;
+    this.blobs.forEach((_, i) => { this.blobMesh.setMatrixAt(i, HIDDEN); this.blobMesh.setColorAt(i, BROWN); });
+    this.splats.forEach((_, i) => this.splatMesh.setMatrixAt(i, HIDDEN));
+    scene.add(this.blobMesh, this.splatMesh);
+    this.nextBlob = this.nextSplat = 0;
+
     this.reset();
   }
 
   reset() {
     this.enemies.length = 0;
+    this.boss = null;           // the final boss, while he's alive
+    this.bossSpawned = false;
+    this.finished = false;      // true once the boss is dead: nothing spawns any more
+    for (const b of this.blobs) b.life = 0;
+    for (const sp of this.splats) sp.life = 0;
     this.time = 0;
     this.wave = 1;
     this.kills = 0;
@@ -84,8 +109,9 @@ export class Horde {
   // Which monster comes out of the ground next.
   pickType() {
     const r = Math.random();
-    const wraiths = this.wave >= 3 ? Math.min(0.3, 0.1 * (this.wave - 2)) : 0;   // ghosts from wave 3
-    const rattlers = Math.min(0.45, 0.12 * (this.wave - 1));                     // none in wave 1, then more and more
+    const H = config.horde;
+    const wraiths = this.wave >= H.wraithWave ? Math.min(0.3, 0.1 * (this.wave - H.wraithWave + 1)) : 0;       // ghosts come late...
+    const rattlers = this.wave >= H.rattlerWave ? Math.min(0.45, 0.15 * (this.wave - H.rattlerWave + 1)) : 0;   // ...skeletons a little earlier
     return r < wraiths ? 'wraith' : r < wraiths + rattlers ? 'rattler' : 'shambler';
   }
 
@@ -105,22 +131,39 @@ export class Horde {
     });
   }
 
+  // The final boss claws his way up ahead of you.
+  spawnBoss(player) {
+    const T = ENEMY_TYPES.boss, heading = Math.atan2(player.vel.x, player.vel.z);
+    const x = player.pos.x + Math.sin(heading) * 55, z = player.pos.z + Math.cos(heading) * 55;
+    this.boss = {
+      name: 'boss', T, x, y: heightAt(x, z), z, elite: false, scale: T.scale,
+      hp: config.horde.bossHp, maxHp: config.horde.bossHp, speed: T.speed,
+      yaw: heading + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: 0, throwTimer: 2,
+    };
+    this.enemies.push(this.boss);
+    this.bossSpawned = true;
+    this.events.push({ type: 'boss', name: T.title });
+  }
+
   direct(dt, player) {
     const H = config.horde;
+    if (this.finished) return;   // the boss is dead: the night is over
     this.time += dt;
 
-    const wave = 1 + Math.floor(this.time / H.waveLength);
+    const wave = Math.min(H.bossWave, 1 + Math.floor(this.time / H.waveLength));   // the boss wave is the last
     if (wave !== this.wave) {
       this.wave = wave;
       this.events.push({ type: 'wave', wave });
-      // From wave 3, every new wave opens with a flight of ghosts (the crowd may
-      // already be full, so they are sent in on top of it).
-      const flight = wave >= 3 ? H.wraithFlight + 2 * (wave - 3) : 0;
+      // Once the ghosts are out, every new wave opens with a flight of them (the
+      // crowd may already be full, so they are sent in on top of it).
+      const flight = wave >= H.wraithWave ? H.wraithFlight + 2 * (wave - H.wraithWave) : 0;
       for (let i = 0; i < flight; i++) this.spawn('wraith', player, Math.random() * Math.PI * 2, H.spawnDistance * (0.8 + Math.random() * 0.4));
+      if (wave === H.rattlerWave) for (let i = 0; i < 6; i++) this.spawn('rattler', player, Math.random() * Math.PI * 2, H.spawnDistance);   // the skeletons' entrance
+      if (wave >= H.bossWave && !this.bossSpawned) this.spawnBoss(player);
     }
 
-    // Top the crowd up toward this wave's size, a few per second.
-    const want = Math.min(H.maxAlive, H.baseAlive + H.alivePerWave * (wave - 1));
+    // Top the crowd up toward this wave's size, a few per second (a thinner crowd while the boss is up).
+    const want = Math.min(H.maxAlive, H.baseAlive + H.alivePerWave * (wave - 1)) * (this.boss ? H.bossCrowd : 1);
     if (this.enemies.length < want) this.spawnDebt += (H.baseSpawnRate + H.spawnRatePerWave * (wave - 1)) * dt;
     else this.spawnDebt = 0;
     // Moving fast? They come up ahead of you. Standing still? From all around.
@@ -131,6 +174,12 @@ export class Horde {
       this.spawn(this.pickType(), player, heading + (Math.random() - 0.5) * 2 * spread, H.spawnDistance * (0.8 + Math.random() * 0.5));
     }
 
+    if (wave === H.wraithWave && !this.warnedWraiths) {
+      this.warnedWraiths = true;
+      this.events.push({ type: 'wraiths' });
+    }
+    if (this.bossSpawned) return;   // no swarms or elites during the boss fight
+
     // Swarm: a closing ring.
     if (this.time >= this.nextSwarm) {
       this.nextSwarm += H.swarmEvery;
@@ -139,10 +188,6 @@ export class Horde {
       this.events.push({ type: 'swarm' });
     }
     // Elite: one big one.
-    if (wave === 3 && !this.warnedWraiths) {
-      this.warnedWraiths = true;
-      this.events.push({ type: 'wraiths' });
-    }
     if (this.time >= this.nextElite) {
       this.nextElite += H.eliteEvery;
       this.spawn('shambler', player, heading + (Math.random() - 0.5), H.spawnDistance, true);
@@ -172,9 +217,18 @@ export class Horde {
     const H = config.horde, px = player.pos.x, pz = player.pos.z;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
+      if (!e) continue;   // (the boss died this frame and took everyone with him)
       let dx = px - e.x, dz = pz - e.z;
       const dist = Math.hypot(dx, dz) || 1;
 
+      // You can't lose the boss: leave him behind and he digs his way up ahead of you.
+      if (e.T.boss && dist > H.despawnDistance) {
+        const heading = Math.atan2(player.vel.x, player.vel.z);
+        e.x = px + Math.sin(heading) * 55; e.z = pz + Math.cos(heading) * 55;
+        e.y = heightAt(e.x, e.z);
+        e.rise = 0;
+        continue;
+      }
       // Left far behind: recycled (the director spawns a fresh one near you).
       if (dist > H.despawnDistance) {
         this.enemies[i] = this.enemies[this.enemies.length - 1];
@@ -183,8 +237,14 @@ export class Horde {
       }
       e.flash = Math.max(0, e.flash - dt * 6);
       if (e.rise < 1) {   // still clawing out of the ground
-        e.rise = Math.min(1, e.rise + dt / H.riseTime);
+        e.rise = Math.min(1, e.rise + dt / (H.riseTime * (e.T.boss ? 4 : 1)));
         continue;
+      }
+
+      // The boss hurls a volley whenever you're in range, faster once he's badly hurt.
+      if (e.T.boss && (e.throwTimer -= dt) <= 0 && dist < H.bossRange) {
+        e.throwTimer = H.bossThrowEvery * (e.hp < e.maxHp * 0.4 ? 0.6 : 1);
+        this.throwVolley(e, player, dist);
       }
 
       // Chase the player, shoving away from the neighbours.
@@ -197,7 +257,7 @@ export class Horde {
         const cell = this.grid.get((cx + ox) * 73856093 ^ (cz + oz) * 19349663);
         if (!cell) continue;
         for (const o of cell) {
-          if (o === e) continue;
+          if (o === e || e.T.boss) continue;   // (nobody shoves the boss)
           const sx = e.x - o.x, sz = e.z - o.z, d = Math.hypot(sx, sz), min = (e.T.radius * e.scale + o.T.radius * o.scale);
           if (d < min && d > 1e-4) { mx += (sx / d) * (min - d) * 8; mz += (sz / d) * (min - d) * 8; }
         }
@@ -205,13 +265,13 @@ export class Horde {
       mx += e.kx; mz += e.kz;   // knockback from bullets
       e.kx *= Math.exp(-8 * dt); e.kz *= Math.exp(-8 * dt);
 
-      const nx = e.x + mx * dt, nz = e.z + mz * dt;
+      const nx = e.x + mx * dt, nz = e.z + mz * dt, climb = CLIMB * Math.max(1, e.scale * 0.7);   // big things step over more
       if (e.T.flying) {
         // Fliers go straight over everything, and climb or dive to the player's height.
         e.x = nx; e.z = nz;
-      } else if (heightAt(nx, nz) - e.y < CLIMB) { e.x = nx; e.z = nz; }   // walk over low things...
-      else if (heightAt(nx, e.z) - e.y < CLIMB) e.x = nx;                  // ...slide round tall ones
-      else if (heightAt(e.x, nz) - e.y < CLIMB) e.z = nz;
+      } else if (heightAt(nx, nz) - e.y < climb) { e.x = nx; e.z = nz; }   // walk over low things...
+      else if (heightAt(nx, e.z) - e.y < climb) e.x = nx;                  // ...slide round tall ones
+      else if (heightAt(e.x, nz) - e.y < climb) e.z = nz;
       else { e.x -= dz * e.speed * dt; e.z += dx * e.speed * dt; }         // boxed in: sidestep
       // The crowd can't shove anyone into the exact spot the player is standing on.
       const ox = e.x - px, oz = e.z - pz, od = Math.hypot(ox, oz);
@@ -230,7 +290,7 @@ export class Horde {
       // Close enough to claw the player?
       e.ramWait -= dt;
       if (dist < reach && Math.abs(player.pos.y - e.y) < e.T.height * e.scale) {
-        if (stats.ramDamage > 0 && player.speed > H.ramSpeed) {
+        if (stats.ramDamage > 0 && player.speed > ramSpeed(stats.taken.spikes)) {
           // Deck Spikes: at speed, you run them down instead.
           if (e.ramWait <= 0) {
             e.ramWait = 0.3;
@@ -240,7 +300,58 @@ export class Horde {
       }
     }
 
+    damage = Math.max(damage, this.updateBlobs(dt, player));
     this.draw(dt);
+    return damage;
+  }
+
+  // ---- What the boss throws ---------------------------------------------------------
+
+  // Three lobbed blobs: one at where you're heading, one short and one long, spread sideways.
+  throwVolley(e, player, dist) {
+    const flight = Math.max(0.9, Math.min(2.6, dist / 26)), speed = player.speed || 1;
+    for (let k = -1; k <= 1; k++) {
+      const i = this.nextBlob++ % this.blobs.length, b = this.blobs[i];
+      b.life = flight + 1.5;
+      b.spin = Math.random() * 6;
+      b.pos.set(e.x, e.y + e.T.height * e.scale * 0.72, e.z);
+      const lead = flight * (0.85 + k * 0.25), side = k * 5;
+      const tx = player.pos.x + player.vel.x * lead - (player.vel.z / speed) * side;
+      const tz = player.pos.z + player.vel.z * lead + (player.vel.x / speed) * side;
+      b.vel.set((tx - b.pos.x) / flight, (heightAt(tx, tz) - b.pos.y + 0.5 * BLOB_GRAVITY * flight * flight) / flight, (tz - b.pos.z) / flight);
+      this.blobMesh.setColorAt(i, k ? BROWN : BLOOD);
+    }
+    this.blobMesh.instanceColor.needsUpdate = true;
+    this.events.push({ type: 'bossThrow' });
+  }
+
+  // Returns the damage the blobs do to the player this frame.
+  updateBlobs(dt, player) {
+    const H = config.horde;
+    let damage = 0;
+    for (const b of this.blobs) {
+      if (b.life <= 0) continue;
+      b.life -= dt;
+      b.vel.y -= BLOB_GRAVITY * dt;
+      b.pos.addScaledVector(b.vel, dt);
+      const direct = b.pos.distanceTo(v.copy(player.pos).setY(player.pos.y + 0.9)) < 1.7;
+      const ground = heightAt(b.pos.x, b.pos.z);
+      if (!direct && b.pos.y > ground && b.life > 0) continue;
+      // It has hit you or the ground: splat.
+      b.life = 0;
+      const sp = this.splats[this.nextSplat++ % this.splats.length];
+      sp.life = 5; sp.x = b.pos.x; sp.z = b.pos.z; sp.y = ground + 0.06; sp.size = 2.2 + Math.random() * 1.2;
+      const near = Math.hypot(player.pos.x - b.pos.x, player.pos.z - b.pos.z) < H.bossSplashRadius && Math.abs(player.pos.y - ground) < 2.5;
+      if (direct) damage = Math.max(damage, H.bossBlobDamage);
+      else if (near) damage = Math.max(damage, H.bossSplashDamage);
+      this.events.push({ type: 'splat' });
+      for (let k = 0; k < 8; k++) {
+        const g = this.gibs[this.nextGib++ % this.gibs.length];
+        g.life = 0.4 + Math.random() * 0.4;
+        g.pos.set(b.pos.x, ground + 0.3, b.pos.z);
+        g.vel.set((Math.random() - 0.5) * 9, 2 + Math.random() * 5, (Math.random() - 0.5) * 9);
+      }
+    }
     return damage;
   }
 
@@ -258,14 +369,21 @@ export class Horde {
         if ((p.x - e.x) ** 2 + (p.z - e.z) ** 2 < r * r) return e;
       }
     }
+    // The boss is far wider than a grid cell, so check him directly.
+    const B = this.boss;
+    if (B && p.y > B.y && p.y < B.y + B.T.height * B.scale * B.rise) {
+      const r = B.T.radius * B.scale;
+      if ((p.x - B.x) ** 2 + (p.z - B.z) ** 2 < r * r) return B;
+    }
     return null;
   }
 
   // quiet: don't report non-lethal hits (for damage that ticks many times a second).
   damage(e, amount, dirX, dirZ, headshot = false, knock = 1, quiet = false) {
+    if (e.dead) return;   // (died with the boss, but something still had hold of it)
     e.hp -= amount;
     e.flash = 1;
-    const push = (e.elite ? 1.5 : 6) * knock;
+    const push = e.T.boss ? 0 : (e.elite ? 1.5 : 6) * knock;
     e.kx += dirX * push; e.kz += dirZ * push;
     if (e.hp > 0) {
       if (!quiet) this.events.push({ type: 'hit', headshot });
@@ -275,20 +393,43 @@ export class Horde {
     if (i >= 0) { this.enemies[i] = this.enemies[this.enemies.length - 1]; this.enemies.pop(); }
     this.kills++;
     this.score += e.T.score * (e.elite ? 10 : 1);
-    this.events.push({ type: 'kill', elite: e.elite, headshot, quiet, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
-    for (let k = 0; k < (e.elite ? 30 : 9); k++) {
+    e.dead = true;
+    this.events.push({ type: 'kill', elite: e.elite || !!e.T.boss, headshot, quiet, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
+    const burst = e.T.boss ? 2.5 : 1;
+    for (let k = 0; k < (e.T.boss ? 160 : e.elite ? 30 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
-      g.life = 0.5 + Math.random() * 0.5;
+      g.life = (0.5 + Math.random() * 0.5) * burst;
       g.pos.set(e.x, e.y + 0.4 + Math.random() * 1.2 * e.scale, e.z);
-      g.vel.set((Math.random() - 0.5) * 7 + dirX * 5, 2 + Math.random() * 5, (Math.random() - 0.5) * 7 + dirZ * 5);
+      g.vel.set(((Math.random() - 0.5) * 7 + dirX * 5) * burst, (2 + Math.random() * 5) * burst, ((Math.random() - 0.5) * 7 + dirZ * 5) * burst);
     }
+    if (e.T.boss) this.bossDied(e);
+  }
+
+  // The boss is dead: everything else dies with him, and nothing more will come.
+  bossDied(boss) {
+    this.boss = null;
+    this.finished = true;
+    for (const b of this.blobs) b.life = 0;
+    for (const e of this.enemies) {
+      e.dead = true;
+      this.kills++;
+      for (let k = 0; k < 3; k++) {
+        const g = this.gibs[this.nextGib++ % this.gibs.length];
+        g.life = 0.5 + Math.random() * 0.6;
+        g.pos.set(e.x, e.y + 0.5 + Math.random(), e.z);
+        g.vel.set((Math.random() - 0.5) * 8, 3 + Math.random() * 6, (Math.random() - 0.5) * 8);
+      }
+    }
+    this.enemies.length = 0;
+    this.events.push({ type: 'bossDead', name: boss.T.title, x: boss.x, y: heightAt(boss.x, boss.z), z: boss.z });
   }
 
   // Damages every monster within `radius` of a point (Shockwave Landing).
   shockwave(pos, radius, amount) {
     for (const e of [...this.enemies]) {
       const dx = e.x - pos.x, dz = e.z - pos.z, d = Math.hypot(dx, dz);
-      if (d < radius && Math.abs(e.y - pos.y) < 4) this.damage(e, amount, dx / (d || 1), dz / (d || 1));
+      const girth = e.T.boss ? e.T.radius * e.scale : 0;   // the boss is hit at his edge, not his middle
+      if (d < radius + girth && Math.abs(e.y - pos.y) < 4 + girth) this.damage(e, amount, dx / (d || 1), dz / (d || 1));
     }
     this.ring.position.set(pos.x, pos.y + 0.3, pos.z);
     this.ring.userData.radius = radius;
@@ -359,6 +500,20 @@ export class Horde {
       this.gibMesh.setMatrixAt(i, g.life > 0 ? m.makeTranslation(g.pos.x, g.pos.y, g.pos.z) : HIDDEN);
     });
     this.gibMesh.instanceMatrix.needsUpdate = true;
+
+    this.blobs.forEach((b, i) => {
+      if (b.life <= 0) { this.blobMesh.setMatrixAt(i, HIDDEN); return; }
+      e3.set(this.time * 5 + b.spin, b.spin, this.time * 3);
+      this.blobMesh.setMatrixAt(i, m.compose(b.pos, q.setFromEuler(e3), sc.set(1, 0.8, 1.25)));   // a wobbling gobbet
+    });
+    this.blobMesh.instanceMatrix.needsUpdate = true;
+    this.splats.forEach((sp, i) => {
+      if (sp.life <= 0) { this.splatMesh.setMatrixAt(i, HIDDEN); return; }
+      sp.life -= dt;
+      const size = Math.min(1, (5 - sp.life) * 6) * Math.min(1, Math.max(0, sp.life)) * sp.size;   // spreads fast, shrinks away at the end
+      this.splatMesh.setMatrixAt(i, m.compose(v.set(sp.x, sp.y, sp.z), q.identity(), sc.set(size, 1, size)));
+    });
+    this.splatMesh.instanceMatrix.needsUpdate = true;
 
     if (this.ringLife > 0) {
       this.ringLife -= dt * 3;

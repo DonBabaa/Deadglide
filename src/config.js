@@ -14,7 +14,9 @@ export const config = {
     pushMaxSpeed: 34,     // pushes stop adding speed here; slopes and tricks can take you past it
     maxSpeed: 60,         // "100% speed" for camera/HUD (and later damage bonus)
     hardMaxSpeed: 90,     // absolute safety cap
-    brakeDecel: 30,       // S
+    brakeDecel: 30,       // S: braking while rolling forwards
+    reverseAccel: 12,     // S once stopped: acceleration backwards...
+    reverseSpeed: 10,     // ...up to this speed
     rollFriction: 0.4,    // constant deceleration while rolling
     rollDrag: 0.03,       // speed-proportional deceleration while rolling
     airDrag: 0.02,
@@ -84,6 +86,7 @@ export const config = {
   player: {
     maxHp: 100,
     invulnerableTime: 0.8,   // seconds of safety after taking a hit
+    levelUpSafety: 4,        // seconds nothing can hurt you after choosing a level-up upgrade
   },
 
   // The monster spawn director (see enemies/horde.js).
@@ -102,17 +105,29 @@ export const config = {
     despawnDistance: 115, // left this far behind, they are recycled ahead of you
     riseTime: 0.7,        // seconds to climb out of the ground
     contactRange: 0.55,   // how close they must get to hurt you
-    ramSpeed: 16.7,       // with Deck Spikes, ride into them faster than this (60 km/h) to hurt them instead
+    ramSpeed: 16.7,       // with Deck Spikes, ride into them faster than this (60 km/h) to hurt them instead; each extra level needs 12% less
     swarmEvery: 45,       // seconds between swarms (a ring closing in on you)
     swarmSize: 18,
     eliteEvery: 60,       // seconds between elites
     eliteHp: 12,          // elite health multiplier
-    wraithFlight: 4,      // ghosts that arrive together when wave 3 starts (+2 each wave after)
+    rattlerWave: 3,       // skeletons join in from this wave
+    wraithWave: 5,        // ghosts join in from this wave
+    wraithFlight: 4,      // ghosts that arrive together when a ghost wave starts (+2 each wave after the first)
+    bossWave: 7,          // the final boss arrives when this wave starts; it is the last wave
+    bossHp: 8000,
+    bossCrowd: 0.45,      // the ordinary crowd is thinned to this fraction during the boss fight
+    bossRange: 95,        // he throws at you from up to this far away
+    bossThrowEvery: 2.6,  // seconds between volleys (faster when he's nearly dead)
+    bossBlobDamage: 22,   // a direct hit
+    bossSplashDamage: 12, // caught in the splat
+    bossSplashRadius: 3.2,
   },
 
   xp: {
     firstLevel: 5,        // XP needed for level 2...
     perLevel: 4,          // ...and this much more for each level after
+    maxLevel: 30,         // the level cap; after it, gems are worth points instead
+    cappedGemPoints: 15,  // ...this many per XP
     pickupRadius: 7,      // gems this close fly to you
     pullSpeed: 32,
     gemLifetime: 45,      // seconds before an uncollected gem fades
@@ -120,6 +135,7 @@ export const config = {
 
   // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).
   hotbox: {
+    maxPowers: 4,         // how many different power-ups you can hold; after that, zones only level up the ones you have
     radius: 7,            // metres across is twice this (fixed once the game has started)
     captureTime: 4,       // seconds you must stay inside
     drainTime: 3,         // seconds for the progress to drain away once you leave
@@ -149,6 +165,7 @@ export const config = {
   },
 
   score: {
+    levelBonus: 5000,     // points for leaving through the exit portal (before the multiplier)
     maxMultiplier: 8,
     killHeat: 0.12,       // how much one kill fills the style meter (1 = a whole multiplier)
     trickHeat: 0.3,       // ...and one landed trick
@@ -171,6 +188,9 @@ export const config = {
   camera: {
     distance: 6,
     distanceFast: 9.5,    // pull back at maxSpeed
+    zoomMin: 0.5,         // mouse wheel: closest (a multiple of the distances above)...
+    zoomMax: 2.6,         // ...and furthest
+    zoomStep: 0.12,       // how much one wheel click changes it
     pitch: 18,            // elevation above the board
     viewTilt: 12,         // how far above the rider the view is aimed (pitch - viewTilt = degrees looking down)
     lookHeight: 1.3,
@@ -180,8 +200,8 @@ export const config = {
     followLag: 14,
     followLagY: 7,
     mouseSensitivity: 0.0022,
-    aimYawLimit: 120,     // how far the mouse can swing the view from the board heading
-    aimRecenter: 1.5,     // when not aiming, the view drifts back behind the board at this rate
+    recenterDelay: 2,     // seconds without touching the mouse (or the gun) before the view drifts back behind the board...
+    aimRecenter: 1.5,     // ...at this rate
     aimDistance: 3.4,     // right mouse: camera moves in over the shoulder...
     aimShoulder: 0.9,
     aimFov: 52,           // ...and zooms

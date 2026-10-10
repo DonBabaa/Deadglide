@@ -1,7 +1,7 @@
 // Third-person camera. Normally it chases the board: behind the heading,
 // lagging on turns, pulling back and widening with speed. Hold aim (right
 // mouse) and it moves in over the shoulder, zooms, and stops following the
-// board so your aim stays put while you carve.
+// board so your aim stays put while you carve. The mouse wheel zooms in and out.
 import { Vector3, MathUtils } from 'three';
 import { config } from '../config.js';
 import { heightAt } from '../world/terrain.js';
@@ -21,6 +21,9 @@ export class ChaseCamera {
     this.aimPitch = 0;
     this.aim = 0;                 // 0..1 blend into the over-the-shoulder view
     this.scope = 0;               // 0..1 blend into looking down a scope
+    this.idle = 0;                // seconds since the mouse or the gun was last used
+    this.zoom = 1;                // mouse-wheel zoom: multiplies the camera distance (eases toward zoomTarget)
+    this.zoomTarget = 1;
     this.fov = config.camera.fov;
     this.dip = 0;                 // landing thump
     this.shake = 0;
@@ -32,8 +35,15 @@ export class ChaseCamera {
     this.aimYaw = this.aimPitch = 0;
   }
 
+  // Mouse wheel: clicks > 0 pulls the camera back, < 0 brings it in.
+  zoomBy(clicks) {
+    const c = config.camera;
+    this.zoomTarget = MathUtils.clamp(this.zoomTarget * (1 + c.zoomStep) ** clicks, c.zoomMin, c.zoomMax);
+  }
+
   // scoped: aiming with a scoped gun (the view goes to Kirky's eye and zooms right in).
-  update(dt, skater, target, mouseDX, mouseDY, aiming, scoped = false) {
+  // firing: the trigger is held (so the view holds still in the world, like when aiming).
+  update(dt, skater, target, mouseDX, mouseDY, aiming, scoped = false, firing = false) {
     const c = config.camera;
     const speed01 = Math.min(1, skater.speed / config.skate.maxSpeed);
     this.aim = lerp(this.aim, aiming ? 1 : 0, damp(12, dt));
@@ -43,16 +53,23 @@ export class ChaseCamera {
     this.aimYaw = wrap(this.aimYaw - mouseDX * sens);
     this.aimPitch = MathUtils.clamp(this.aimPitch + mouseDY * sens, -0.9, 0.9);
 
-    if (!aiming) {
-      // Swing lazily behind the heading (ignore it when the board points straight up/down)...
-      const { fwd } = skater;
-      if (fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
-        const step = wrap(Math.atan2(fwd.x, fwd.z) - this.yaw) * damp(c.yawLag, dt);
-        this.yaw += step;
-      }
-      // ...and let the mouse offset drift back to centre.
-      const yawLimit = MathUtils.degToRad(c.aimYawLimit);
-      this.aimYaw = MathUtils.clamp(this.aimYaw, -yawLimit, yawLimit) * (1 - damp(c.aimRecenter, dt));
+    // The mouse can look anywhere, all the way round, whether or not you're aiming.
+    // While you're aiming or shooting, the view holds still in the world as the board
+    // turns under you. Leave the mouse and the gun alone for a moment and the view
+    // drifts back behind the board.
+    const holding = aiming || firing;
+    if (holding || mouseDX !== 0 || mouseDY !== 0) this.idle = 0;
+    else this.idle += dt;
+
+    // Swing lazily behind the heading (ignore it when the board points straight up/down).
+    const { fwd } = skater;
+    if (fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
+      const step = wrap(Math.atan2(fwd.x, fwd.z) - this.yaw) * damp(c.yawLag, dt);
+      this.yaw += step;
+      if (holding) this.aimYaw = wrap(this.aimYaw - step);   // cancel it out: keep pointing where you were pointing
+    }
+    if (this.idle > c.recenterDelay) {
+      this.aimYaw *= 1 - damp(c.aimRecenter, dt);
       this.aimPitch *= 1 - damp(c.aimRecenter, dt);
     }
 
@@ -68,7 +85,8 @@ export class ChaseCamera {
     const pitch = rad(c.pitch) + this.aimPitch;
     const elevation = Math.max(pitch, -0.08);
     const viewPitch = rad(c.viewTilt) - pitch;   // + = looking up
-    const dist = lerp(lerp(lerp(c.distance, c.distanceFast, speed01), c.aimDistance, this.aim), -0.35, this.scope);   // scoped: just in front of his face
+    this.zoom = lerp(this.zoom, this.zoomTarget, damp(12, dt));
+    const dist = lerp(lerp(lerp(c.distance, c.distanceFast, speed01), c.aimDistance, this.aim) * this.zoom, -0.35, this.scope);   // scoped: just in front of his face
     // Over-the-shoulder: slide the camera and its look point sideways together.
     const shoulder = lerp(c.aimShoulder * this.aim, 0.12, this.scope), rx = -Math.cos(yaw) * shoulder, rz = Math.sin(yaw) * shoulder;
 

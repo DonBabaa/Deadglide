@@ -168,4 +168,49 @@ function wraith() {
   return [body, eyes, arm(-1, 0), arm(1, 2), hem];
 }
 
-export const ENEMY_PARTS = { shambler, rattler, wraith };
+// ---- The final boss: a bloated giant of a zombie, belly split open, drooling. ----
+// (Modelled at normal size; the horde draws him several times bigger.)
+
+function boss() {
+  const skin = 0x8a9468, rot = 0x5c6648, pale = 0xa3a97c, vest = 0x3d3a31, vestDark = 0x2a2822, trousers = 0x26262b;
+  const blood = 0x6a1512, gut = 0x8c3a34, filth = 0x4a2a12, bone = 0xd8d2bf, dark = 0x121110, eye = 0xffb347;
+
+  const body = part([
+    at(ball(0.6, 1.05, 0.95, 1), skin, 0, 0.98, 0.1),                        // the belly
+    at(ball(0.5, 1.02, 0.9, 0.95), pale, 0, 0.82, 0.16),                     // ...sagging over the belt
+    at(ball(0.46, 1.1, 0.85, 0.9), vest, 0, 1.36, 0),                        // chest in a vest far too small
+    at(box(0.3, 0.5, 0.06), vestDark, -0.34, 1.2, 0.3, 0, 0.5), at(box(0.3, 0.5, 0.06), vestDark, 0.34, 1.2, 0.3, 0, -0.5),   // its open flaps
+    at(ball(0.2, 0.7, 1.5, 0.5), blood, 0.05, 0.98, 0.64),                   // split down the middle
+    at(ball(0.1, 1, 1, 0.8), gut, -0.02, 0.9, 0.7), at(ball(0.09), gut, 0.1, 0.82, 0.69), at(ball(0.08), gut, 0.04, 0.72, 0.66),   // guts spilling out
+    ...[1.14, 1.06].map((y) => at(box(0.26, 0.022, 0.03), bone, 0.05, y, 0.68)),   // ribs across the split
+    at(ball(0.14, 1.3, 0.8, 1), filth, -0.28, 0.72, 0.5), at(ball(0.1), filth, 0.3, 1.02, 0.52),   // smeared with filth
+    at(ball(0.24), skin, -0.5, 1.5, 0), at(ball(0.24), skin, 0.5, 1.5, 0),   // shoulders
+    at(ball(0.3, 1.25, 0.6, 1), skin, 0, 1.56, 0.08),                        // no neck, just rolls
+    at(ball(0.21, 1, 1.05, 1), skin, 0, 1.74, 0.14),                         // a small head
+    at(ball(0.2, 1.2, 0.7, 1), pale, 0, 1.62, 0.2),                          // jowls
+    at(ball(0.09, 1, 1, 0.5), rot, 0.13, 1.76, 0.26),                        // rot on one cheek
+    at(box(0.2, 0.09, 0.05), dark, 0, 1.65, 0.335),                          // mouth, hanging open
+    ...[-0.06, 0, 0.06].map((x) => at(box(0.035, 0.04, 0.03), bone, x, 1.685, 0.345)),   // teeth
+    at(box(0.05, 0.16, 0.03), filth, 0.04, 1.56, 0.36),                      // drool
+    at(ball(0.04), dark, -0.08, 1.79, 0.31), at(ball(0.04), dark, 0.08, 1.79, 0.31),   // eye sockets
+    at(box(0.36, 0.1, 0.06), rot, 0, 1.87, 0.22, -0.3),                      // heavy brow
+  ]);
+  const eyes = glowing([at(ball(0.026), eye, -0.08, 1.79, 0.335), at(ball(0.026), eye, 0.08, 1.79, 0.335)]);
+
+  const arm = (side, phase) => part([
+    at(cap(0.17, 0.3), skin, side * 0.62, 1.26, 0.06, 0.25),                 // upper arm, all flab
+    at(cap(0.14, 0.32), skin, side * 0.64, 0.86, 0.2, 0.5),                  // forearm
+    at(ball(0.17, 1, 0.8, 1.1), rot, side * 0.64, 0.62, 0.34),               // a fist like a ham
+    at(ball(0.12), filth, side * 0.64, 0.56, 0.42),                          // ...with a handful ready to throw
+  ], [side * 0.56, 1.5, 0], [0.5, 0, 0], phase);
+
+  const leg = (side, phase) => part([
+    at(cap(0.21, 0.2), trousers, side * 0.27, 0.42, 0.02),                   // thighs like tree trunks
+    at(cap(0.16, 0.12), trousers, side * 0.27, 0.2, 0),
+    at(box(0.26, 0.1, 0.4), rot, side * 0.27, 0.05, 0.08),                   // bare foot
+  ], [side * 0.27, 0.6, 0], [0.32, 0, 0], phase);
+
+  return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
+}
+
+export const ENEMY_PARTS = { shambler, rattler, wraith, boss };

@@ -24,7 +24,8 @@ export const levelUp = {
   get open() { return onPick !== null; },
 
   // stacks(upgrade) -> how many of it the player already has.
-  show(heading, upgrades, stacks, callback) {
+  // describe(upgrade, owned) -> what taking it now would do.
+  show(heading, upgrades, stacks, describe, callback) {
     choices = upgrades;
     onPick = callback;
     title.textContent = heading;
@@ -35,8 +36,8 @@ export const levelUp = {
       const owned = stacks(u);
       card.innerHTML = `<span class="key">${i + 1}</span><span class="name"></span><span class="desc"></span><span class="owned"></span>`;
       card.querySelector('.name').textContent = u.name;
-      card.querySelector('.desc').textContent = u.description;
-      card.querySelector('.owned').textContent = owned ? `You have ${owned}` : u.rarity === 'rare' ? 'Rare' : '';
+      card.querySelector('.desc').textContent = describe(u, owned);
+      card.querySelector('.owned').textContent = u.max > 20 ? '' : owned ? `Level ${owned} to ${owned + 1}  (max ${u.max})` : u.rarity === 'rare' ? 'Rare' : '';
       card.addEventListener('click', () => pick(i));
       return card;
     }));
