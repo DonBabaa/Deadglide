@@ -11,13 +11,14 @@ import { config } from '../config.js';
 import { heightAt, groundAt } from '../world/terrain.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
-import { ENEMY_GEOMETRY } from './enemyModels.js';
+import { ENEMY_PARTS } from './enemyModels.js';
 
 const MAX = 320;          // hard cap on monsters alive (and instances per type)
 const CELL = 2.5;         // spatial hash cell size
 const CLIMB = 1.3;        // monsters step up anything lower than this
 const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
 const cellKey = (x, z) => Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663;
 
@@ -27,15 +28,24 @@ export class Horde {
     this.grid = new Map();
     this.events = [];   // { type: 'wave' | 'swarm' | 'elite' | 'kill' | 'hit', ... } drained by main.js
 
+    // Each monster type is a few parts (body, arms, legs...), each one instanced mesh.
     this.meshes = {};
     for (const name of Object.keys(ENEMY_TYPES)) {
-      const mesh = new THREE.InstancedMesh(ENEMY_GEOMETRY[name](), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, emissive: ENEMY_TYPES[name].emissive || 0, side: THREE.DoubleSide }), MAX);
-      mesh.castShadow = true;
-      mesh.frustumCulled = false;
-      mesh.count = 0;
-      mesh.setColorAt(0, WHITE);
-      scene.add(mesh);
-      this.meshes[name] = mesh;
+      const T = ENEMY_TYPES[name];
+      const material = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.85, emissive: T.emissive || 0, side: THREE.DoubleSide,
+        transparent: !!T.opacity, opacity: T.opacity || 1,
+      });
+      const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });   // eyes: lit from within
+      this.meshes[name] = ENEMY_PARTS[name]().map((p) => {
+        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, MAX);
+        mesh.castShadow = !p.glow;
+        mesh.frustumCulled = false;
+        mesh.count = 0;
+        mesh.setColorAt(0, WHITE);
+        scene.add(mesh);
+        return { mesh, pivot: new THREE.Vector3(...p.pivot), swing: p.swing, phase: p.phase };
+      });
     }
 
     // Chunks of monster that fly off when one dies.
@@ -314,20 +324,30 @@ export class Horde {
     const counts = {};
     for (const name in this.meshes) counts[name] = 0;
     for (const e of this.enemies) {
-      const mesh = this.meshes[e.name], i = counts[e.name]++;
-      const walk = this.time * e.speed * 1.4 + e.phase;
+      const parts = this.meshes[e.name], i = counts[e.name]++;
+      const walk = this.time * e.speed * e.T.stride + e.phase;
       // Lurching walk (fliers lean into the chase and bob); sinking below ground while still rising.
       e3.set(e.T.flying ? 0.45 : 0.12, e.yaw, Math.sin(walk) * e.T.sway);
       const bob = e.T.flying ? Math.sin(this.time * 3 + e.phase) * 0.2 : Math.abs(Math.sin(walk)) * 0.06;
       v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + bob, e.z);
-      mesh.setMatrixAt(i, m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale)));
-      mesh.setColorAt(i, e.flash > 0 ? HURT : e.elite ? ELITE : WHITE);
+      m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale));
+      const color = e.flash > 0 ? HURT : e.elite ? ELITE : WHITE;
+      // Each part hangs off the body at its pivot and swings with the stride
+      // (not while still climbing out of the ground).
+      const moving = e.rise >= 1 ? 1 : 0.25;
+      for (const p of parts) {
+        const s = Math.sin(walk + p.phase) * moving;
+        limb.makeRotationFromEuler(e3.set(p.swing[0] * s, p.swing[1] * s, p.swing[2] * s)).setPosition(p.pivot);
+        p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
+        p.mesh.setColorAt(i, color);
+      }
     }
     for (const name in this.meshes) {
-      const mesh = this.meshes[name];
-      mesh.count = counts[name];
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      for (const { mesh } of this.meshes[name]) {
+        mesh.count = counts[name];
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      }
     }
 
     this.gibs.forEach((g, i) => {
