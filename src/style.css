@@ -24,6 +24,11 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 #hurt.on { animation: hurt 0.6s ease-out; }
 @keyframes hurt { from { opacity: 1; } to { opacity: 0; } }
 
+#xp { position: absolute; left: 50%; bottom: 26px; width: 36%; transform: translateX(-50%); text-align: center; }
+#xp-level { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; }
+#xp .bar { height: 5px; margin-top: 5px; }
+#xp-fill { background: #7dffb0; transition: width 0.15s; }
+
 #help { position: absolute; left: 32px; top: 24px; font-size: 12px; line-height: 1.8; opacity: 0.65; }
 #help b { font-weight: 600; opacity: 1; }
 
@@ -52,6 +57,21 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 #crosshair.aiming i:nth-child(2) { transform: translateY(12px); }
 #crosshair.aiming i:nth-child(3) { transform: translateX(-12px) rotate(90deg); }
 #crosshair.aiming i:nth-child(4) { transform: translateX(12px) rotate(90deg); }
+
+/* Level-up screen */
+#levelup { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.72); backdrop-filter: blur(3px); }
+#levelup.hidden { display: none; }
+#levelup-title { font-size: 44px; font-weight: 200; letter-spacing: 10px; text-transform: uppercase; color: #7dffb0; }
+#levelup-hint { margin-top: 8px; font-size: 13px; letter-spacing: 2px; opacity: 0.7; }
+#levelup-cards { margin-top: 30px; display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; padding: 0 16px; }
+.card { position: relative; width: 210px; min-height: 170px; padding: 22px 18px 16px; display: flex; flex-direction: column; gap: 10px; text-align: left; font: inherit; color: #f2f3f5; background: rgba(20, 24, 32, 0.92); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; cursor: pointer; transition: transform 0.1s, border-color 0.1s; }
+.card:hover { transform: translateY(-4px); border-color: #7dffb0; }
+.card.rare { border-color: #ffb347; }
+.card .key { position: absolute; right: 12px; top: 10px; font-size: 12px; opacity: 0.5; }
+.card .name { font-size: 18px; font-weight: 600; }
+.card.rare .name { color: #ffd08a; }
+.card .desc { font-size: 13px; line-height: 1.5; opacity: 0.85; flex: 1; }
+.card .owned { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.55; }
 
 #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.7); backdrop-filter: blur(3px); cursor: pointer; }
 #overlay.hidden { display: none; }

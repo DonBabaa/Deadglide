@@ -1,5 +1,19 @@
 // Keyboard + mouse state. Game keys are ignored while typing in the tweak panel.
 const keys = new Set();
+
+// Key bindings. Change a key here and it changes everywhere.
+// (Codes are physical keys: 'KeyQ', 'Space', 'ShiftLeft', 'ControlLeft'...)
+export const KEYS = {
+  roll: ['KeyW'],                        // gentle, steady acceleration
+  push: ['KeyQ'],                        // kick-push: a burst of speed
+  brake: ['KeyS'],
+  left: ['KeyA'],
+  right: ['KeyD'],
+  slide: ['ShiftLeft', 'ShiftRight'],    // powerslide
+  ollie: ['Space'],
+  trick: ['KeyE'],
+};
+const held = (action) => KEYS[action].some((code) => keys.has(code));
 const typing = (e) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 
 export const input = {
@@ -13,11 +27,12 @@ export const input = {
   down: (code) => keys.has(code),
 
   // Snapshot for one physics step.
-  get steer() { return (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0); },
-  get push() { return keys.has('KeyW'); },
-  get brake() { return keys.has('KeyS'); },
-  get kick() { return keys.has('ShiftLeft') || keys.has('ShiftRight'); },
-  get jumpHeld() { return keys.has('Space'); },
+  get steer() { return (held('left') ? 1 : 0) - (held('right') ? 1 : 0); },
+  get push() { return held('roll'); },
+  get kick() { return held('push'); },
+  get brake() { return held('brake'); },
+  get drift() { return held('slide'); },
+  get jumpHeld() { return held('ollie'); },
 
   takeMouse() {
     const d = [this.mouseDX, this.mouseDY];
@@ -28,13 +43,13 @@ export const input = {
 
 window.addEventListener('keydown', (e) => {
   if (typing(e)) return;
-  if (e.code === 'Space') e.preventDefault();
+  if (KEYS.ollie.includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code);
-  if (e.code === 'KeyE') input.trickPressed = true;
+  if (KEYS.trick.includes(e.code)) input.trickPressed = true;
 });
 window.addEventListener('keyup', (e) => {
-  if (keys.delete(e.code) && e.code === 'Space') input.jumpReleased = true;
+  if (keys.delete(e.code) && KEYS.ollie.includes(e.code)) input.jumpReleased = true;
 });
 window.addEventListener('blur', () => { keys.clear(); input.fireHeld = input.aimHeld = false; });
 

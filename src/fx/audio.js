@@ -101,3 +101,11 @@ export function playTrickLand(boost = 3) {
     tone('triangle', f * 2, f * 2, 0.25, 0.05, at);   // a little sparkle on top
   }
 }
+
+export const playPickup = () => ready() && tone('sine', 1250 + Math.random() * 300, 1900, 0.07, 0.05);   // XP gem collected
+
+// Level up: a quick rising fanfare.
+export function playLevelUp() {
+  if (!ready()) return;
+  [68, 72, 75, 80, 84].forEach((note, i) => tone('triangle', midi(note), midi(note), 0.4, 0.14, i * 0.07));
+}

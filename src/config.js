@@ -7,11 +7,11 @@ export const config = {
   },
 
   skate: {
-    pushAccel: 14,        // W: steady acceleration, tapers to 0 at cruiseSpeed
-    cruiseSpeed: 22,      // top speed from holding W alone
-    kickImpulse: 7,       // Shift: speed added by one kick-push
-    kickInterval: 0.45,   // seconds between kicks while Shift is held
-    pushMaxSpeed: 34,     // kicks stop adding speed here; slopes and tricks can take you past it
+    pushAccel: 14,        // W (roll): steady acceleration, tapers to 0 at cruiseSpeed
+    cruiseSpeed: 22,      // top speed from rolling alone
+    kickImpulse: 7,       // Q (push): speed added by one kick-push
+    kickInterval: 0.35,   // shortest time between kicks (holding Q kicks at this rhythm)
+    pushMaxSpeed: 34,     // pushes stop adding speed here; slopes and tricks can take you past it
     maxSpeed: 60,         // "100% speed" for camera/HUD (and later damage bonus)
     hardMaxSpeed: 90,     // absolute safety cap
     brakeDecel: 30,       // S
@@ -24,6 +24,11 @@ export const config = {
     grip: 12,             // how fast velocity follows the board's heading
     gripScrub: 0.3,       // speed lost while the board is slipping sideways
     sideSlip: 0.1,        // fraction of sideways gravity that gets through the wheels
+
+    driftTurnMult: 1.6,   // Shift (powerslide): turn harder...
+    driftGrip: 4.5,       // ...with less grip, so the board swings out...
+    driftScrub: 0.35,     // ...shedding a little speed
+    driftSideSlip: 0.5,
 
     groundStick: 1.6,     // 1 = you leave the ground exactly when physics says so; higher = stickier over crests
     fallLineSpeed: 3,     // below this speed on a slope, the board swings to point downhill
@@ -95,10 +100,20 @@ export const config = {
     despawnDistance: 115, // left this far behind, they are recycled ahead of you
     riseTime: 0.7,        // seconds to climb out of the ground
     contactRange: 0.55,   // how close they must get to hurt you
+    ramSpeed: 16.7,       // with Deck Spikes, ride into them faster than this (60 km/h) to hurt them instead
     swarmEvery: 45,       // seconds between swarms (a ring closing in on you)
     swarmSize: 18,
     eliteEvery: 60,       // seconds between elites
     eliteHp: 12,          // elite health multiplier
+    wraithFlight: 4,      // ghosts that arrive together when wave 3 starts (+2 each wave after)
+  },
+
+  xp: {
+    firstLevel: 5,        // XP needed for level 2...
+    perLevel: 4,          // ...and this much more for each level after
+    pickupRadius: 7,      // gems this close fly to you
+    pullSpeed: 32,
+    gemLifetime: 45,      // seconds before an uncollected gem fades
   },
 
   gun: {

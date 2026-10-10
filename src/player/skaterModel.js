@@ -106,7 +106,7 @@ export class SkaterModel {
 
     // Lean into carves, more at speed.
     const speed01 = Math.min(1, skater.speed / config.skate.maxSpeed);
-    const leanTarget = skater.grounded ? -skater.steer * (0.15 + 0.5 * speed01) : 0;
+    const leanTarget = skater.grounded ? -skater.steer * (0.15 + 0.5 * speed01) * (skater.drifting ? 1.5 : 1) : 0;
     this.lean += (leanTarget - this.lean) * (1 - Math.exp(-10 * dt));
     this.tilt.rotation.z = this.lean;
 

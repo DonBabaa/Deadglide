@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { heightAt } from '../world/terrain.js';
+import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
 import { ENEMY_GEOMETRY } from './enemyModels.js';
 
@@ -28,7 +29,7 @@ export class Horde {
 
     this.meshes = {};
     for (const name of Object.keys(ENEMY_TYPES)) {
-      const mesh = new THREE.InstancedMesh(ENEMY_GEOMETRY[name](), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), MAX);
+      const mesh = new THREE.InstancedMesh(ENEMY_GEOMETRY[name](), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, emissive: ENEMY_TYPES[name].emissive || 0, side: THREE.DoubleSide }), MAX);
       mesh.castShadow = true;
       mesh.frustumCulled = false;
       mesh.count = 0;
@@ -45,6 +46,13 @@ export class Horde {
     scene.add(this.gibMesh);
     this.nextGib = 0;
 
+    // Shockwave ring (from the Shockwave Landing upgrade).
+    this.ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 48), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, toneMapped: false }));
+    this.ring.rotation.x = Math.PI / 2;
+    this.ring.visible = false;
+    this.ringLife = 0;
+    scene.add(this.ring);
+
     this.reset();
   }
 
@@ -55,6 +63,7 @@ export class Horde {
     this.kills = 0;
     this.score = 0;
     this.spawnDebt = 0;
+    this.warnedWraiths = false;
     this.nextSwarm = config.horde.swarmEvery;
     this.nextElite = config.horde.eliteEvery;
     this.events.length = 0;
@@ -64,8 +73,10 @@ export class Horde {
 
   // Which monster comes out of the ground next.
   pickType() {
-    const rattlers = Math.min(0.5, 0.12 * (this.wave - 1));   // none in wave 1, then more and more
-    return Math.random() < rattlers ? 'rattler' : 'shambler';
+    const r = Math.random();
+    const wraiths = this.wave >= 3 ? Math.min(0.3, 0.1 * (this.wave - 2)) : 0;   // ghosts from wave 3
+    const rattlers = Math.min(0.45, 0.12 * (this.wave - 1));                     // none in wave 1, then more and more
+    return r < wraiths ? 'wraith' : r < wraiths + rattlers ? 'rattler' : 'shambler';
   }
 
   // A spot `dist` away at `angle`, as long as it isn't inside a building.
@@ -80,7 +91,7 @@ export class Horde {
       scale: elite ? 1.9 : 0.92 + Math.random() * 0.18,
       hp: T.hp * tough * (elite ? config.horde.eliteHp : 1),
       speed: T.speed * (0.85 + Math.random() * 0.3) * (elite ? 1.25 : 1),
-      yaw: angle + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, phase: Math.random() * 6.28,
+      yaw: angle + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: Math.random() * 6.28,
     });
   }
 
@@ -92,6 +103,10 @@ export class Horde {
     if (wave !== this.wave) {
       this.wave = wave;
       this.events.push({ type: 'wave', wave });
+      // From wave 3, every new wave opens with a flight of ghosts (the crowd may
+      // already be full, so they are sent in on top of it).
+      const flight = wave >= 3 ? H.wraithFlight + 2 * (wave - 3) : 0;
+      for (let i = 0; i < flight; i++) this.spawn('wraith', player, Math.random() * Math.PI * 2, H.spawnDistance * (0.8 + Math.random() * 0.4));
     }
 
     // Top the crowd up toward this wave's size, a few per second.
@@ -114,6 +129,10 @@ export class Horde {
       this.events.push({ type: 'swarm' });
     }
     // Elite: one big one.
+    if (wave === 3 && !this.warnedWraiths) {
+      this.warnedWraiths = true;
+      this.events.push({ type: 'wraiths' });
+    }
     if (this.time >= this.nextElite) {
       this.nextElite += H.eliteEvery;
       this.spawn('shambler', player, heading + (Math.random() - 0.5), H.spawnDistance, true);
@@ -176,22 +195,39 @@ export class Horde {
       mx += e.kx; mz += e.kz;   // knockback from bullets
       e.kx *= Math.exp(-8 * dt); e.kz *= Math.exp(-8 * dt);
 
-      // Walk over low things, slide round tall ones.
       const nx = e.x + mx * dt, nz = e.z + mz * dt;
-      if (heightAt(nx, nz) - e.y < CLIMB) { e.x = nx; e.z = nz; }
-      else if (heightAt(nx, e.z) - e.y < CLIMB) e.x = nx;
+      if (e.T.flying) {
+        // Fliers go straight over everything, and climb or dive to the player's height.
+        e.x = nx; e.z = nz;
+      } else if (heightAt(nx, nz) - e.y < CLIMB) { e.x = nx; e.z = nz; }   // walk over low things...
+      else if (heightAt(nx, e.z) - e.y < CLIMB) e.x = nx;                  // ...slide round tall ones
       else if (heightAt(e.x, nz) - e.y < CLIMB) e.z = nz;
-      else { e.x -= dz * e.speed * dt; e.z += dx * e.speed * dt; }   // boxed in: sidestep
+      else { e.x -= dz * e.speed * dt; e.z += dx * e.speed * dt; }         // boxed in: sidestep
       // The crowd can't shove anyone into the exact spot the player is standing on.
       const ox = e.x - px, oz = e.z - pz, od = Math.hypot(ox, oz);
       if (od < 0.75 && od > 1e-4) { e.x = px + (ox / od) * 0.75; e.z = pz + (oz / od) * 0.75; }
-      e.y = heightAt(e.x, e.z);
+      const ground = heightAt(e.x, e.z);
+      if (e.T.flying) {
+        // Cruise overhead while far away; come down (or up!) to you when close.
+        const cruise = Math.max(player.pos.y + 0.4, ground + 3.5);
+        const wantY = Math.max(ground + 0.3, dist < 18 ? player.pos.y + 0.2 : cruise);
+        e.y += Math.max(-e.T.climb * dt, Math.min(e.T.climb * dt, wantY - e.y));
+      } else e.y = ground;
 
       const want = Math.atan2(dx, dz);
       e.yaw += Math.atan2(Math.sin(want - e.yaw), Math.cos(want - e.yaw)) * Math.min(1, 8 * dt);
 
       // Close enough to claw the player?
-      if (dist < reach && Math.abs(player.pos.y - e.y) < e.T.height * e.scale) damage = Math.max(damage, e.T.damage * (e.elite ? 2 : 1));
+      e.ramWait -= dt;
+      if (dist < reach && Math.abs(player.pos.y - e.y) < e.T.height * e.scale) {
+        if (stats.ramDamage > 0 && player.speed > H.ramSpeed) {
+          // Deck Spikes: at speed, you run them down instead.
+          if (e.ramWait <= 0) {
+            e.ramWait = 0.3;
+            this.damage(e, stats.ramDamage, -dx, -dz);
+          }
+        } else damage = Math.max(damage, e.T.damage * (e.elite ? 2 : 1));
+      }
     }
 
     this.draw(dt);
@@ -228,13 +264,25 @@ export class Horde {
     if (i >= 0) { this.enemies[i] = this.enemies[this.enemies.length - 1]; this.enemies.pop(); }
     this.kills++;
     this.score += e.T.score * (e.elite ? 10 : 1);
-    this.events.push({ type: 'kill', elite: e.elite });
+    this.events.push({ type: 'kill', elite: e.elite, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
     for (let k = 0; k < (e.elite ? 30 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
       g.life = 0.5 + Math.random() * 0.5;
       g.pos.set(e.x, e.y + 0.4 + Math.random() * 1.2 * e.scale, e.z);
       g.vel.set((Math.random() - 0.5) * 7 + dirX * 5, 2 + Math.random() * 5, (Math.random() - 0.5) * 7 + dirZ * 5);
     }
+  }
+
+  // Damages every monster within `radius` of a point (Shockwave Landing).
+  shockwave(pos, radius, amount) {
+    for (const e of [...this.enemies]) {
+      const dx = e.x - pos.x, dz = e.z - pos.z, d = Math.hypot(dx, dz);
+      if (d < radius && Math.abs(e.y - pos.y) < 4) this.damage(e, amount, dx / (d || 1), dz / (d || 1));
+    }
+    this.ring.position.set(pos.x, pos.y + 0.3, pos.z);
+    this.ring.userData.radius = radius;
+    this.ringLife = 1;
+    this.ring.visible = true;
   }
 
   // Aim assist: the monster closest to the line of fire, within `degrees` of it.
@@ -260,9 +308,10 @@ export class Horde {
     for (const e of this.enemies) {
       const mesh = this.meshes[e.name], i = counts[e.name]++;
       const walk = this.time * e.speed * 1.4 + e.phase;
-      // Lurching walk; sinking below ground while still rising.
-      e3.set(0.12, e.yaw, Math.sin(walk) * e.T.sway);
-      v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + Math.abs(Math.sin(walk)) * 0.06, e.z);
+      // Lurching walk (fliers lean into the chase and bob); sinking below ground while still rising.
+      e3.set(e.T.flying ? 0.45 : 0.12, e.yaw, Math.sin(walk) * e.T.sway);
+      const bob = e.T.flying ? Math.sin(this.time * 3 + e.phase) * 0.2 : Math.abs(Math.sin(walk)) * 0.06;
+      v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + bob, e.z);
       mesh.setMatrixAt(i, m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale)));
       mesh.setColorAt(i, e.flash > 0 ? HURT : e.elite ? ELITE : WHITE);
     }
@@ -281,5 +330,12 @@ export class Horde {
       this.gibMesh.setMatrixAt(i, g.life > 0 ? m.makeTranslation(g.pos.x, g.pos.y, g.pos.z) : HIDDEN);
     });
     this.gibMesh.instanceMatrix.needsUpdate = true;
+
+    if (this.ringLife > 0) {
+      this.ringLife -= dt * 3;
+      this.ring.scale.setScalar(this.ring.userData.radius * (1 - Math.max(0, this.ringLife) ** 2));
+      this.ring.material.opacity = Math.max(0, this.ringLife);
+      this.ring.visible = this.ringLife > 0;
+    }
   }
 }

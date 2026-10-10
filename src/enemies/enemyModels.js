@@ -38,4 +38,15 @@ function rattler() {
   ]);
 }
 
-export const ENEMY_GEOMETRY = { shambler, rattler };
+// Ghost: a pale hooded shroud with a skull face, arms reaching, no legs.
+function wraith() {
+  const shroud = 0xaeb9cf, hood = 0x7f8aa3, bone = 0xe6e2d2, dark = 0x101218;
+  return mergeGeometries([
+    tint(new THREE.ConeGeometry(0.42, 1.25, 9, 1, true).translate(0, 0.62, 0), shroud),   // trailing robe, open at the bottom
+    ball(0.24, 0, 1.32, 0, hood),
+    ball(0.15, 0, 1.3, 0.12, bone), box(0.17, 0.05, 0.05, 0, 1.33, 0.25, dark),
+    limb(0.055, 0.5, -0.3, 1.0, 0.3, shroud, Math.PI / 2 - 0.3), limb(0.055, 0.5, 0.3, 1.0, 0.3, shroud, Math.PI / 2 - 0.3),
+  ]);
+}
+
+export const ENEMY_GEOMETRY = { shambler, rattler, wraith };

@@ -4,6 +4,7 @@ import { Vector3 } from 'three';
 import { config } from '../config.js';
 import { heightAt, normalAt, railsNear, SPAWN } from '../world/terrain.js';
 import { TRICKS } from './tricks.js';
+import { stats } from './stats.js';
 
 const UP = new Vector3(0, 1, 0);
 const TAU = Math.PI * 2;
@@ -50,6 +51,7 @@ export class Skater {
     this.sinceGround = 0;   // time since last ground/rail contact (Infinity after an ollie)
     this.charge = 0;        // ollie charge 0..1
     this.steer = 0;
+    this.drifting = false;
     this.kickTimer = 0;     // time until the next kick-push is allowed
     this.sinceKick = 9;     // for the kick animation
     this.spin = 0;          // total body spin since takeoff (radians)
@@ -67,10 +69,11 @@ export class Skater {
   get speed() { return this.vel.length(); }
   get grinding() { return this.rail !== null; }
 
-  // inp: { steer (-1..1, + = left), push, kick, brake, jumpHeld, jumpReleased, trickPressed }
+  // inp: { steer (-1..1, + = left), push, kick, drift, brake, jumpHeld, jumpReleased, trickPressed }
   update(dt, inp) {
     this.prevPos.copy(this.pos);
     this.steer = inp.steer;
+    this.drifting = inp.drift && this.grounded && !this.rail;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     this.railCooldown = Math.max(0, this.railCooldown - dt);
     this.sinceKick += dt;
@@ -137,7 +140,8 @@ export class Skater {
     redirect(vel, n);
 
     // Carve. Turn rate drops with speed.
-    const turnRate = lerp(s.turnRateSlow, s.turnRateFast, clamp01(vel.length() / s.maxSpeed));
+    let turnRate = lerp(s.turnRateSlow, s.turnRateFast, clamp01(vel.length() / s.maxSpeed));
+    if (this.drifting) turnRate *= s.driftTurnMult;   // powerslide: the board swings round faster than you change direction
     fwd.applyAxisAngle(n, this.steer * turnRate * dt);
     fwd.addScaledVector(n, -fwd.dot(n)).normalize();
 
@@ -153,14 +157,15 @@ export class Skater {
 
     // Gravity along the slope. Wheels roll forwards freely, sideways hardly at all.
     vel.addScaledVector(fwd, -g * fwd.y * dt);
-    vel.addScaledVector(side, -g * side.y * s.sideSlip * dt);
+    vel.addScaledVector(side, -g * side.y * (this.drifting ? s.driftSideSlip : s.sideSlip) * dt);
 
-    // W: steady push up to cruising speed.
-    const vf = Math.max(0, vel.dot(fwd));
-    if (inp.push) vel.addScaledVector(fwd, s.pushAccel * Math.max(0, 1 - vf / s.cruiseSpeed) * dt);
-    // Shift: kick-push, a burst of speed. Hold it to keep kicking.
-    if (inp.kick && this.kickTimer <= 0) {
-      vel.addScaledVector(fwd, clamp(s.pushMaxSpeed - vf, 0, s.kickImpulse));
+    // Roll (W): gentle, steady acceleration up to cruising speed.
+    const vf = Math.max(0, vel.dot(fwd)), top = s.pushMaxSpeed * stats.topSpeed;
+    if (inp.push && !this.drifting) vel.addScaledVector(fwd, s.pushAccel * Math.max(0, 1 - vf / (s.cruiseSpeed * stats.topSpeed)) * dt);
+    // Push (Q): one kick per press, each a burst of speed. This is how you set your
+    // pace: tap for a little, keep tapping (or hold) for top speed.
+    if (inp.kick && this.kickTimer <= 0 && !this.drifting) {
+      vel.addScaledVector(fwd, clamp(top - vf, 0, s.kickImpulse));
       this.kickTimer = s.kickInterval;
       this.sinceKick = 0;
       this.events.push({ type: 'kick' });
@@ -173,16 +178,16 @@ export class Skater {
       dir.copy(vel).divideScalar(speed);
       const slip = Math.abs(dir.dot(side));
       target.copy(fwd).multiplyScalar(dir.dot(fwd) >= 0 ? 1 : -1);
-      dir.lerp(target, 1 - Math.exp(-s.grip * dt)).normalize();
+      dir.lerp(target, 1 - Math.exp(-(this.drifting ? s.driftGrip : s.grip) * dt)).normalize();
 
-      let decel = s.rollFriction + s.rollDrag * speed + s.gripScrub * slip * speed;
+      let decel = s.rollFriction + s.rollDrag * speed + (this.drifting ? s.driftScrub : s.gripScrub) * slip * speed;
       if (inp.brake) decel += s.brakeDecel;
       speed = Math.max(0, speed - decel * dt);
       vel.copy(dir).multiplyScalar(speed);
     }
 
     // Rolling backwards (e.g. after stalling on a ramp): flip stance.
-    if (vel.dot(fwd) < -s.revertSpeed) {
+    if (vel.dot(fwd) < -s.revertSpeed && !this.drifting) {
       fwd.negate();
       this.events.push({ type: 'revert' });
     }
