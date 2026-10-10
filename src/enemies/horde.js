@@ -261,20 +261,21 @@ export class Horde {
     return null;
   }
 
-  damage(e, amount, dirX, dirZ, headshot = false, knock = 1) {
+  // quiet: don't report non-lethal hits (for damage that ticks many times a second).
+  damage(e, amount, dirX, dirZ, headshot = false, knock = 1, quiet = false) {
     e.hp -= amount;
     e.flash = 1;
     const push = (e.elite ? 1.5 : 6) * knock;
     e.kx += dirX * push; e.kz += dirZ * push;
     if (e.hp > 0) {
-      this.events.push({ type: 'hit', headshot });
+      if (!quiet) this.events.push({ type: 'hit', headshot });
       return;
     }
     const i = this.enemies.indexOf(e);
     if (i >= 0) { this.enemies[i] = this.enemies[this.enemies.length - 1]; this.enemies.pop(); }
     this.kills++;
     this.score += e.T.score * (e.elite ? 10 : 1);
-    this.events.push({ type: 'kill', elite: e.elite, headshot, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
+    this.events.push({ type: 'kill', elite: e.elite, headshot, quiet, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
     for (let k = 0; k < (e.elite ? 30 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
       g.life = 0.5 + Math.random() * 0.5;

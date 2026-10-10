@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const speedFill = $('speed-fill'), speedText = $('speed-text'), chargeFill = $('charge-fill');
 const state = $('state'), popups = $('popups'), overlay = $('overlay'), crosshair = $('crosshair');
 const scorePoints = $('score-points'), scoreMult = $('score-mult'), scoreHeat = $('score-heat'), weaponsEl = $('weapons');
-let shownMult = 1, shownWeapons = '';
+let shownMult = 1, shownWeapons = '', shownStreak = 0;
 const chestMarker = $('chest-marker'), chestLabel = chestMarker.querySelector('span');
 const hpFill = $('hp-fill'), hpText = $('hp-text'), statsEl = $('stats'), hurtEl = $('hurt'), xpFill = $('xp-fill'), xpLevel = $('xp-level'), buffsEl = $('buffs');
 
@@ -70,11 +70,46 @@ export const hud = {
   },
 
   // Flash the crosshair when a shot lands.
-  hitMarker(headshot) {
-    crosshair.classList.remove('hit', 'crit');
-    void crosshair.offsetWidth;
-    crosshair.classList.add(headshot ? 'crit' : 'hit');
+  // kind: 'hit', 'crit' (headshot) or 'kill'.
+  hitMarker(kind) {
+    const el = $('hitmarker');
+    el.className = '';
+    void el.offsetWidth;   // restart the animation
+    el.className = kind;
   },
+
+  // Kill streak under the score: the count, and a bar showing how long you have to keep it going.
+  streak(score, window) {
+    const el = $('streak'), on = score.streak >= 2;
+    el.classList.toggle('hidden', !on);
+    if (!on) { shownStreak = 0; return; }
+    $('streak-time').style.width = `${Math.max(0, score.streakTime / window) * 100}%`;
+    if (score.streak !== shownStreak) {
+      $('streak-count').textContent = score.streak;
+      el.classList.remove('bump');
+      void el.offsetWidth;
+      el.classList.add('bump');
+      shownStreak = score.streak;
+    }
+  },
+
+  // Points at the HotBox Zone. Pass null to hide it.
+  zoneMarker(x, y, metres) {
+    const el = $('zone-marker');
+    el.classList.toggle('hidden', x === null);
+    if (x === null) return;
+    el.style.transform = `translate(${x * window.innerWidth - 11}px, ${y * window.innerHeight - 11}px)`;
+    el.querySelector('span').textContent = `HotBox ${Math.round(metres)} m`;
+  },
+
+  // Capture bar, shown while you stand in a zone (progress 0..1), or null to hide it.
+  capture(progress) {
+    const el = $('capture');
+    el.classList.toggle('hidden', progress === null);
+    if (progress !== null) $('capture-fill').style.width = `${progress * 100}%`;
+  },
+
+  shielded(on) { $('hp').classList.toggle('shielded', on); },
 
   // Points at a chest: x / y are screen fractions (0..1), or pass null to hide it.
   chestMarker(x, y, metres) {

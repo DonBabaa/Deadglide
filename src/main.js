@@ -13,10 +13,12 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
+import { HotBox } from './systems/hotbox.js';
+import { Powerups, POWERUPS } from './player/powerups.js';
 import { UPGRADES, rollUpgrades, takeUpgrade } from './systems/upgrades.js';
 import { levelUp } from './ui/levelUp.js';
 import { startMusic } from './fx/music.js';
@@ -48,6 +50,8 @@ const horde = new Horde(scene);
 const xp = new Xp(scene);
 const loot = new Loot(scene);
 const score = new Score();
+const hotbox = new HotBox(scene);
+const powerups = new Powerups(scene);
 const chase = new ChaseCamera(camera);
 const menuScene = new MenuScene(scene, camera);
 
@@ -87,6 +91,8 @@ function restart() {
   horde.reset();
   xp.reset();
   loot.reset();
+  hotbox.reset();
+  powerups.reset();
   score.reset();
   weapon.reset();
   shield = 0;
@@ -113,6 +119,11 @@ const panel = createTweakPanel({ onRespawn: () => { if (!inMenu) restart(); } })
 
 function hurt(amount) {
   if (invulnerable > 0 || shield > 0 || dead || creative?.noDamage) return;
+  if (powerups.absorb(amount)) {   // the HotBox shield takes it
+    invulnerable = config.player.invulnerableTime + stats.invulnerable;
+    playShieldHit();
+    return;
+  }
   hp = Math.max(0, hp - amount);
   invulnerable = config.player.invulnerableTime + stats.invulnerable;
   chase.onSloppy();
@@ -126,7 +137,7 @@ function hurt(amount) {
     const record = !creative && score.finish();   // Creative runs don't count toward your best
     const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
     hud.showOverlay('You died', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
-Survived ${hud.clock(horde.time)}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}
+Survived ${hud.clock(horde.time)}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 Click to try again`);
   }
 }
@@ -167,11 +178,15 @@ function showMenu() {
   levelUp.hide();
   horde.reset();
   loot.reset();
+  hotbox.reset();
+  powerups.reset();
   xp.reset();
   horde.update(0, skater);          // (these three just redraw, now that everything is cleared)
   xp.update(0, skater);
   loot.update(0, skater, items);
   hud.chestMarker(null);
+  hud.zoneMarker(null);
+  hud.capture(null);
   hud.scope(false);
   model.setVisible(false);
   menuScene.setVisible(true);
@@ -254,6 +269,15 @@ let last = performance.now(), accumulator = 0;
 
 const kmh = (boost) => `+${Math.round(boost * 3.6)} km/h`;
 
+// Where a world position sits on screen, as fractions 0..1, pinned to the edge if it's off screen or behind you.
+function onScreen(pos, lift) {
+  marker.copy(pos).setY(pos.y + lift).project(camera);
+  const behind = marker.z > 1;   // behind the camera: the projection is mirrored
+  const mx = Math.max(-0.92, Math.min(0.92, behind ? -marker.x : marker.x));
+  const my = Math.max(-0.8, Math.min(0.72, behind ? -1 : marker.y));
+  return [mx * 0.5 + 0.5, 0.5 - my * 0.5];
+}
+
 // Upgrades that trigger off landing a trick.
 function trickLanded() {
   if (stats.trickBuff > 0) trickBuff = stats.trickBuff;
@@ -294,13 +318,14 @@ function handleEvents() {
     else if (e.type === 'kill') {
       playKill();
       if (e.headshot) playHeadshot();
-      hud.hitMarker(e.headshot);
+      if (!e.quiet) hud.hitMarker('kill');
       xp.drop(e.x, e.y, e.z, e.xp);
       loot.maybeDrop(e);
-      score.kill(e.score, { elite: e.elite, headshot: e.headshot, airborne: airborne() });
+      const milestone = score.kill(e.score, { elite: e.elite, headshot: e.headshot, airborne: airborne() });
+      if (milestone) hud.popup(`${milestone}!`, 'alert');
     } else if (e.type === 'hit') {
       e.headshot ? playHeadshot() : playHit();
-      hud.hitMarker(e.headshot);
+      hud.hitMarker(e.headshot ? 'crit' : 'hit');
     }
   }
   horde.events.length = 0;
@@ -336,14 +361,15 @@ function frame(now) {
 
     // Monsters: spawn, chase, and claw at the player.
     invulnerable = Math.max(0, invulnerable - dt);
-    const damage = horde.update(dt, skater);
+    const damage = horde.update(dt * (powerups.active('slow') ? config.powerups.slowFactor : 1), skater);   // Couch Lock slows their whole world down
     if (damage > 0) hurt(damage);
 
     // Gun: the arm points at whatever is under the crosshair, bullets fly there.
     weapon.aimPoint(camera, aimPoint);
     model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
     trickBuff = Math.max(0, trickBuff - dt);
-    const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1);
+    if (powerups.active('blaze')) stats.frenzy = Math.max(stats.frenzy, powerups.time.blaze);   // Blaze: double fire rate...
+    const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1) * (powerups.active('blaze') ? 2 : 1);   // ...and double damage
     if (weapon.update(dt, firing, aiming, model.muzzle, aimPoint, horde, damageMult)) {
       model.onShot();
       chase.onShot(weapon.def.kick);
@@ -356,6 +382,7 @@ function frame(now) {
     handleEvents();
     score.update(dt, skater.speed);
     hud.score(score);
+    hud.streak(score, config.score.streakWindow);
 
     // Chests: ride over one to open it.
     stats.frenzy = Math.max(0, stats.frenzy - dt);
@@ -372,14 +399,28 @@ function frame(now) {
 
     // Marker for the nearest chest, pinned to the screen edge if it's off screen.
     const chest = loot.nearest(skater.pos);
-    if (chest) {
-      marker.copy(chest).setY(chest.y + 2.5).project(camera);
-      const behind = marker.z > 1;   // behind the camera: the projection is mirrored
-      let mx = behind ? -marker.x : marker.x, my = behind ? -1 : marker.y;
-      mx = Math.max(-0.92, Math.min(0.92, mx));
-      my = Math.max(-0.8, Math.min(0.72, my));
-      hud.chestMarker(mx * 0.5 + 0.5, 0.5 - my * 0.5, chest.distanceTo(skater.pos));
-    } else hud.chestMarker(null);
+    if (chest) hud.chestMarker(...onScreen(chest, 2.5), chest.distanceTo(skater.pos));
+    else hud.chestMarker(null);
+
+    // HotBox Zone: stand in it to fill the bar and win its power-up.
+    const box = hotbox.update(dt, skater);
+    if (box.zone && !box.captured) {
+      hud.zoneMarker(...onScreen(box.zone, 6), Math.hypot(box.zone.x - skater.pos.x, box.zone.z - skater.pos.z));
+      hud.capture(box.zone.progress > 0 ? box.zone.progress : null);
+    } else {
+      hud.zoneMarker(null);
+      hud.capture(null);
+    }
+    if (box.captured) {
+      const won = powerups.random();   // you only find out what was in it now
+      powerups.grant(won);
+      hud.popup(`${POWERUPS[won].name}: ${POWERUPS[won].description}`, 'loot');
+      playPowerup();
+      score.add(250, 0.5);
+    }
+    powerups.update(dt, renderPos, horde, run);
+    stats.gravity = powerups.active('float') ? config.powerups.floatGravity : 1;   // Moon Rocks
+    hud.shielded(powerups.active('shield'));
 
     // XP: gems fly in, and enough of them means an upgrade.
     const gain = xp.update(dt, skater);
@@ -388,7 +429,7 @@ function frame(now) {
     if (pendingLevels > 0 && !choosing && !dead) offerUpgrade();
 
     arena.update(dt, renderPos);
-    hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': stats.frenzy, 'Shield': shield, 'Double damage': trickBuff });
+    hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': powerups.active('blaze') ? 0 : stats.frenzy, 'Invincible': shield, 'Double damage': trickBuff, ...powerups.running() });
   }
   renderer.render(scene, camera);
 }
@@ -402,4 +443,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { skater, config, chase, weapon, horde, xp, loot, score, stats, input, restart, showMenu, seed: SEED };
+window.game = { skater, config, chase, weapon, horde, xp, loot, score, hotbox, powerups, stats, input, restart, showMenu, seed: SEED };

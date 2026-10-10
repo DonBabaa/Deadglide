@@ -16,6 +16,7 @@ const BASE = {
   trickBuff: 0,       // seconds of double damage after landing a trick
   shockwave: 0,       // damage of the ring released when you land a trick (0 = none)
   frenzy: 0,          // seconds of double fire rate left (from the Energy Drink chest item)
+  gravity: 1,         // gravity multiplier (Moon Rocks lowers it)
 };
 
 export const stats = { ...BASE, taken: {} };   // taken: upgrade id -> how many times picked

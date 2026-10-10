@@ -9,6 +9,9 @@ import { config } from '../config.js';
 
 const KEY = 'deadglide.best';
 
+// Kill-streak milestones, announced when you reach them.
+const STREAKS = { 3: 'Triple kill', 5: 'Killing spree', 10: 'Rampage', 15: 'Massacre', 25: 'Unstoppable', 40: 'Graveyard shift', 60: 'Death incarnate' };
+
 export class Score {
   constructor() {
     try { this.best = Number(localStorage.getItem(KEY)) || 0; } catch { this.best = 0; }
@@ -20,6 +23,9 @@ export class Score {
     this.multiplier = 1;
     this.heat = 0;        // 0..1, how full the style meter is
     this.topMultiplier = 1;
+    this.streak = 0;        // kills in a row, each within streakWindow seconds of the last
+    this.streakTime = 0;    // seconds left to keep it going
+    this.bestStreak = 0;
   }
 
   // Earn `points` (before the multiplier) and warm the meter by `heat`.
@@ -35,15 +41,22 @@ export class Score {
     this.heat = Math.min(1, this.heat);
   }
 
+  // Returns the name of a kill-streak milestone if this kill reached one.
   kill(base, { elite, headshot, airborne }) {
     const S = config.score;
-    this.add(base * (elite ? 10 : 1) * (headshot ? S.headshotBonus : 1) * (airborne ? S.airKillBonus : 1), S.killHeat * (headshot ? 1.5 : 1) * (elite ? 4 : 1));
+    const streakBonus = 1 + S.streakBonus * Math.min(20, this.streak);   // each kill in a streak is worth more
+    this.add(base * (elite ? 10 : 1) * (headshot ? S.headshotBonus : 1) * (airborne ? S.airKillBonus : 1) * streakBonus, S.killHeat * (headshot ? 1.5 : 1) * (elite ? 4 : 1));
+    this.streak++;
+    this.streakTime = S.streakWindow;
+    this.bestStreak = Math.max(this.bestStreak, this.streak);
+    return STREAKS[this.streak] || null;
   }
   trick(boost) { this.add(boost * config.score.trickPoints, config.score.trickHeat + boost * 0.03); }
   grind(metres) { this.add(metres * config.score.grindPoints, metres * 0.01); }
 
   // Every frame: points for speed, and the meter cooling off.
   update(dt, speed) {
+    if (this.streak > 0 && (this.streakTime -= dt) <= 0) this.streak = 0;   // too slow: the streak is over
     const S = config.score, fast = Math.max(0, speed - S.speedThreshold);
     if (fast > 0) this.points += fast * S.speedPoints * this.multiplier * dt;
     const pace = Math.min(1, speed / config.skate.pushMaxSpeed);                    // going fast keeps it warm

@@ -132,7 +132,7 @@ export class Skater {
   // ---- Ground ----------------------------------------------------------------
 
   stepGround(dt, inp) {
-    const s = config.skate, g = config.physics.gravity;
+    const s = config.skate, g = config.physics.gravity * stats.gravity;
     const { pos, vel, fwd, normal: n } = this;
 
     // Follow the surface: momentum is carried around curves.
@@ -218,7 +218,7 @@ export class Skater {
     const { pos, vel, fwd, up } = this;
     this.airTime += dt;
 
-    vel.y -= config.physics.gravity * dt;
+    vel.y -= config.physics.gravity * stats.gravity * dt;
     vel.multiplyScalar(Math.max(0, 1 - s.airDrag * dt));
 
     // Board trick in progress?
@@ -361,7 +361,7 @@ export class Skater {
     const G = config.grind, r = this.rail;
     let v = this.railSpeed;
     const sign = v < 0 ? -1 : 1;
-    v -= config.physics.gravity * r.dy * dt;                    // sloped rails pull you downhill
+    v -= config.physics.gravity * stats.gravity * r.dy * dt;                    // sloped rails pull you downhill
     if (Math.abs(v) < G.maxSpeed) v += sign * G.accel * dt;     // grinding builds speed
     this.railSpeed = v;
     this.railT += v * dt;

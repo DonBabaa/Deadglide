@@ -118,6 +118,33 @@ export const config = {
     gemLifetime: 45,      // seconds before an uncollected gem fades
   },
 
+  // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).
+  hotbox: {
+    radius: 7,            // metres across is twice this (fixed once the game has started)
+    captureTime: 4,       // seconds you must stay inside
+    drainTime: 3,         // seconds for the progress to drain away once you leave
+    lifetime: 75,         // an unclaimed zone moves somewhere else after this long
+    firstDelay: 8,        // seconds into a run before the first zone appears
+    respawnDelay: 15,     // seconds after a capture before the next one
+    minDistance: 60,      // how far away new zones appear
+    maxDistance: 110,
+  },
+
+  powerups: {
+    shieldHp: 60,         // damage the shield soaks up before it breaks
+    shieldTime: 40,       // ...or seconds before it fades
+    gasTime: 25,          // seconds TozToxik lasts
+    gasRadius: 6,         // metres round you that it covers
+    gasDps: 24,           // damage per second to anything inside it
+    regenTime: 15,        // Munchies: seconds of healing...
+    regenRate: 4,         // ...at this many HP a second
+    slowTime: 12,         // Couch Lock: seconds the monsters stay slowed...
+    slowFactor: 0.4,      // ...to this fraction of their speed
+    blazeTime: 12,        // Blaze: seconds of double fire rate and double damage
+    floatTime: 20,        // Moon Rocks: seconds of low gravity...
+    floatGravity: 0.45,   // ...at this fraction of normal
+  },
+
   loot: {
     chestChance: 0.03,    // chance a (non-elite) monster drops a chest; elites always do
     heartChance: 0.06,    // chance a monster drops a small heart
@@ -147,6 +174,8 @@ export const config = {
     speedPoints: 1.5,     // ...this many per m/s over it
     headshotBonus: 2,     // kill-score multipliers
     airKillBonus: 1.5,
+    streakWindow: 3.5,    // seconds you have to get the next kill before a kill streak ends
+    streakBonus: 0.1,     // extra kill score per kill already in the streak (up to 20)
   },
 
   audio: {

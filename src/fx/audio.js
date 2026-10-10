@@ -194,3 +194,12 @@ export function playSniper() {
   hiss('lowpass', 520, 100, 0.8, 0.09, 0.62);
   hiss('lowpass', 380, 80, 1.0, 0.05, 1.05);
 }
+
+// HotBox captured: a rising sweep into a bright chord.
+export function playPowerup() {
+  if (!ready()) return;
+  hiss('bandpass', 500, 5000, 0.45, 0.12);
+  [65, 72, 77, 84].forEach((note, i) => tone('triangle', midi(note), midi(note), 0.7, 0.13, 0.12 + i * 0.05));
+}
+// The shield taking a hit for you: a glassy ping.
+export const playShieldHit = () => ready() && (tone('sine', 1900, 900, 0.18, 0.16), tone('triangle', 2850, 1400, 0.12, 0.07));
