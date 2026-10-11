@@ -173,6 +173,7 @@ function refine(lines, max = 2) {
 
 // Mesh for one skate prop: its top surface laid over the ground, plus side walls.
 function buildProp(p, mat, c) {
+  if (p.type === 'fence') return buildFence(p, mat, c);
   const us = refine(p.us), ws = refine(p.ws), pos = [], uv = [];
   // Ground height under a point given in the prop's own coordinates.
   const ground = (u, w) => chunkBase(c, p.x + u * p.cos + w * p.sin, p.z - u * p.sin + w * p.cos);
@@ -215,9 +216,41 @@ function buildProp(p, mat, c) {
 }
 
 // A cylinder between two points, as bare geometry (for merging).
-function tubeGeometry(a, b, radius) {
+// Leaning fence round a grave plot: wrought-iron railings you can see through.
+// Only the look is bars: what you ride on is still the solid ramp from features.js.
+// Bars run up the long outer face, over the top (ending in a spike) and down the
+// short inner face; rails run along the fence to hold them together.
+function buildFence(p, mat, c) {
+  const ground = (u, w) => chunkBase(c, p.x + u * p.cos + w * p.sin, p.z - u * p.sin + w * p.cos);
+  const at = (u, w, lift = 0.03) => new THREE.Vector3(u, ground(u, w) + p.localHeight(u, w) + lift, w);
+  const tubes = [], top = p.lipU, end = p.u1, width = p.w1 - p.w0;
+
+  const count = Math.max(2, Math.round(width / 0.42));
+  for (let i = 0; i <= count; i++) {
+    const w = p.w0 + (width * i) / count, post = i % 6 === 0;   // every sixth bar is a thicker post
+    const foot = at(0, w, -0.15), lip = at(top, w), inner = at(end, w, -0.15);
+    tubes.push(tubeGeometry(foot, lip, post ? 0.05 : 0.024), tubeGeometry(lip, inner, post ? 0.05 : 0.024));
+    // The spike: the bar carries on a little past the top, along the same lean.
+    const spike = lip.clone().sub(foot).normalize().multiplyScalar(post ? 0.5 : 0.32).add(lip);
+    tubes.push(tubeGeometry(lip, spike, post ? 0.05 : 0.024, post ? 0.012 : 0.004));
+  }
+  // Rails: near the foot, part-way up and along the top of the outer face, and one across the inner face.
+  const steps = Math.max(1, Math.ceil(width / 2));
+  for (const u of [top * 0.1, top * 0.55, top, top + (end - top) * 0.55]) {
+    for (let k = 0; k < steps; k++) tubes.push(tubeGeometry(at(u, p.w0 + (width * k) / steps), at(u, p.w0 + (width * (k + 1)) / steps), u === top ? 0.045 : 0.032));
+  }
+
+  const mesh = new THREE.Mesh(mergeGeometries(tubes), mat.iron);
+  mesh.castShadow = true;
+  mesh.position.set(p.x, 0.01, p.z);
+  mesh.rotation.y = p.yaw;
+  return mesh;
+}
+
+// tip: the radius at b, if it tapers.
+function tubeGeometry(a, b, radius, tip = radius) {
   const len = a.distanceTo(b), mid = a.clone().lerp(b, 0.5);
-  const geo = new THREE.CylinderGeometry(radius, radius, len, 8);
+  const geo = new THREE.CylinderGeometry(tip, radius, len, 8);
   geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Y, b.clone().sub(a).normalize()));
   return geo.translate(mid.x, mid.y, mid.z);
 }

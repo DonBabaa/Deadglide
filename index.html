@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Deadglide</title>
+    <title>DeadSlide</title>
     <!-- Display font (Anton: heavy, blocky, in the spirit of skate-brand logos) and a condensed text font. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -42,6 +42,7 @@
           <div id="hp"><div id="hp-fill"></div><span id="hp-text">100 / 100</span></div>
           <div id="shield-bar" class="hidden"><div id="shield-fill"></div></div>
           <div id="powers"></div>
+          <div id="gold" class="hidden"></div>
         </div>
       </div>
       <div id="top"><div id="stats"></div><div id="buffs"></div></div>
@@ -55,6 +56,9 @@
       </div>
       <div id="escape" class="hidden"><small>Overtime</small><span></span></div>
       <div id="boss-intro" class="hidden"><small>Final boss</small><span></span></div>
+      <div id="dread"></div>
+      <div id="flash"></div>
+      <div id="bars"><i></i><i></i></div>
       <div id="capture" class="hidden"><span id="capture-label">HotBox Zone</span><div class="bar"><div id="capture-fill"></div></div></div>
       <div id="crosshair"><i></i><i></i><i></i><i></i></div>
       <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
@@ -79,16 +83,26 @@
     <!-- Main menu: sits over the menu scene (Kirky by the tomb). -->
     <div id="menu">
       <div id="menu-home">
-        <h1>Deadglide</h1>
+        <h1>DeadSlide</h1>
         <p class="tagline">Skate the cemetery. Outlast the night.</p>
+        <div class="menu-label">Your name</div>
+        <input id="menu-name" type="text" maxlength="16" placeholder="Enter a nickname" autocomplete="off" spellcheck="false">
         <div class="menu-label">Current level</div>
         <button id="level-1" class="level" type="button">
           <span class="level-name">Level 1</span>
           <span class="level-desc">The Cemetery &middot; endless waves</span>
         </button>
         <div id="menu-best"></div>
+        <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
         <div class="menu-label">Leaderboard</div>
         <ol id="menu-board" class="board"></ol>
+      </div>
+      <div id="menu-shop" class="hidden">
+        <h2>Shop</h2>
+        <p class="tagline">Gold in the bank: <b id="shop-gold"></b> &middot; banked when you leave through the portal</p>
+        <div id="shop-tabs" class="chips"></div>
+        <div id="shop-list"></div>
+        <button id="shop-back" type="button">Back</button>
       </div>
       <div id="menu-launch" class="hidden">
         <h2>Level 1</h2>
@@ -117,11 +131,20 @@
       <div id="levelup-title">Level 2</div>
       <div id="levelup-hint">Choose an upgrade (click, or press 1 / 2 / 3)</div>
       <div id="levelup-cards"></div>
+      <button id="levelup-reroll" class="hidden" type="button">Reroll (R)</button>
     </div>
 
     <div id="overlay">
-      <div id="overlay-title">Deadglide</div>
+      <div id="overlay-title">DeadSlide</div>
       <div id="overlay-hint">Click to skate</div>
+      <div id="tally" class="hidden">
+        <div id="tally-stack"></div>
+        <div id="tally-text">
+          <div id="tally-earned">+0</div>
+          <div id="tally-bank">0</div>
+          <small>gold in the bank</small>
+        </div>
+      </div>
       <div id="run-over" class="hidden">
         <div id="post">
           <input id="post-name" type="text" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false">
@@ -145,6 +168,10 @@
       <div id="audio-controls">
         <button id="music-toggle" type="button">Music: on</button>
         <label>Volume <input id="music-volume" type="range" min="0" max="100" step="1" /></label>
+        <button id="sfx-toggle" type="button">Sound FX: on</button>
+        <label>Volume <input id="sfx-volume" type="range" min="0" max="100" step="1" /></label>
+        <span class="setting-name">Mouse sensitivity</span>
+        <label><span id="sens-value"></span> <input id="sens" type="range" min="20" max="300" step="5" /></label>
       </div>
     </div>
 

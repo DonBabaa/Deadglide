@@ -23,9 +23,9 @@ function grain(g, size, amount) {
 }
 
 // Brushed cotton fleece: soft speckle with a faint knit.
-export function hoodieTexture() {
+export function hoodieTexture(color = '#7a2f2b') {
   return paint(128, (g, s) => {
-    g.fillStyle = '#7a2f2b';
+    g.fillStyle = color;
     g.fillRect(0, 0, s, s);
     g.strokeStyle = 'rgba(0,0,0,0.10)';
     for (let x = 0; x < s; x += 3) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, s); g.stroke(); }
@@ -79,4 +79,44 @@ export function canvasTexture() {
     for (let k = 0; k < s; k += 2) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, s); g.stroke(); g.beginPath(); g.moveTo(0, k); g.lineTo(s, k); g.stroke(); }
     grain(g, s, 10);
   }, 2, 2);
+}
+
+// Graphics for the underside of the deck (a cosmetic). The image runs nose to tail.
+export function deckTexture(kind) {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 256;
+  const g = c.getContext('2d'), w = c.width, h = c.height;
+  g.fillStyle = '#141416';
+  g.fillRect(0, 0, w, h);
+  if (kind === 'checker') {
+    g.fillStyle = '#ece8dc';
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2) g.fillRect(x * 32, y * 32, 32, 32);
+  } else if (kind === 'flames') {
+    // Tongues of flame licking up from the tail: red, then orange, then yellow inside.
+    for (const [color, height, width] of [['#c8201b', 215, 30], ['#ff7a1a', 165, 22], ['#ffd23a', 110, 14]]) {
+      g.fillStyle = color;
+      for (let i = 0; i < 5; i++) {
+        const x = 13 + i * 25.5, top = h - height * (0.7 + 0.3 * Math.sin(i * 2.1 + height));
+        g.beginPath();
+        g.moveTo(x - width, h);
+        g.bezierCurveTo(x - width, h - 70, x + width * 0.9, top + 70, x + (i % 2 ? 7 : -7), top);
+        g.bezierCurveTo(x + width * 0.3, top + 50, x + width, h - 70, x + width, h);
+        g.fill();
+      }
+    }
+  } else if (kind === 'skull') {
+    g.fillStyle = '#e6e0cf';
+    g.beginPath(); g.ellipse(64, 108, 46, 50, 0, 0, Math.PI * 2); g.fill();   // the dome
+    g.fillRect(36, 138, 56, 42);                                             // the jaw
+    g.fillStyle = '#141416';
+    g.beginPath(); g.ellipse(45, 112, 13, 15, 0, 0, Math.PI * 2); g.fill();   // eye sockets
+    g.beginPath(); g.ellipse(83, 112, 13, 15, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(64, 128); g.lineTo(57, 146); g.lineTo(71, 146); g.fill();   // nose
+    for (let x = 44; x < 92; x += 10) g.fillRect(x, 158, 2, 22);                       // teeth
+    g.fillStyle = '#c8201b';
+    g.fillRect(0, 22, w, 7); g.fillRect(0, h - 29, w, 7);                              // a stripe at each end
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }

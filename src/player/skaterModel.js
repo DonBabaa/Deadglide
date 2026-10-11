@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
-import { hoodieTexture, denimTexture, ribTexture, canvasTexture } from './kirkyTextures.js';
+import { hoodieTexture, denimTexture, ribTexture, canvasTexture, deckTexture } from './kirkyTextures.js';
 
 const TAU = Math.PI * 2;
 const x = new THREE.Vector3(), z = new THREE.Vector3(), basis = new THREE.Matrix4();
@@ -41,6 +41,7 @@ export class SkaterModel {
     const denim = std(0xffffff, 0.9, { map: denimTexture() });
     const beanie = std(0xffffff, 0.95, { map: ribTexture('#24262c') });
     const shoeCanvas = std(0xffffff, 0.9, { map: canvasTexture() });
+    this.mats = { hoodie, hoodieRib, beanie, wood, urethane, gunmetal };   // the ones cosmetics repaint (see applyLook)
 
     this.root = new THREE.Group();   // position + board orientation
     this.tilt = new THREE.Group();   // carve lean
@@ -124,8 +125,9 @@ export class SkaterModel {
       armL, cuffL, handL,
       part(new THREE.SphereGeometry(0.17, 14, 10), hoodie, 0, 0.61, -0.06),          // hood gathered at the neck
       part(new THREE.SphereGeometry(0.125, 16, 12), skin, 0, 0.8, 0),                // head
-      part(new THREE.SphereGeometry(0.133, 16, 8, 0, TAU, 0, Math.PI / 2), beanie, 0, 0.825, 0),   // beanie...
-      brim,                                                                           // ...with a folded brim
+      (this.beanieDome = part(new THREE.SphereGeometry(0.133, 16, 8, 0, TAU, 0, Math.PI / 2), beanie, 0, 0.825, 0)),   // beanie...
+      (this.hair = part(new THREE.SphereGeometry(0.131, 16, 8, 0, TAU, 0, Math.PI / 2), dark, 0, 0.815, -0.004)),      // (his hair, for when he isn't wearing one)
+      (this.brim = brim),                                                                           // ...with a folded brim
       part(new THREE.SphereGeometry(0.013, 8, 6), dark, -0.045, 0.8, 0.114), part(new THREE.SphereGeometry(0.013, 8, 6), dark, 0.045, 0.8, 0.114),   // eyes
       box(0.04, 0.008, 0.01, dark, -0.045, 0.82, 0.116), box(0.04, 0.008, 0.01, dark, 0.045, 0.82, 0.116),                                           // brows
       hood,
@@ -136,20 +138,31 @@ export class SkaterModel {
     const cig = new THREE.Group();
     cig.position.set(0.035, 0.765, 0.115);
     cig.rotation.set(0.25, 0.3, 0);   // drooping from the corner of the mouth
-    cig.add(
-      part(new THREE.CylinderGeometry(0.011, 0.011, 0.11, 8).rotateX(Math.PI / 2), paper, 0, 0, 0.075),
-      part(new THREE.CylinderGeometry(0.0115, 0.0115, 0.04, 8).rotateX(Math.PI / 2), filter, 0, 0, 0.01),
-    );
+    // (Cosmetics can swap the cigarette for a lollipop or a toothpick: all three sit in the same spot.)
+    this.mouth = {
+      cigarette: [
+        part(new THREE.CylinderGeometry(0.011, 0.011, 0.11, 8).rotateX(Math.PI / 2), paper, 0, 0, 0.075),
+        part(new THREE.CylinderGeometry(0.0115, 0.0115, 0.04, 8).rotateX(Math.PI / 2), filter, 0, 0, 0.01),
+      ],
+      lollipop: [
+        part(new THREE.CylinderGeometry(0.005, 0.005, 0.1, 6).rotateX(Math.PI / 2), paper, 0, 0, 0.05),
+        part(new THREE.SphereGeometry(0.03, 12, 10), std(0xe8336d, 0.25), 0, 0, 0.115),
+      ],
+      toothpick: [part(new THREE.CylinderGeometry(0.003, 0.0045, 0.12, 5).rotateX(Math.PI / 2), wood, 0, 0, 0.06)],
+      nothing: [],
+    };
+    cig.add(...Object.values(this.mouth).flat());
+    this.smoking = true;   // false when it isn't a cigarette: no ember, no smoke trail
     this.ember = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff6a1a, toneMapped: false }));
     this.ember.position.z = 0.132;
     cig.add(this.ember);
     this.torso.add(cig);
 
     const smokeTex = glowTexture();
-    this.smoke = Array.from({ length: 22 }, () => {
+    this.smoke = Array.from({ length: 70 }, () => {   // (enough for the big cloud after a HotBox)
       const puff = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0xb9bcc4, transparent: true, opacity: 0, depthWrite: false }));
       puff.visible = false;
-      puff.userData = { life: 0, drift: new THREE.Vector3() };
+      puff.userData = { life: 0, drift: new THREE.Vector3(), size: 1 };
       scene.add(puff);
       return puff;
     });
@@ -200,6 +213,7 @@ export class SkaterModel {
     this.lean = 0;
     this.crouch = 0;
     this.flip = 0;       // the flip angle being shown
+    this.inhale = 0;     // 0..1: taking a long drag (the ember flares, no smoke escapes)
   }
 
   // aimPoint: world position under the crosshair. gunUp: aiming or firing right now.
@@ -254,6 +268,24 @@ export class SkaterModel {
     this.updateSmoke(dt);
   }
 
+  // Blowing out a lungful: call every frame while he exhales. A thick cloud rolls out of his mouth.
+  exhale(dt) {
+    this.blow = (this.blow || 0) + dt * 34;   // puffs per second
+    this.torso.localToWorld(z.set(0, 0.8, 0));               // out from his head through the cigarette: the way he is facing
+    this.ember.getWorldPosition(x).sub(z).setY(0).normalize();
+    z.copy(x);
+    while (this.blow >= 1) {
+      this.blow -= 1;
+      const puff = this.smoke[this.nextPuff++ % this.smoke.length];
+      this.ember.getWorldPosition(puff.position);
+      puff.position.y -= 0.02;
+      puff.userData.life = 1;
+      puff.userData.size = 2.2 + Math.random() * 1.6;
+      puff.userData.drift.set((Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.45, (Math.random() - 0.5) * 0.5).addScaledVector(z, 0.7 + Math.random() * 0.9);
+      puff.visible = true;
+    }
+  }
+
   // Gun arm: raised toward `aimPoint` while gunUp (and for a moment after), otherwise hanging.
   updateArm(dt, aimPoint, gunUp) {
     this.armed = gunUp ? 0.5 : Math.max(0, this.armed - dt);
@@ -286,13 +318,15 @@ export class SkaterModel {
   // Cigarette smoke: little puffs left hanging in the air behind you.
   updateSmoke(dt) {
     this.time += dt;
-    this.ember.material.color.setScalar(1).multiply(EMBER).multiplyScalar(0.75 + 0.45 * Math.sin(this.time * 2.2) ** 2);   // slow glow
+    this.ember.material.color.setScalar(1).multiply(EMBER).multiplyScalar(0.75 + 0.45 * Math.sin(this.time * 2.2) ** 2 + 5 * this.inhale);   // slow glow, flaring on a drag
+    this.ember.scale.setScalar(1 + 0.8 * this.inhale);
     this.puffTimer -= dt;
-    if (this.puffTimer <= 0 && this.root.visible) {
+    if (this.puffTimer <= 0 && this.root.visible && this.inhale <= 0 && this.smoking) {
       this.puffTimer = 0.11;
       const puff = this.smoke[this.nextPuff++ % this.smoke.length];
       this.ember.getWorldPosition(puff.position);
       puff.userData.life = 1;
+      puff.userData.size = 1;
       puff.userData.drift.set((Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.3, (Math.random() - 0.5) * 0.3);
       puff.visible = true;
     }
@@ -301,8 +335,8 @@ export class SkaterModel {
       if (u.life <= 0) continue;
       u.life -= dt / 2.2;
       puff.position.addScaledVector(u.drift, dt);
-      puff.scale.setScalar(0.06 + (1 - u.life) * 0.5);
-      puff.material.opacity = Math.max(0, u.life) * 0.3;
+      puff.scale.setScalar((0.06 + (1 - u.life) * 0.5) * u.size);
+      puff.material.opacity = Math.max(0, u.life) * (u.size > 1 ? 0.5 : 0.3);
       puff.visible = u.life > 0;
     }
   }
@@ -314,7 +348,39 @@ export class SkaterModel {
   }
 
   // Longer guns get a longer (and slightly chunkier) barrel.
+  // Dress him. look: see currentLook() in systems/cosmetics.js.
+  applyLook(look) {
+    const M = this.mats, repaint = (material, texture) => { material.map?.dispose(); material.map = texture; material.needsUpdate = true; };
+    if (look.hoodie !== this.look?.hoodie) {
+      repaint(M.hoodie, hoodieTexture(look.hoodie));
+      repaint(M.hoodieRib, ribTexture(`#${new THREE.Color(look.hoodie).multiplyScalar(0.8).getHexString()}`));   // cuffs and hem a shade darker
+    }
+    const bare = look.beanie === 'none';
+    this.beanieDome.visible = this.brim.visible = !bare;
+    this.hair.visible = bare;
+    if (!bare && look.beanie !== this.look?.beanie) repaint(M.beanie, ribTexture(look.beanie));
+    if (look.deck !== this.look?.deck) {
+      repaint(M.wood, look.deck === 'wood' ? null : deckTexture(look.deck));
+      M.wood.color.set(look.deck === 'wood' ? 0x9a6a3c : 0xffffff);
+    }
+    M.urethane.color.set(look.wheels);
+    for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke;
+    this.smoking = this.ember.visible = look.smoke === 'cigarette';
+    this.look = { ...look };
+    this.paintGun();   // (the gun may have gone gold)
+  }
+
+  // The gun in his hand is gold if he owns that finish for it (he holds a pistol until told otherwise).
+  paintGun() {
+    const gold = !!this.look?.goldGuns.has(this.def?.id || 'pistol'), metal = this.mats.gunmetal;
+    metal.color.set(gold ? 0xffc233 : 0x1b1d21);
+    metal.emissive.set(gold ? 0x5a3a00 : 0x000000);
+    metal.roughness = gold ? 0.3 : 0.45;
+  }
+
   setWeapon(def) {
+    this.def = def;
+    this.paintGun();
     this.barrel.scale.set(1 + (def.barrel - 1) * 0.25, 1 + (def.barrel - 1) * 0.2, def.barrel);
     this.barrel.position.z = 0.55 + 0.15 * def.barrel;
     this.scope.visible = !!def.scope;

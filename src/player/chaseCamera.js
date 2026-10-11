@@ -62,8 +62,9 @@ export class ChaseCamera {
     else this.idle += dt;
 
     // Swing lazily behind the heading (ignore it when the board points straight up/down).
+    // Not in the air: spinning a 360 turns the board, not the view.
     const { fwd } = skater;
-    if (fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
+    if ((skater.grounded || skater.grinding) && fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
       const step = wrap(Math.atan2(fwd.x, fwd.z) - this.yaw) * damp(c.yawLag, dt);
       this.yaw += step;
       if (holding) this.aimYaw = wrap(this.aimYaw - step);   // cancel it out: keep pointing where you were pointing

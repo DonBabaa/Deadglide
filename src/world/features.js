@@ -62,6 +62,14 @@ export function funbox({ length = 16, width = 12, radius = 7, angle = 35, ...at 
     (u, w) => Math.min(t(u + L), t(L - u), t(w + Wd), t(Wd - w)), { topY: transitionHeight(radius, a), drape: true });
 }
 
+// Leaning fence round a grave plot: iron railings that have slumped over, so they work as a
+// launch ramp. (It is drawn as see-through bars, but you ride it as a solid slope.) The long outer face rises to the lip (ride up it and you fly over the graves);
+// the short inner face drops back down, steep but rideable, so you can also roll out of the plot.
+export function fence({ width = 12, rise = 3, drop = 1.4, height = 1.6, ...at }) {
+  return prop('fence', at, [0, rise, rise + drop], [-width / 2, width / 2],
+    (u) => (u <= rise ? (height * u) / rise : height * (1 - (u - rise) / drop)), { lipU: rise, lipY: height, drape: true });
+}
+
 // Stone tomb / platform: a plain box you can ollie onto.
 export const box = ({ length = 6, width = 4, height = 1.2, ...at }) => solidBox('box', at, length, width, height, { drape: true });
 

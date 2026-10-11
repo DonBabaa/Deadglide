@@ -1,4 +1,5 @@
-// Generated background music: haunted drum & bass / jungle at 172 BPM.
+// Generated background music: haunted drum & bass / jungle at 172 BPM, which
+// turns to hard rock (same tempo, same key) when the final boss arrives.
 // Nothing is recorded. A small sequencer schedules synthesized drums and sub
 // bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
 // a wailing ghost voice, a broken music box and gusts of wind.
@@ -34,7 +35,26 @@ const CHORDS = [
 const SCALE = [77, 79, 80, 82, 84, 85, 88, 89];              // F harmonic minor, for the music box
 const WAILS = [[77, 76, 80, 79], [84, 83, 80, 76], [72, 78, 77, 73]];   // ghost-voice phrases, one note per bar
 
-let started = false, step = 0, nextTime = 0, echo = null;
+// Hard rock: palm-muted power chords chugging eighth notes. Semitones above the root (F) for each eighth
+// of the bar; anything that isn't the root is hit open and rings.
+const RIFFS = [
+  [0, 0, 3, 0, 0, 5, 0, 3],
+  [0, 0, 3, 0, 0, 6, 5, 3],   // (the 6 is the tritone)
+  [0, 0, 3, 0, 0, 5, 0, 3],
+  [0, 0, 8, 7, 5, 3, 1, 0],   // walking back down to the root
+];
+const ROCK_KICK = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0.8, 0, 0, 0, 0, 0.6];
+const ROCK_SNARE = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
+
+let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null;
+
+// 'dnb' (the usual music) or 'rock' (the boss fight). The new groove starts from bar one, at once.
+export function setMusicStyle(next) {
+  if (next === style) return;
+  style = next;
+  step = 0;
+  if (audio.ctx) nextTime = audio.ctx.currentTime + 0.05;
+}
 
 export function startMusic() {
   if (started || !audio.ctx) return;
@@ -66,6 +86,7 @@ export function startMusic() {
 }
 
 function schedule(index, t) {
+  if (style === 'rock') return rock(index, t);
   const bar = Math.floor(index / 16), s = index % 16;
   const chord = CHORDS[Math.floor(bar / 2) % CHORDS.length];
   const intro = bar < 4;                          // atmosphere and hats only
@@ -91,6 +112,60 @@ function schedule(index, t) {
   if (kick) drumKick(t, kick);
   if (snare) drumSnare(t, snare);
   for (const [at, length] of BASS_HITS) if (s === at) bass(t, STEP * length, chord.root);
+}
+
+function rock(index, t) {
+  const bar = Math.floor(index / 16), s = index % 16, riff = RIFFS[bar % 4], roll = bar % 4 === 3 && s >= 10;
+  if (s === 0 && bar % 4 === 0) noiseBurst(t, 1.5, 0.2, 'highpass', 4500);   // crash cymbal
+  if (s === 0 && bar % 8 === 0) bell(t, 41);                                  // the chapel bell is still tolling
+  if (s === 0 && bar % 8 === 4) wail(t, pick(WAILS));
+
+  if (ROCK_KICK[s]) drumKick(t, ROCK_KICK[s]);
+  if (roll) drumSnare(t, 0.45 + (s - 10) * 0.1);                              // snare roll into the next four bars
+  else if (ROCK_SNARE[s]) drumSnare(t, 1.1);
+  if (s % 2 === 0) noiseBurst(t, 0.09, s % 4 === 0 ? 0.11 : 0.07, 'highpass', 6500);   // ride
+
+  if (s % 2 === 0) {
+    const up = riff[s / 2], open = up !== 0 || s === 0;
+    guitar(t, 41 + up, open ? STEP * 1.9 : STEP * 1.25, !open);
+    bass(t, STEP * 1.7, 29 + up);
+  }
+}
+
+// Distorted guitar: a power chord (root, fifth, octave) of saws into a shared amp.
+// muted: palm-muted, so short and dark.
+function guitar(t, note, time, muted) {
+  const ctx = audio.ctx, end = t + time;
+  if (!amp) {
+    // The amp: everything is driven hard into a clipper together, then through a speaker's worth of filtering.
+    amp = ctx.createGain();
+    const drive = ctx.createWaveShaper(), top = ctx.createBiquadFilter(), bottom = ctx.createBiquadFilter(), out = ctx.createGain();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) curve[i] = Math.tanh(((i / 512) - 1) * 9);
+    drive.curve = curve;
+    amp.gain.value = 2.5;
+    top.type = 'lowpass';
+    top.frequency.value = 3400;
+    bottom.type = 'highpass';
+    bottom.frequency.value = 95;
+    out.gain.value = 0.085;
+    amp.connect(drive).connect(top).connect(bottom).connect(out).connect(audio.music);
+  }
+  const pick = ctx.createBiquadFilter(), gain = ctx.createGain();
+  pick.type = 'lowpass';
+  pick.frequency.setValueAtTime(muted ? 1500 : 5000, t);
+  pick.frequency.exponentialRampToValueAtTime(muted ? 500 : 2600, end);
+  envelope(gain, t, muted ? 0.5 : 0.75, 0.004, end);
+  pick.connect(gain).connect(amp);
+  for (const [interval, detune] of [[0, -6], [0, 7], [7, 0], [12, 5]]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = midi(note + interval);
+    osc.detune.value = detune;
+    osc.connect(pick);
+    osc.start(t);
+    osc.stop(end + 0.03);
+  }
 }
 
 // ---- Helpers -----------------------------------------------------------------

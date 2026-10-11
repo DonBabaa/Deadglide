@@ -18,7 +18,7 @@ function layer(x, z, size, seed) {
 }
 
 // Tune the hills here: [metres across, metres high] for each layer.
-const LAYERS = [[220, 10], [80, 2]];
+const LAYERS = [[520, 14], [220, 24], [90, 8]];   // broad swells, the main hills, and smaller rises on top
 
 export function hillHeight(x, z, seed) {
   let h = 0;

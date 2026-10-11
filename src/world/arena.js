@@ -71,7 +71,7 @@ export function buildArena(scene) {
     }
     if (!centre || centre[0] !== pcx || centre[1] !== pcz) {
       centre = [pcx, pcz];
-      far.position.set((pcx + 0.5) * CHUNK, -1, (pcz + 0.5) * CHUNK);
+      far.position.set((pcx + 0.5) * CHUNK, groundAt((pcx + 0.5) * CHUNK, (pcz + 0.5) * CHUNK) - 4, (pcz + 0.5) * CHUNK);   // (roughly level with the land round here)
     }
   }
 

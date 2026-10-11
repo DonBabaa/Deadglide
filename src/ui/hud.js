@@ -157,6 +157,16 @@ export const hud = {
     el.querySelector('span').textContent = this.clock(seconds);
     el.classList.toggle('late', seconds > 40);   // by now they're coming thick and fast
   },
+  // Cutscene overlays. flash: the whole screen in one colour (lightning, a blink to black,
+  // a white-out); pass null to let it fade away. dread: darkness and red closing in from the edges.
+  flash(color, opacity = 1) {
+    const el = $('flash');
+    el.classList.toggle('fade', color === null);
+    if (color !== null) el.style.background = color;
+    el.style.opacity = color === null ? 0 : opacity;
+  },
+  dread(amount) { $('dread').style.opacity = amount; },
+
   // His name slams onto the middle of the screen when he arrives.
   bossIntro(name) {
     const el = $('boss-intro');
@@ -171,6 +181,16 @@ export const hud = {
     hurtEl.classList.add('on');
   },
   hideBossIntro() { $('boss-intro').classList.add('hidden'); },
+
+  // Gold carried this run (lost if you die), or null to hide it.
+  gold(amount) {
+    const el = $('gold');
+    el.classList.toggle('hidden', amount === null);
+    if (amount !== null) el.innerHTML = `<i class="coin"></i>${Math.floor(amount).toLocaleString()}`;
+  },
+
+  // The player's nickname, by the health bar.
+  name(text) { $('player-name').textContent = text; },
 
   // Points at a chest: x / y are screen fractions (0..1), or pass null to hide it.
   chestMarker(x, y, metres) {

@@ -2,8 +2,9 @@
 // box on the end-of-run screen. Scores are kept by a small function on the
 // site that hosts the game (netlify/functions/leaderboard.mjs), so the board
 // only works on the deployed site, not under `npm run dev`.
+import { getName, setName } from './playerName.js';
+
 const API = '/api/leaderboard';
-const NAME_KEY = 'deadglide.name';
 const $ = (id) => document.getElementById(id);
 const box = $('run-over'), nameInput = $('post-name'), sendButton = $('post-send'), status = $('post-status');
 const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -43,7 +44,7 @@ async function load(list, count, mine) {
 async function post() {
   const name = nameInput.value.trim();
   if (!run || !name) { status.textContent = 'Enter a name first'; nameInput.focus(); return; }
-  try { localStorage.setItem(NAME_KEY, name); } catch {}
+  setName(name);
   sendButton.disabled = true;
   status.textContent = 'Posting...';
   try {
@@ -67,7 +68,7 @@ export const leaderboard = {
   // The end-of-run screen: offer to post this run's score.
   showEnd(finished) {
     run = finished;
-    try { nameInput.value = localStorage.getItem(NAME_KEY) || ''; } catch {}
+    nameInput.value = getName();
     sendButton.disabled = false;
     status.textContent = '';
     box.classList.remove('hidden');
@@ -80,5 +81,5 @@ export const leaderboard = {
     document.body.classList.remove('run-over');
   },
   // The list on the main menu.
-  showMenu() { load($('menu-board'), 8, (() => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } })()); },
+  showMenu() { load($('menu-board'), 8, getName()); },
 };

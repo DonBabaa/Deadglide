@@ -91,6 +91,7 @@ export class Horde {
   reset() {
     this.enemies.length = 0;
     this.boss = null;           // the final boss, while he's alive
+    this.corpse = null;         // ...and his body while he dies (the cutscene animates it: see cutscenes.js)
     this.bossSpawned = false;
     this.finished = false;      // true once the boss is dead: overtime
     this.overtime = 0;          // seconds of it so far
@@ -412,9 +413,11 @@ export class Horde {
     this.kills++;
     this.score += e.T.score * (e.elite ? 10 : 1);
     e.dead = true;
-    this.events.push({ type: 'kill', elite: e.elite || !!e.T.boss, headshot, quiet, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
-    const burst = e.T.boss ? 2.5 : 1;
-    for (let k = 0; k < (e.T.boss ? 160 : e.elite ? 30 : 9); k++) {
+    this.events.push({ type: 'kill', elite: e.elite || !!e.T.boss, boss: !!e.T.boss, headshot, quiet, score: e.T.score, x: e.x, y: e.T.flying ? heightAt(e.x, e.z) : e.y, z: e.z, xp: e.T.xp * (e.elite ? 15 : 1) });
+    const burst = 1;
+    // (The boss doesn't burst yet: his body stays standing for his death scene.)
+    if (e.T.boss) this.corpse = { ...e, rise: 1, flash: 0, roar: 0, dying: 0 };
+    for (let k = 0; k < (e.T.boss ? 0 : e.elite ? 30 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
       g.life = (0.5 + Math.random() * 0.5) * burst;
       g.pos.set(e.x, e.y + 0.4 + Math.random() * 1.2 * e.scale, e.z);
@@ -452,6 +455,28 @@ export class Horde {
       if (heightAt(x, z) - groundAt(x, z) < 0.4) break;   // not on top of a tomb or a ramp
     }
     this.events.push({ type: 'bossDead', name: boss.T.title, x, y: heightAt(x, z), z });
+  }
+
+  // Chunks blown off a monster's body. power: how hard they fly.
+  gore(e, count, power = 1) {
+    const tall = e.T.height * e.scale, wide = e.T.radius * e.scale;
+    for (let k = 0; k < count; k++) {
+      const a = Math.random() * Math.PI * 2, g = this.gibs[this.nextGib++ % this.gibs.length];
+      g.life = (0.6 + Math.random() * 0.8) * Math.min(2, power);
+      g.pos.set(e.x + Math.sin(a) * wide * 0.6, e.y + tall * (0.2 + Math.random() * 0.7), e.z + Math.cos(a) * wide * 0.6);
+      g.vel.set(Math.sin(a) * (3 + Math.random() * 7) * power, (2 + Math.random() * 8) * power, Math.cos(a) * (3 + Math.random() * 7) * power);
+    }
+  }
+
+  // Clods thrown up from the ground round a spot (the boss breaking out, the portal tearing open).
+  erupt(x, z, radius, count) {
+    for (let k = 0; k < count; k++) {
+      const a = Math.random() * Math.PI * 2, r = radius * (0.5 + Math.random() * 0.7), g = this.gibs[this.nextGib++ % this.gibs.length];
+      g.life = 0.6 + Math.random() * 0.8;
+      g.pos.set(x + Math.sin(a) * r, 0, z + Math.cos(a) * r);
+      g.pos.y = heightAt(g.pos.x, g.pos.z) + 0.2;
+      g.vel.set(Math.sin(a) * (2 + Math.random() * 5), 6 + Math.random() * 10, Math.cos(a) * (2 + Math.random() * 5));
+    }
   }
 
   // Damages every monster within `radius` of a point (Shockwave Landing).
@@ -495,20 +520,22 @@ export class Horde {
   draw(dt) {
     const counts = {};
     for (const name in this.meshes) counts[name] = 0;
-    for (const e of this.enemies) {
+    for (const e of this.corpse ? [...this.enemies, this.corpse] : this.enemies) {
       const parts = this.meshes[e.name], i = counts[e.name]++;
       const walk = this.time * e.speed * e.T.stride + e.phase;
       // Lurching walk (fliers lean into the chase and bob); sinking below ground while still rising.
-      e3.set(e.T.flying ? 0.45 : 0.12, e.yaw, Math.sin(walk) * e.T.sway);
+      const roar = e.roar || 0;   // the boss, bellowing: he rears back, arms up, shuddering
+      const dying = e.dying || 0;   // ...and dying: he shakes harder and harder, sags and topples backwards
+      e3.set(e.T.flying ? 0.45 : 0.12 - 0.45 * roar - 0.75 * dying * dying, e.yaw + (Math.random() - 0.5) * 0.12 * dying, Math.sin(walk) * e.T.sway * (1 - dying) + (Math.random() - 0.5) * (0.05 * roar + 0.16 * dying));
       const bob = e.T.flying ? Math.sin(this.time * 3 + e.phase) * 0.2 : Math.abs(Math.sin(walk)) * 0.06;
-      v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + bob, e.z);
+      v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + bob - dying * dying * e.T.height * e.scale * 0.22, e.z);
       m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale));
       const color = e.flash > 0 ? HURT : e.elite ? ELITE : WHITE;
       // Each part hangs off the body at its pivot and swings with the stride
       // (not while still climbing out of the ground).
       const moving = e.rise >= 1 ? 1 : 0.25;
       for (const p of parts) {
-        const s = Math.sin(walk + p.phase) * moving;
+        const s = Math.sin(walk + p.phase) * moving - (p.swing[0] > 0.4 ? 4.4 * roar : 0);   // (only his arms swing that far)
         limb.makeRotationFromEuler(e3.set(p.swing[0] * s, p.swing[1] * s, p.swing[2] * s)).setPosition(p.pivot);
         p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
         p.mesh.setColorAt(i, color);

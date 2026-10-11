@@ -38,7 +38,7 @@ export const config = {
     revertSpeed: 1,       // rolling backwards faster than this flips your stance
 
     airTurnRate: 3.84,    // A/D spin in the air (rotates the board, not your trajectory)
-    airFlipRate: 8,       // W/S front and back flips in the air (radians per second)
+    airFlipRate: 6.5,     // W/S front and back flips in the air (radians per second)
     alignRate: 14,        // how fast the board visually tilts to the ground
     airLevelRate: 6,      // how fast the board levels to the landing surface in the air
     airLevelLookahead: 0.2,
@@ -141,6 +141,16 @@ export const config = {
     pickupRadius: 7,      // gems this close fly to you
     pullSpeed: 32,
     gemLifetime: 45,      // seconds before an uncollected gem fades
+  },
+
+  // Gold: dropped by monsters, banked only if you leave through the exit portal, spent in the shop.
+  gold: {
+    dropChance: 0.1,      // chance an ordinary monster drops a coin
+    coinValue: 5,
+    eliteGold: 25,
+    bossGold: 150,
+    overtimeBonus: 2,     // after the boss, ordinary monsters drop coins this many times as often
+    lifetime: 40,         // seconds before an uncollected coin vanishes
   },
 
   // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).

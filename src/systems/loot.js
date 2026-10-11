@@ -9,7 +9,7 @@
 //              blast(radius, damage), freeUpgrade(), frenzy(seconds), shield(seconds).
 //
 // Chests hold one of two categories: ITEMS (below) or a weapon. Every gun in
-// player/weapons.js that you don't own yet is in the draw; once you have them
+// player/weapons.js that you've unlocked in the shop and don't own yet is in the draw; once you have them
 // all, chests only hold items.
 import * as THREE from 'three';
 import { config } from '../config.js';
@@ -32,7 +32,7 @@ export const WEAPON_ITEMS = Object.values(WEAPONS).filter((w) => w.id !== 'pisto
 }));
 
 function rollItem(game) {
-  const pool = [...ITEMS, ...WEAPON_ITEMS.filter((w) => !game.hasWeapon(w.weapon)).map((w) => ({ ...w, weight: config.loot.weaponWeight }))];
+  const pool = [...ITEMS, ...WEAPON_ITEMS.filter((w) => !game.hasWeapon(w.weapon) && game.weaponUnlocked(w.weapon)).map((w) => ({ ...w, weight: config.loot.weaponWeight }))];
   let r = Math.random() * pool.reduce((sum, item) => sum + item.weight, 0);
   return pool.find((item) => (r -= item.weight) < 0) || pool[0];
 }

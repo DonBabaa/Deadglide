@@ -2,7 +2,7 @@
 // shares the audio context and volume controls set up here.
 import { config } from '../config.js';
 
-export const audio = { ctx: null, noise: null, sfx: null, music: null, muted: false };
+export const audio = { ctx: null, noise: null, sfx: null, music: null, muted: false, sfxMuted: false };   // muted = the music is off
 
 // Recorded sounds (optional). Any audio file dropped into src/assets/sounds/
 // replaces the synthesized sound of the same name: e.g. sniper.mp3 replaces
@@ -55,7 +55,7 @@ export function unlockAudio() {
 export function applyVolume() {
   if (!audio.ctx) return;
   const t = audio.ctx.currentTime;
-  audio.sfx.gain.setTargetAtTime(config.audio.sfxVolume, t, 0.05);
+  audio.sfx.gain.setTargetAtTime(audio.sfxMuted ? 0 : config.audio.sfxVolume, t, 0.05);
   audio.music.gain.setTargetAtTime(audio.muted ? 0 : config.audio.musicVolume, t, 0.05);
 }
 export function toggleMusic() {
@@ -260,9 +260,76 @@ export function playPowerup() {
   hiss('bandpass', 500, 5000, 0.45, 0.12);
   [65, 72, 77, 84].forEach((note, i) => tone('triangle', midi(note), midi(note), 0.7, 0.13, 0.12 + i * 0.05));
 }
-// The final boss arrives: a roar from under the ground.
+// Turn the music down to `level` (a fraction of its volume) for `seconds`.
+export function duckMusic(level, seconds) {
+  if (!ready()) return;
+  const t = audio.ctx.currentTime, full = audio.muted ? 0 : config.audio.musicVolume;
+  audio.music.gain.cancelScheduledValues(t);
+  audio.music.gain.setTargetAtTime(full * level, t, 0.08);
+  audio.music.gain.setTargetAtTime(full, t + seconds, 0.2);
+}
+
+// Something is coming up out of the ground. Three seconds of it getting worse:
+// a rumble you feel, a heartbeat that speeds up, strings sliding out of tune,
+// stone grinding, and a rush of air into the roar.
+export function playDread() {
+  if (!ready()) return;
+  duckMusic(0.03, 2.9);
+  tone('sine', 36, 30, 3.3, 0.55);
+  tone('sawtooth', 41, 38, 3.1, 0.1);
+  [0.3, 0.52, 1.05, 1.27, 1.7, 1.9, 2.2, 2.38, 2.58, 2.72, 2.84].forEach((at, i) => tone('sine', 72, 36, 0.15, i % 2 ? 0.4 : 0.6, at));
+  [72, 73, 78, 79, 84, 85].forEach((note, i) => tone('sawtooth', midi(note), midi(note) * (1.06 + 0.02 * i), 2.75, 0.028, 0.2));
+  hiss('lowpass', 260, 900, 2.5, 0.3, 0.5);
+  for (let i = 0; i < 14; i++) hiss('bandpass', 300 + Math.random() * 500, 150, 0.12, 0.2, 0.6 + Math.random() * 2.2);   // stones
+  hiss('bandpass', 300, 5200, 0.85, 0.3, 2.15);
+}
+// The boss finally bursts: a wet detonation with a long low tail.
+export function playBossBurst() {
+  if (!ready()) return;
+  hiss('highpass', 2500, 900, 0.08, 0.5);
+  blast(3000, 60, 1.6, 0.7);
+  tone('sine', 110, 22, 1.8, 0.9);
+  tone('sine', 60, 20, 2.4, 0.5, 0.05);
+  hiss('lowpass', 900, 70, 2.4, 0.3, 0.2);
+  for (let i = 0; i < 10; i++) hiss('bandpass', 500 + Math.random() * 700, 200, 0.12, 0.16, 0.25 + Math.random() * 1.3);   // bits landing
+}
+// One of the smaller bursts as he comes apart.
+export const playBossPop = () => ready() && (blast(1600 + Math.random() * 800, 160, 0.22, 0.3), tone('sine', 150, 50, 0.2, 0.3));
+// Lightning close by: the crack, then the roll.
+export function playThunder() {
+  if (!ready()) return;
+  hiss('highpass', 3400, 1400, 0.07, 0.5);
+  blast(2600, 70, 1.5, 0.5, 0.03);
+  tone('sine', 74, 24, 1.3, 0.5, 0.03);
+  hiss('lowpass', 500, 70, 1.8, 0.25, 0.4);
+}
+// The exit portal tearing open: the air rips, a boom, then a rising shimmer.
+export function playPortalOpen() {
+  if (!ready()) return;
+  hiss('highpass', 700, 9000, 0.45, 0.32);
+  blast(2000, 80, 0.9, 0.5);
+  tone('sine', 95, 28, 1.1, 0.75);
+  [57, 64, 69, 76, 81].forEach((note, i) => tone('sine', midi(note), midi(note + 12), 1.5, 0.07, 0.15 + i * 0.1));
+  hiss('bandpass', 400, 3800, 1.6, 0.1, 0.2);
+}
+// Being pulled through it: everything rushes upward, then a thump as it shuts.
+export function playExit() {
+  if (!ready()) return;
+  duckMusic(0.15, 2.2);
+  hiss('bandpass', 250, 6500, 1.3, 0.3);
+  tone('sine', 180, 1700, 1.3, 0.22);
+  tone('triangle', 270, 2550, 1.3, 0.08);
+  [0, 0.09, 0.18, 0.27].forEach((at, i) => tone('sine', midi(88 + i * 3), midi(88 + i * 3), 0.5, 0.07, 1.25 + at));
+  tone('sine', 130, 34, 0.6, 0.7, 1.55);
+  blast(1500, 90, 0.5, 0.35, 1.55);
+}
+
+// The final boss roars: a bellow from the chest with a scream on top.
 export function playBossIntro() {
   if (!ready()) return;
+  blast(1100, 140, 1.7, 0.5);
+  tone('sawtooth', 330, 105, 1.4, 0.13);
+  tone('square', 220, 78, 1.6, 0.09);
   tone('sawtooth', 95, 32, 2.2, 0.3);
   tone('sawtooth', 142, 47, 2.0, 0.16, 0.05);
   tone('sine', 60, 28, 2.4, 0.4);
@@ -286,6 +353,112 @@ export function playPortal() {
   if (!ready()) return;
   hiss('bandpass', 300, 4200, 1.4, 0.12);
   [57, 64, 69, 76, 81].forEach((note, i) => tone('sine', midi(note), midi(note + 12), 1.2, 0.1, i * 0.12));
+}
+// The HotBox cutscene. A long drag on the cigarette (the paper crackling) and
+// the breath out, over a West Coast beat in the early-2000s Los Angeles style,
+// at 93 BPM: staccato piano chords hammering straight eighth notes, a hard kick
+// with a snare and clap on the two and four, tight straight hi-hats, a gliding
+// analogue-synth bass, and the high sine "whistle" lead coming in over the top.
+// The game's music is turned down underneath.
+export function playDrag() {
+  if (!ready()) return;
+  const ctx = audio.ctx, t = ctx.currentTime;
+
+  // Turn the music down for the length of the cutscene.
+  const level = audio.muted ? 0 : config.audio.musicVolume;
+  audio.music.gain.cancelScheduledValues(t);
+  audio.music.gain.setTargetAtTime(level * 0.06, t, 0.05);
+  audio.music.gain.setTargetAtTime(level, t + 3.0, 0.25);
+
+  // The smoke itself, quietly, under the beat.
+  hiss('bandpass', 500, 2200, 1.0, 0.08, 0.45);
+  hiss('lowpass', 2600, 400, 1.2, 0.12, 1.6);
+
+  const EIGHTH = 60 / 93 / 2;
+  const at = (eighth) => eighth * EIGHTH;
+
+  // Piano: short, hard chords on every eighth note (the top note moves, the rhythm never does).
+  const room = ctx.createBiquadFilter();
+  room.type = 'lowpass';
+  room.frequency.value = 3400;
+  room.connect(audio.sfx);
+  const stab = (notes, start, loud) => notes.forEach((note) => {
+    const begin = t + start, f = midi(note);
+    [['triangle', f, 0.075], ['sine', f * 2, 0.03], ['sine', f * 3, 0.012]].forEach(([type, freq, volume]) => {   // a struck string: the overtones die first
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, begin);
+      gain.gain.exponentialRampToValueAtTime(volume * loud, begin + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.001, begin + 0.2);
+      osc.connect(gain).connect(room);
+      osc.start(begin);
+      osc.stop(begin + 0.23);
+    });
+  });
+  const CHORDS = [[67, 70, 74], [67, 70, 74], [67, 70, 74], [67, 70, 75], [67, 70, 75], [67, 70, 74], [65, 69, 74], [65, 69, 72], [67, 70, 74], [67, 70, 74]];   // G minor, leaning on Eb and F
+  CHORDS.forEach((notes, i) => stab([notes[0] - 12, ...notes], at(i), i % 2 ? 0.8 : 1));
+
+  // Drums: dry and hard. Kick on the one, the "and" of two, and three; snare and clap together on two and four.
+  for (const e of [0, 3, 4, 8]) {
+    tone('sine', 150, 40, 0.26, 0.9, at(e));
+    tone('triangle', 300, 60, 0.05, 0.3, at(e));
+  }
+  for (const e of [2, 6]) {
+    hiss('bandpass', 2000, 1400, 0.16, 0.5, at(e));
+    tone('triangle', 200, 140, 0.09, 0.3, at(e));
+    [0, 0.011, 0.023].forEach((late) => hiss('bandpass', 1200, 1000, 0.09, 0.26, at(e) + late));   // the clap: a few hands, not quite together
+  }
+  for (let e = 0; e < 10; e += 0.5) hiss('highpass', 9500, 9000, 0.03, e % 1 ? 0.035 : 0.075, at(e));   // sixteenth hats, the in-between ones ghosted
+
+  // Bass: one fat synth voice that slides from note to note.
+  const bass = ctx.createOscillator(), bassFilter = ctx.createBiquadFilter(), bassGain = ctx.createGain();
+  bass.type = 'sawtooth';
+  bassFilter.type = 'lowpass';
+  bassFilter.frequency.value = 260;
+  bassFilter.Q.value = 6;
+  bass.frequency.setValueAtTime(midi(31), t);
+  bassGain.gain.setValueAtTime(0.0001, t);
+  for (const [e, note, length] of [[0, 31, 1.3], [3, 31, 0.8], [4, 27, 1.6], [6, 29, 1.6], [8, 31, 2]]) {   // G . G Eb . F . G
+    bass.frequency.setTargetAtTime(midi(note), t + at(e), 0.025);
+    bassGain.gain.setTargetAtTime(0.5, t + at(e), 0.008);
+    bassGain.gain.setTargetAtTime(0.0001, t + at(e) + length * EIGHTH * 0.85, 0.03);
+  }
+  bass.connect(bassFilter).connect(bassGain).connect(audio.sfx);
+  bass.start(t);
+  bass.stop(t + 3.25);
+
+  // The whistle: a pure high note that slides in over the second half, with a slow wobble.
+  const lead = ctx.createOscillator(), wobble = ctx.createOscillator(), depth = ctx.createGain(), leadGain = ctx.createGain();
+  lead.type = 'sine';
+  wobble.frequency.value = 5.2;
+  depth.gain.value = 9;
+  wobble.connect(depth).connect(lead.frequency);
+  lead.frequency.setValueAtTime(midi(82), t + at(4));
+  lead.frequency.setTargetAtTime(midi(86), t + at(4), 0.06);    // up into D
+  lead.frequency.setTargetAtTime(midi(84), t + at(7), 0.04);    // C
+  lead.frequency.setTargetAtTime(midi(79), t + at(8), 0.05);    // and down to G
+  leadGain.gain.setValueAtTime(0.0001, t + at(4));
+  leadGain.gain.exponentialRampToValueAtTime(0.05, t + at(4) + 0.08);
+  leadGain.gain.setValueAtTime(0.05, t + at(8) + 0.2);
+  leadGain.gain.exponentialRampToValueAtTime(0.001, t + 3.15);
+  lead.connect(leadGain).connect(audio.sfx);
+  lead.start(t + at(4)); wobble.start(t + at(4));
+  lead.stop(t + 3.2); wobble.stop(t + 3.2);
+}
+// One coin landing on the pile. progress 0..1 through the count: they ring higher as it goes.
+export function playCoin(progress = 0) {
+  if (!ready()) return;
+  const f = 1500 + 1300 * progress + Math.random() * 120;
+  tone('sine', f, f, 0.09, 0.07);
+  tone('triangle', f * 1.5, f * 1.5, 0.05, 0.035);
+}
+// The count is done: a cash-register ring.
+export function playCashIn() {
+  if (!ready()) return;
+  hiss('highpass', 6000, 3000, 0.06, 0.2);
+  tone('square', 620, 520, 0.05, 0.08);
+  [84, 88, 91, 96].forEach((note, i) => { tone('sine', midi(note), midi(note), 0.9, 0.11, 0.07 + i * 0.03); tone('triangle', midi(note) * 2, midi(note) * 2, 0.4, 0.03, 0.07 + i * 0.03); });
 }
 // The shield taking a hit for you: a glassy ping.
 export const playShieldHit = () => ready() && (tone('sine', 1900, 900, 0.18, 0.16), tone('triangle', 2850, 1400, 0.12, 0.07));

@@ -4,6 +4,7 @@
 import { WEAPONS } from '../player/weapons.js';
 import { UPGRADES, describe } from '../systems/upgrades.js';
 import { POWERUPS } from '../player/powerups.js';
+import { getName, setName, cleanName } from '../ui/playerName.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch');
@@ -68,7 +69,27 @@ function setCreative(on) {
   loadoutBox.classList.toggle('hidden', !on);
 }
 
-$('level-1').addEventListener('click', () => { home.classList.add('hidden'); launch.classList.remove('hidden'); });
+// Your nickname: needed before you can play (it goes by your health bar and on the leaderboard).
+const nameInput = $('menu-name');
+nameInput.addEventListener('input', () => {
+  const clean = cleanName(nameInput.value);
+  if (clean !== nameInput.value.trim()) nameInput.value = clean;   // drop characters that aren't allowed as they're typed
+  setName(nameInput.value);
+  nameInput.classList.remove('missing');
+});
+nameInput.addEventListener('keydown', (e) => { if (e.code === 'Enter') $('level-1').click(); });
+
+$('level-1').addEventListener('click', () => {
+  if (!getName()) {   // no name yet: point at the box instead of going on
+    nameInput.classList.remove('missing');
+    void nameInput.offsetWidth;
+    nameInput.classList.add('missing');
+    nameInput.focus();
+    return;
+  }
+  home.classList.add('hidden');
+  launch.classList.remove('hidden');
+});
 $('menu-back').addEventListener('click', () => { launch.classList.add('hidden'); home.classList.remove('hidden'); });
 toggle.addEventListener('click', () => setCreative(!creative));
 $('menu-play').addEventListener('click', () => {
@@ -79,8 +100,11 @@ $('menu-play').addEventListener('click', () => {
 export const menu = {
   onStart(callback) { onStart = callback; },
   show(best) {
+    nameInput.value = getName();
+    nameInput.classList.remove('missing');
     $('menu-best').textContent = best > 0 ? `Best score ${best.toLocaleString()}` : '';
     launch.classList.add('hidden');
+    $('menu-shop').classList.add('hidden');
     home.classList.remove('hidden');
     root.classList.remove('hidden');
     document.body.classList.add('in-menu');

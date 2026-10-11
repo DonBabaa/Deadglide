@@ -17,7 +17,7 @@ import { hillHeight } from './noise.js';
 export const CHUNK = 96;        // metres per chunk
 export const SLOT = CHUNK / 3;  // metres per feature slot
 const PATH = 2.5;               // half-width of the paved lanes between slots
-const TOO_STEEP = 0.2;          // slots sloping more than this (rise / run) are left empty
+const TOO_STEEP = 0.28;         // slots sloping more than this (rise / run) are left empty
 
 // Feature weights per district type.
 const DISTRICTS = {
@@ -104,10 +104,17 @@ const FEATURES = {
     return true;
   },
 
-  // Grass plot full of headstones, with a bare tree in one corner.
+  // Grass plot full of headstones, with a bare tree in one corner and a leaning
+  // fence along each side: ramps to jump the graves from, or to roll out over.
   graves(c, x, z, rand) {
-    const w = range(rand, 18, 26), d = range(rand, 12, 20);
+    const w = range(rand, 18, 25), d = range(rand, 12, 20);
     c.plots.push({ x, z, w, d });
+    // One fence per side, its lip just outside the kerb, with the corners left open to ride through.
+    const RISE = 3, LIP = 0.4;
+    for (const [facing, half, length] of [[180, w / 2, d], [0, w / 2, d], [270, d / 2, w], [90, d / 2, w]]) {
+      const ux = Math.cos(F.rad(facing)), uz = Math.sin(F.rad(facing));   // (+u points into the plot)
+      c.props.push(F.fence({ x: x - ux * (half + LIP + RISE), z: z - uz * (half + LIP + RISE), facing, width: length - 4.5, rise: RISE }));
+    }
     for (let gz = z - d / 2 + 2; gz <= z + d / 2 - 1.2; gz += 3.6) {
       for (let gx = x - w / 2 + 1.6; gx <= x + w / 2 - 1.6; gx += 2.4) {
         if (rand() < 0.22) continue;

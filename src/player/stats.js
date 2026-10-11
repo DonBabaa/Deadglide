@@ -10,6 +10,7 @@ const BASE = {
   ramDamage: 0,       // damage dealt by riding into monsters at speed (0 = you get hurt instead)
   pickupRadius: 1,    // XP pickup radius multiplier
   xpGain: 1,          // XP multiplier
+  goldGain: 1,        // gold multiplier
   topSpeed: 1,        // push top-speed multiplier
   maxHp: 0,           // extra HP on top of config.player.maxHp
   invulnerable: 0,    // extra seconds of safety after a hit
