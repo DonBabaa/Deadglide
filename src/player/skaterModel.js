@@ -27,6 +27,9 @@ const limb = (radius, length, material, px, py, pz) => part(new THREE.CapsuleGeo
 const box = (w, h, d, material, px, py, pz) => part(new THREE.BoxGeometry(w, h, d), material, px, py, pz);
 const tube = (radius, length, material, px, py, pz, radiusTop = radius) => part(new THREE.CylinderGeometry(radiusTop, radius, length, 16), material, px, py, pz);
 
+const FLIP_PIVOT = 0.85;   // he flips about this height (his middle)
+const X_AXIS = new THREE.Vector3(1, 0, 0), flipQ = new THREE.Quaternion(), pivot = new THREE.Vector3();
+
 export class SkaterModel {
   constructor(scene) {
     const std = (color, roughness = 0.8, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
@@ -196,6 +199,7 @@ export class SkaterModel {
     scene.add(this.root);
     this.lean = 0;
     this.crouch = 0;
+    this.flip = 0;       // the flip angle being shown
   }
 
   // aimPoint: world position under the crosshair. gunUp: aiming or firing right now.
@@ -208,6 +212,19 @@ export class SkaterModel {
     z.copy(skater.fwd).addScaledVector(skater.up, -skater.fwd.dot(skater.up)).normalize();
     x.crossVectors(skater.up, z);
     this.root.quaternion.setFromRotationMatrix(basis.makeBasis(x, skater.up, z));
+
+    // Front / back flips: the whole of him turns over about his middle. Back on the
+    // ground, whatever is left of the turn unwinds quickly.
+    if (skater.flip !== 0) this.flip = skater.flip;
+    else {
+      this.flip = Math.atan2(Math.sin(this.flip), Math.cos(this.flip)) * Math.exp(-14 * dt);
+      if (Math.abs(this.flip) < 0.01) this.flip = 0;
+    }
+    if (this.flip !== 0) {
+      this.root.quaternion.multiply(flipQ.setFromAxisAngle(X_AXIS, this.flip));
+      pivot.set(0, FLIP_PIVOT, 0).applyQuaternion(this.root.quaternion);
+      this.root.position.addScaledVector(skater.up, FLIP_PIVOT).sub(pivot);
+    }
 
     // Lean into carves, more at speed.
     const speed01 = Math.min(1, skater.speed / config.skate.maxSpeed);

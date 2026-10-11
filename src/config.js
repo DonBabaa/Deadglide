@@ -37,7 +37,8 @@ export const config = {
     fallLineRate: 6,
     revertSpeed: 1,       // rolling backwards faster than this flips your stance
 
-    airTurnRate: 3.2,     // A/D spin in the air (rotates the board, not your trajectory)
+    airTurnRate: 3.84,    // A/D spin in the air (rotates the board, not your trajectory)
+    airFlipRate: 8,       // W/S front and back flips in the air (radians per second)
     alignRate: 14,        // how fast the board visually tilts to the ground
     airLevelRate: 6,      // how fast the board levels to the landing surface in the air
     airLevelLookahead: 0.2,
@@ -71,6 +72,8 @@ export const config = {
     landTolerance: 0.6,   // land with a trick at least this far through and you still catch it
     spinTolerance: 30,    // an A/D body spin counts as a 180 from (180 - this) degrees
     boostPerSpin: 3,      // speed added on landing per 180 of body spin
+    flipTolerance: 70,    // a W/S flip counts if you land within this many degrees of the full turn; otherwise it's a sloppy landing
+    boostPerFlip: 7,      // speed added on landing per flip
     boostScale: 1,        // multiplies every trick's landing boost
     maxBoost: 20,         // most speed one landing can give
   },

@@ -55,6 +55,7 @@ export class Skater {
     this.kickTimer = 0;     // time until the next kick-push is allowed
     this.sinceKick = 9;     // for the kick animation
     this.spin = 0;          // total body spin since takeoff (radians)
+    this.flip = 0;          // total front (+) / back (-) flip since takeoff (radians)
     this.trick = null;      // board trick in progress (an entry of TRICKS)
     this.trickTime = 0;
     this.trickIndex = 0;    // which trick the button does next
@@ -73,6 +74,11 @@ export class Skater {
   update(dt, inp) {
     this.prevPos.copy(this.pos);
     this.steer = inp.steer;
+    // W/S flip you in the air, but not if you were already holding them when you left
+    // the ground (W is how you roll): let go and press again once you're airborne.
+    if (this.grounded || this.rail) { this.carriedW = inp.push; this.carriedS = inp.brake; }
+    else { this.carriedW &&= inp.push; this.carriedS &&= inp.brake; }
+    this.flipInput = (inp.push && !this.carriedW ? 1 : 0) - (inp.brake && !this.carriedS ? 1 : 0);
     this.drifting = inp.drift && this.grounded && !this.rail;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     this.railCooldown = Math.max(0, this.railCooldown - dt);
@@ -111,6 +117,7 @@ export class Skater {
     this.grounded = false;
     this.airTime = 0;
     this.spin = 0;
+    this.flip = 0;
     this.trick = null;
     this.landed.length = 0;
   }
@@ -244,6 +251,9 @@ export class Skater {
       this.spin += spin;
     }
 
+    // W/S flip you forwards / backwards. (Only the model turns over: see skaterModel.js.)
+    this.flip += this.flipInput * s.airFlipRate * dt;
+
     // Level the board toward the surface we're about to land on.
     const t = s.airLevelLookahead;
     normalAt(pos.x + vel.x * t, pos.z + vel.z * t, 0, 0, tmpN);
@@ -283,11 +293,16 @@ export class Skater {
     const spins = Math.floor((Math.abs(this.spin) + rad(T.spinTolerance)) / Math.PI);   // in 180s
     const names = this.landed.map((t) => t.name);
     if (spins > 0) names.push(`${spins * 180}`);
-    let boost = spins * T.boostPerSpin;
+    // Flips only count whole: come down part-way round and the landing is sloppy.
+    const turned = Math.abs(this.flip) / (Math.PI * 2), flips = Math.round(turned);
+    if (Math.abs(turned - flips) * 360 > T.flipTolerance) ok = false;
+    else if (flips > 0) names.push(`${['', '', 'Double ', 'Triple '][flips] ?? `${flips}x `}${this.flip > 0 ? 'frontflip' : 'backflip'}`);
+    let boost = spins * T.boostPerSpin + (ok ? flips * T.boostPerFlip : 0);
     for (const t of this.landed) boost += t.boost;
     boost = Math.min(T.maxBoost, boost * T.boostScale);
     this.landed.length = 0;
     this.spin = 0;
+    this.flip = 0;
     return { ok, name: names.join(' + '), boost };
   }
 
