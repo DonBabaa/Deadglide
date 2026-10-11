@@ -869,35 +869,46 @@ export class CasinoRoom {
   nearRoulette() {
     return Math.hypot(Math.max(0, Math.abs(this.pos.x - ROU.x) - 2.65), Math.max(0, Math.abs(this.pos.z - ROU.z) - 1.15)) < 1.0;
   }
-  playRoulette() {
+  // Step up to the table: the first free place along its near side (others: where everyone else is standing).
+  playRoulette(others = []) {
     this.orbit = this.tilt = 0;
     this.roulette = true;
     this.pos.copy(this.rou.stand);
+    const free = [0, -1.1, 1.1, -2.2, 2.0].find((dx) => !others.some((p) => Math.hypot(p.x - (this.rou.stand.x + dx), p.z - this.rou.stand.z) < 0.6));
+    this.pos.x += free || 0;
     this.yaw = Math.PI;   // facing the table
     this.speed = 0;
   }
-  // Put chips on the felt to match the bets: { spot id: gold }.
-  showBets(bets) {
+  // Put chips on the felt: yours ({ spot id: gold }), and beside them everyone else's put together (in blue).
+  showBets(mine, theirs = {}) {
     const chips = this.rou.chips;
-    for (const s of SPOTS) {
-      const amount = bets[s.id] || 0;
-      let chip = chips.get(s.id);
-      if (!amount) { if (chip) chip.visible = false; continue; }
+    const stack = (key, s, amount, dx, dz, color) => {
+      let chip = chips.get(key);
+      if (!amount) { if (chip) chip.visible = false; return; }
       if (!chip) {
-        chip = this.add(new THREE.CylinderGeometry(0.055, 0.055, 1, 14), this.std(0xffffff, 0.5), 0, 0, 0, this.rou.table);
-        chips.set(s.id, chip);
+        chip = this.add(new THREE.CylinderGeometry(0.05, 0.05, 1, 14), this.std(0xffffff, 0.5), 0, 0, 0, this.rou.table);
+        chips.set(key, chip);
       }
       const tall = 0.014 * Math.min(12, Math.ceil(amount / 10));
       chip.visible = true;
       chip.scale.y = tall;
-      chip.position.copy(this.spotPlace(s)).y += tall / 2 + 0.005;
-      chip.material.color.set(amount >= 100 ? 0xd9b24a : amount >= 25 ? 0x3fbf6a : 0xc8201b);
+      chip.position.copy(this.spotPlace(s));
+      chip.position.x += dx;
+      chip.position.y += tall / 2 + 0.005;
+      chip.position.z += dz;
+      chip.material.color.set(color);
+    };
+    for (const s of SPOTS) {
+      const me = mine[s.id] || 0, them = theirs[s.id] || 0, both = me && them ? 1 : 0;
+      stack(s.id, s, me, -0.04 * both, 0.03 * both, me >= 100 ? 0xd9b24a : me >= 25 ? 0x3fbf6a : 0xc8201b);
+      stack(`${s.id}:others`, s, them, 0.04 * both, -0.03 * both, 0x4f9fe0);
     }
   }
-  // Spin it: the ball will land on `number`. `title` goes up when it does; `winTitle` (if you won) after, over him celebrating.
   // `lost`: you got nothing back, and the croupier is going to enjoy it.
-  spinRoulette(number, title, winTitle = '', lost = false) {
+  // `cine`: film it (you're at the table), rather than just letting the wheel spin across the room.
+  spinRoulette(number, title, winTitle = '', lost = false, cine = true) {
     this.rlost = lost;
+    this.rcine = cine;
     this.rou.index = WHEEL.indexOf(number);
     this.rou.number = number;
     this.rou.marker.visible = false;
@@ -907,8 +918,8 @@ export class CasinoRoom {
     this.rwin = winTitle;
   }
   rouletteShot() {
-    if (this.rtime < 0) return null;
-    const t = this.rtime, w = this.rou.centre, st = this.rou.stand;
+    if (this.rtime < 0 || !this.rcine || (this.rtime >= ROU_END && !this.rwin && !this.rlost)) return null;
+    const t = this.rtime, w = this.rou.centre, st = this.pos;
     const at = (x, y, z) => new THREE.Vector3(w.x + x, y, w.z + z), me = (x, y, z) => new THREE.Vector3(st.x + x, y, st.z + z);
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     let s;
@@ -934,7 +945,7 @@ export class CasinoRoom {
         R.marker.position.copy(this.spotPlace(SPOTS.find((s) => s.id === `n${R.number}`))).y += 0.09;
       }
       if (this.rlost && this.croupierLaugh <= 0 && this.rtime >= ROU_END && this.rtime < ROU_END + 0.5) { this.croupierLaugh = 2.4; playLaugh(); }
-      if (this.rtime >= ROU_END + (this.rwin || this.rlost ? ROU_CHEER : 0)) this.rtime = -1;
+      if (this.rtime >= ROU_END + ROU_CHEER) this.rtime = -1;   // (the same length for everyone, win or lose, so the next spin starts together)
     }
     // The croupier: breathing like his twin; he reaches across and flicks the wheel to start a spin, watches the ball, and laughs when you lose.
     {
@@ -1272,8 +1283,9 @@ export class CasinoRoom {
     cam.position.z = Math.max(-D / 2 + 0.5, Math.min(D / 2 - 0.5, cam.position.z));
     v.set(this.pos.x + Math.sin(round) * 2, 1.5, this.pos.z + Math.cos(round) * 2);
     if (this.roulette) {   // looking down over his shoulder at the whole table, held high in the frame (the betting board is below it)
-      v.set(this.pos.x + Math.sin(round) * 0.5 - 0.95, -0.4, this.pos.z + Math.cos(round) * 0.5);
-      cam.position.x -= 0.95;
+      const dx = this.rou.stand.x - 0.95 - this.pos.x;   // (framed on the table, whichever place he's standing at)
+      v.set(this.pos.x + Math.sin(round) * 0.5 + dx, -0.4, this.pos.z + Math.cos(round) * 0.5);
+      cam.position.x += dx;
     }
     if (sat > 0.001 && this.lastSeat !== undefined) {
       const s = this.seats[this.lastSeat];

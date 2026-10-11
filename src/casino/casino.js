@@ -134,7 +134,7 @@ export function createCasino({ onLeave }) {
   const handlers = {
     open(tableCode) {
       code = tableCode;
-      if (role === 'host') { people = new Map([[myId, me()]]); newEngine(); }
+      if (role === 'host') { people = new Map([[myId, me()]]); newEngine(); shareWheel(); }
       else net.send({ t: 'hello', name: myName(), look: myLook() });
       netStatus('');
       refresh();
@@ -142,6 +142,8 @@ export function createCasino({ onLeave }) {
     join() {},   // (a guest says hello once connected: see 'hello' below)
     leave(id) {
       people.delete(id);
+      wheelBets.delete(id);
+      shareWheel();
       request(id, 'stand');
     },
     message(id, m) {
@@ -151,12 +153,17 @@ export function createCasino({ onLeave }) {
           people.set(id, { id, name: String(m.name || 'Player').slice(0, 16), look: m.look || {}, x: 0, z: 12, yaw: Math.PI });
           net.sendTo(id, { t: 'welcome', id });
           net.sendTo(id, { t: 'table', state: structuredClone(engine.state), busy: engine.steps.length > 0, events: [] });
+          shareWheel();
           refresh();
         } else if (m.t === 'here' && people.has(id)) Object.assign(people.get(id), { x: Number(m.x) || 0, z: Number(m.z) || 0, yaw: Number(m.yaw) || 0, bar: Number.isInteger(m.bar) ? m.bar : -1 });
         else if (['sit', 'stand', 'act'].includes(m.t) && people.has(id)) request(id, m.t, m.arg, m.amount);
-      } else if (m.t === 'welcome') myId = m.id;
+        else if (m.t === 'rbet' && people.has(id)) { wheelBets.set(id, cleanBets(m.bets)); shareWheel(); refresh(); }   // roulette: their chips...
+        else if (m.t === 'rspin' && people.has(id)) hostSpin(id);                                                       // ...and they want it spun
+      } else if (m.t === 'welcome') { myId = m.id; sendBets(); }
       else if (m.t === 'table') deliver({ state: m.state, busy: m.busy }, m.events || []);
       else if (m.t === 'people') { people = new Map(m.list.map((p) => [p.id, p])); refresh(); }
+      else if (m.t === 'rbets') { tableBets = (Array.isArray(m.all) ? m.all : []).filter((p) => p && p.id !== myId).map((p) => ({ id: p.id, name: String(p.name || 'Player').slice(0, 16), bets: cleanBets(p.bets) })); refresh(); }
+      else if (m.t === 'rspin') startSpin(Number(m.number));
     },
     closed(why) { goAlone(why); },
   };
@@ -164,7 +171,7 @@ export function createCasino({ onLeave }) {
   const me = () => ({ id: myId, name: myName(), look: myLook(), x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar });
 
   function connect(asHost, joinCode) {
-    if (staked > 0 || role !== 'alone') return;   // finish the hand first
+    if (staked > 0 || rolling || role !== 'alone') return;   // finish the hand (or the spin) first
     request(myId, 'stand');
     engine = null;
     role = asHost ? 'host' : 'guest';
@@ -187,6 +194,8 @@ export function createCasino({ onLeave }) {
     myId = 'me';
     code = '';
     people = new Map();
+    tableBets = [];
+    wheelBets.clear();
     seat = -1;
     room.stand();
     newEngine();
@@ -225,7 +234,7 @@ export function createCasino({ onLeave }) {
   }
 
   function standUp() {
-    if (room.roulette) { if (!rolling) { room.stand(); refresh(); } return; }      // away from the roulette table
+    if (room.roulette) { if (!rolling) { room.stand(); sendBets(); } return; }     // away from the roulette table (your chips come with you)
     if (room.slot >= 0) { if (!spinning) { room.stand(); refresh(); } return; }   // away from a slot machine
     if (room.bar >= 0) { room.stand(); refresh(); return; }   // off a bar stool
     if (seat < 0 || staked > 0) return;   // not with a bet on the table
@@ -294,24 +303,52 @@ export function createCasino({ onLeave }) {
   $('casino-spin').addEventListener('click', pullLever);
 
   // ---- Roulette ---------------------------------------------------------------------------
-  // You play your own wheel (it isn't shared with the others in the room). Click the board to bet,
-  // spin, and the gold is settled when the number is called.
-  const CHIPS = [5, 25, 100];
-  let bets = {}, chip = CHIPS[0], rolling = null;   // rolling: the spin in progress { number, total, back, paid }
+  // One wheel for the whole room. Click the board to bet; anyone at the table with a bet down can
+  // spin, and that spin is everybody's: the host picks the number and tells the others. Each player
+  // settles their own gold when the number is called. (Alone, you are the host.)
+  //   guest -> host:  { t: 'rbet', bets }   { t: 'rspin' }
+  //   host -> guests: { t: 'rbets', all: [{ id, name, bets }] }   { t: 'rspin', number }
+  const WHEEL_CHIPS = [5, 25, 100];
+  let bets = {}, chip = WHEEL_CHIPS[0];   // your bets: { spot id: gold }
+  let rolling = null;                     // the spin in progress: { number, total, back, paid, playing }
+  let queued = null;                      // a spin that arrived before the last one had finished here
+  let tableBets = [];                     // what the others at the table have down: [{ id, name, bets }]
+  const wheelBets = new Map();            // (host) each guest's bets
+  let wheelBusy = 0;                      // (host) no new spin before this time
   const lastNumbers = [], spotEls = {};
-  const wagered = () => Object.values(bets).reduce((a, b) => a + b, 0);
+  const sum = (b) => Object.values(b).reduce((x, y) => x + y, 0), wagered = () => sum(bets);
+  // Bets as they arrive from someone else: only real spots, whole positive amounts.
+  const cleanBets = (raw) => {
+    const out = {};
+    if (raw && typeof raw === 'object') for (const s of SPOTS) { const amount = Math.floor(Number(raw[s.id])); if (amount > 0) out[s.id] = Math.min(amount, C.maxBet); }
+    return out;
+  };
+
+  // (Host) tell everyone what's on the felt.
+  function shareWheel() {
+    if (role !== 'host' || !net) return;
+    const all = [{ id: myId, name: myName(), bets: room.roulette ? bets : {} }, ...[...wheelBets].map(([id, b]) => ({ id, name: people.get(id)?.name || 'Player', bets: b }))];
+    net.broadcast({ t: 'rbets', all });
+    tableBets = all.filter((p) => p.id !== myId);
+  }
+  // Your bets changed (or you walked up, or away: your chips are only down while you're at the table).
+  function sendBets() {
+    if (role === 'guest') net?.send({ t: 'rbet', bets: room.roulette ? bets : {} });
+    else shareWheel();
+    refresh();
+  }
 
   function placeBet(id, take) {
     if (!room.roulette || rolling) return;
     if (take) delete bets[id];
     else {
-      const amount = Math.min(chip, config.casino.maxBet - wagered(), profile.gold - wagered());   // (the table limit, and what you've got)
+      const amount = Math.min(chip, C.maxBet - wagered(), profile.gold - wagered());   // (the table limit, and what you've got)
       if (amount <= 0) return;
       bets[id] = (bets[id] || 0) + amount;
     }
     $('casino-roulette-result').textContent = 'Place your bets';
     playChip();
-    refresh();
+    sendBets();
   }
   for (const s of SPOTS) {
     const b = document.createElement('button');
@@ -325,67 +362,93 @@ export function createCasino({ onLeave }) {
     $('casino-board').append(b);
     spotEls[s.id] = b;
   }
-  for (const value of CHIPS) {
+  for (const value of WHEEL_CHIPS) {
     const b = document.createElement('button');
     b.type = 'button';
     b.innerHTML = `${COIN}${value}`;
     b.addEventListener('click', () => { chip = value; refresh(); });
     $('casino-roulette-chips').append(b);
   }
-  $('casino-roulette-clear').addEventListener('click', () => { if (!rolling) { bets = {}; refresh(); } });
+  $('casino-roulette-clear').addEventListener('click', () => { if (!rolling) { bets = {}; sendBets(); } });
 
+  // You want the wheel spun.
   function spinRoulette() {
-    const total = wagered();
-    if (!room.roulette || rolling || !total || !pay(total, () => {})) return;
-    const number = spinWheel(), back = settle(bets, number);   // (decided now; the ball catches up)
-    rolling = { number, total, back, paid: false };
-    room.spinRoulette(number, `${number} ${colour(number)}`, back > total ? `+${back - total} gold` : '', back === 0);
-    playWheel();
+    if (!room.roulette || rolling || !wagered() || wagered() > profile.gold) return;
+    if (role === 'guest') net?.send({ t: 'rspin' });
+    else hostSpin(myId);
+  }
+  $('casino-roulette-spin').addEventListener('click', spinRoulette);
+
+  // (Host, or alone) spin it for everyone, if it isn't already spinning.
+  function hostSpin(id) {
+    const now = performance.now();
+    if (now < wheelBusy || (id !== myId && !sum(wheelBets.get(id) || {}))) return;
+    wheelBusy = now + 8300;
+    const number = spinWheel();   // (decided now; the ball catches up)
+    if (role === 'host') net.broadcast({ t: 'rspin', number });
+    startSpin(number);
+  }
+
+  // The wheel is spinning, here. If you're at the table with bets down, they're on.
+  function startSpin(number) {
+    if (!Number.isInteger(number) || number < 0 || number > 36) return;
+    if (rolling) { queued = number; return; }
+    const total = room.roulette ? wagered() : 0, playing = total > 0 && pay(total, () => {}), back = playing ? settle(bets, number) : 0;
+    rolling = { number, total, back, paid: false, playing };
+    room.spinRoulette(number, `${number} ${colour(number)}`, playing && back > total ? `+${back - total} gold` : '', playing && back === 0, room.roulette);
+    if (room.roulette) playWheel();
     for (const el of Object.values(spotEls)) el.classList.remove('hit');
     $('casino-roulette-result').textContent = 'No more bets';
     refresh();
   }
-  $('casino-roulette-spin').addEventListener('click', spinRoulette);
 
   function runRoulette() {
     if (!rolling) return;
-    const { number, total, back } = rolling;
+    const { number, total, back, playing } = rolling;
     if (!rolling.paid && room.called) {   // the number's called: settle up
       rolling.paid = true;
-      bank(back);
-      houseTook(total - back);
       lastNumbers.unshift(number);
       lastNumbers.length = Math.min(lastNumbers.length, 10);
       spotEls[`n${number}`].classList.add('hit');
-      $('casino-roulette-result').textContent = `${number} ${colour(number)}: ${back > total ? `you win ${back - total}` : back === total ? 'you break even' : back ? `you get ${back} back` : 'the house wins'}`;
       $('casino-roulette-history').innerHTML = lastNumbers.map((n) => `<b class="${colour(n)}">${n}</b>`).join('');
-      if (back >= total * 6) playJackpot();
-      else if (back > total) playCashIn();
-      else if (back) playCoin(0.4);
-      else playLose();
+      $('casino-roulette-result').textContent = `${number} ${colour(number)}${!playing ? '' : `: ${back > total ? `you win ${back - total}` : back === total ? 'you break even' : back ? `you get ${back} back` : 'the house wins'}`}`;
+      if (playing) {
+        bank(back);
+        houseTook(total - back);
+        if (back >= total * 6) playJackpot();
+        else if (back > total) playCashIn();
+        else if (back) playCoin(0.4);
+        else playLose();
+      }
       refresh();
     }
     if (room.rtime < 0) {   // and it's over: the same bets stay down if you can cover them
       rolling = null;
       if (wagered() > profile.gold) bets = {};
-      refresh();
+      sendBets();
+      if (queued !== null) { const next = queued; queued = null; startSpin(next); }
     }
   }
 
   function refreshRoulette() {
     $('casino-roulette').classList.toggle('hidden', !room.roulette);
-    room.showBets(bets);
+    const theirs = {};
+    for (const p of tableBets) for (const [id, amount] of Object.entries(p.bets)) theirs[id] = (theirs[id] || 0) + amount;
+    room.showBets(room.roulette ? bets : {}, theirs);
     if (!room.roulette) return;
     for (const s of SPOTS) {
       const el = spotEls[s.id], amount = bets[s.id] || 0;
       el.lastChild.textContent = amount || '';
       el.classList.toggle('bet', !!amount);
+      el.classList.toggle('theirs', !!theirs[s.id]);
       el.disabled = !!rolling;
     }
-    [...$('casino-roulette-chips').children].forEach((b, i) => b.classList.toggle('on', CHIPS[i] === chip));
-    $('casino-roulette-total').innerHTML = `Bet ${COIN}${wagered()} <small>/ ${config.casino.maxBet}</small>`;
+    [...$('casino-roulette-chips').children].forEach((b, i) => b.classList.toggle('on', WHEEL_CHIPS[i] === chip));
+    $('casino-roulette-total').innerHTML = `Bet ${COIN}${wagered()} <small>/ ${C.maxBet}</small>`;
     $('casino-roulette-spin').disabled = !!rolling || !wagered();
     $('casino-roulette-clear').disabled = !!rolling || !wagered();
+    const others = tableBets.filter((p) => sum(p.bets) > 0);
+    $('casino-roulette-others').textContent = others.length ? `Also betting:  ${others.map((p) => `${p.name} ${sum(p.bets)}`).join('  \u00b7  ')}` : '';
   }
 
   // Make the screen match the game.
@@ -589,7 +652,7 @@ export function createCasino({ onLeave }) {
         if (near >= 0) request(myId, 'sit', near);
         else if (nearBar >= 0) { room.sitBar(nearBar); refresh(); }
         else if (nearSlot >= 0) { room.playSlot(nearSlot); refresh(); }
-        else if (nearRoulette) { room.playRoulette(); refresh(); }
+        else if (nearRoulette) { room.playRoulette(others); sendBets(); }
         else if (room.slot >= 0) pullLever();   // E at a machine: pull
         else if (room.canDrink) room.drink();   // E at the bar: drink up
       }

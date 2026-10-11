@@ -590,3 +590,7 @@ body.casino-tipsy #game { filter: blur(0.8px) saturate(1.25); animation: woozy 3
 #casino-roulette-total small { font-size: 13px; opacity: 0.6; }
 #casino #casino-roulette-controls #casino-roulette-spin { padding: 9px 26px; font-size: 22px; color: var(--ink); background: #ffd23a; border-color: var(--ink); box-shadow: 4px 4px 0 var(--bone); }
 #casino-roulette-help { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-align: center; opacity: 0.7; }
+#casino-roulette-others { min-height: 16px; font-size: 13px; font-weight: 700; letter-spacing: 0.8px; color: #8fc4f0; }
+#casino #casino-board button.theirs { border-color: #4f9fe0; box-shadow: inset 0 0 0 2px #4f9fe0; }
+#casino #casino-board button.theirs.hit { box-shadow: 0 0 0 3px #ffd76a, 0 0 18px #ffd76a; border-color: #ffd76a; }
+#casino-roulette-help { max-width: 640px; }
