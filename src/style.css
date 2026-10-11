@@ -646,3 +646,9 @@ body.free-ride #seed { display: none; }
 #emotes button i { font-style: normal; font-size: 30px; line-height: 1; }
 #emotes button small { position: absolute; right: -4px; bottom: -6px; font-family: var(--text); font-size: 12px; font-weight: 700; color: var(--bone); opacity: 0.7; }
 #emotes button.on { background: #ffd23a; border-color: var(--ink); transform: scale(1.25); }
+
+/* Free Ride: back to spawn (a button on the pause screen, and the key under the line panel). */
+#respawn-button { display: none; margin-top: 18px; }
+body.free-ride #respawn-button { display: inline-block; }
+#respawn-button kbd { margin-left: 8px; font-family: var(--text); font-size: 14px; font-weight: 700; opacity: 0.6; }
+#line-keys { margin-top: 6px; font-family: var(--text); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; opacity: 0.55; text-transform: none; }

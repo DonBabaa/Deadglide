@@ -38,6 +38,7 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 | Esc | Pause (controls, sound, mouse sensitivity) |
 | M / Backspace / ` | Music on or off / restart the run / tuning panel |
 | F3 | Frame rate, and how much is being drawn |
+| R | Free Ride: back to spawn (also a button on the pause screen). The line you were on is lost |
 | T (hold) | Emote wheel, in Free Ride and the casino: push the mouse toward one (or press its number) and let go. Wave, cheer, smoke, dance, laugh, bow; friends see them |
 
 ## A run

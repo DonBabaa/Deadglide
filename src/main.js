@@ -482,8 +482,22 @@ window.addEventListener('keydown', (e) => {
     syncAudioControls();
   } else if (e.code === 'Backspace' && !(e.target instanceof HTMLInputElement)) {
     restart();
+  } else if (e.code === 'KeyR' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
+    backToSpawn();
   }
 });
+
+// Free Ride: put yourself back where you started (stuck, lost, or just a long way from your friends).
+// The line you were on is lost; your best lines, the session and the targets are untouched.
+function backToSpawn() {
+  if (!LEVELS[level].freeRide || inMenu || dead || cutscenes.active) return;
+  lines.fail('Back to spawn');
+  skater.respawn();
+  chase.snap(skater);
+  overLava = false;
+  hud.popup('Back to spawn', 'pending');
+}
+document.getElementById('respawn-button').addEventListener('click', backToSpawn);   // (on the pause screen; the click also resumes)
 
 // Mouse wheel zooms the camera: up to come in closer, down to pull back.
 window.addEventListener('wheel', (e) => {
