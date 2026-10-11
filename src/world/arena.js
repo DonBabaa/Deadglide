@@ -6,8 +6,9 @@ import { getChunk, groundAt } from './terrain.js';
 import { CHUNK } from './worldgen.js';
 import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
-import { glowTexture } from './textures.js';
+import { glowTexture, regolithTexture, strataTexture, lavaTexture } from './textures.js';
 import { CATA, floorAt } from './catacombs.js';
+import { MOON, WALL_AT, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE } from './moon.js';
 
 const HORIZON = 0x1c2535;
 const MOON_DIR = new THREE.Vector3(-0.6, 0.62, -0.4).normalize();
@@ -43,7 +44,7 @@ export function buildArena(scene) {
   const headlamp = new THREE.SpotLight(0xfff0d6, 0, 120, 0.62, 0.55, 1.5);
   const glow = new THREE.PointLight(0xa8b8e0, 0, 30, 1.6);
   scene.add(roof, headlamp, headlamp.target, glow);
-  let level = 1;
+  let level = 1, view = VIEW, moonFar = null;
 
   const lampLights = Array.from({ length: LAMP_LIGHTS }, () => {
     const light = new THREE.PointLight(0xffc488, 0, 70, 2);
@@ -66,8 +67,8 @@ export function buildArena(scene) {
   function stream(pos, budget) {
     const pcx = Math.floor(pos.x / CHUNK), pcz = Math.floor(pos.z / CHUNK);
     const missing = [];
-    for (let dx = -VIEW; dx <= VIEW; dx++) {
-      for (let dz = -VIEW; dz <= VIEW; dz++) {
+    for (let dx = -view; dx <= view; dx++) {
+      for (let dz = -view; dz <= view; dz++) {
         if (!loaded.has(`${pcx + dx},${pcz + dz}`)) missing.push([dx * dx + dz * dz, pcx + dx, pcz + dz]);
       }
     }
@@ -75,7 +76,7 @@ export function buildArena(scene) {
     for (const [, cx, cz] of missing.slice(0, budget)) load(cx, cz);
 
     for (const [key, entry] of loaded) {
-      if (Math.abs(entry.cx - pcx) > VIEW + 1 || Math.abs(entry.cz - pcz) > VIEW + 1) {
+      if (Math.abs(entry.cx - pcx) > view + 1 || Math.abs(entry.cz - pcz) > view + 1) {
         scene.remove(entry.group);
         builder.dispose(entry.group);
         loaded.delete(key);
@@ -112,16 +113,28 @@ export function buildArena(scene) {
       for (const entry of loaded.values()) { scene.remove(entry.group); builder.dispose(entry.group); }
       loaded.clear();
       centre = null;
-      const under = n === 2;
-      scene.fog.color.set(under ? 0x060508 : HORIZON);
-      scene.fog.density = under ? 0.017 : 0.0085;
-      scene.background.set(under ? 0x060508 : HORIZON);
-      fill.intensity = under ? 0.22 : 0.75;
-      moon.intensity = under ? 0 : 1.9;
-      sky.visible = far.visible = !under;
+      const under = n === 2, lunar = n === 3;
+      view = lunar ? 3 : VIEW;   // (no mist on the Moon to hide the edge of what's loaded: load more of it)
+      const dark = under ? 0x060508 : lunar ? 0x000000 : HORIZON;
+      scene.fog.color.set(dark);
+      scene.fog.density = under ? 0.017 : lunar ? 0.0012 : 0.0085;
+      scene.background.set(dark);
+      fill.intensity = under ? 0.22 : lunar ? 0.3 : 0.75;
+      moon.intensity = under ? 0 : lunar ? 3.4 : 1.9;       // (on the Moon this light is the Sun)
+      moon.color.set(lunar ? 0xfff6e8 : 0xc3d4ff);
+      sky.visible = !under;
+      sky.userData.dome.material.uniforms.horizon.value.set(lunar ? 0x000000 : HORIZON);
+      sky.userData.dome.material.uniforms.top.value.set(lunar ? 0x000000 : 0x04060c);
+      for (const o of sky.userData.moon) o.visible = !lunar;   // (you're standing on it)
+      sky.userData.earth.visible = lunar;
+      far.visible = n === 1;
+      mist.group.visible = !lunar;
       roof.visible = under;
       headlamp.intensity = under ? 2400 : 0;
       glow.intensity = under ? 90 : 0;
+      // The whole arena, coarsely, under the detailed ground near you: so the far side is always there to see.
+      if (lunar && !moonFar) { moonFar = buildMoonFar(); scene.add(moonFar); }
+      if (moonFar) moonFar.visible = lunar;
     },
     // Build everything around the start point up front.
     prime(pos) {
@@ -140,14 +153,110 @@ export function buildArena(scene) {
       moon.position.copy(playerPos).addScaledVector(MOON_DIR, 150);
       sky.position.copy(playerPos);
       mist.update(dt, playerPos);
-      if (level === 2) {
-        roof.position.set(playerPos.x, floorAt(playerPos.z) + CATA.ceiling, playerPos.z);
+      if (level === 2) roof.position.set(playerPos.x, floorAt(playerPos.z) + CATA.ceiling, playerPos.z);
+      if (level === 3) {
+        // The Moon has a day side and a night side: the sun fades as you cross over, and your headlamp comes on.
+        const day = daylight(playerPos.x, playerPos.z);
+        moon.intensity = 3.4 * (0.14 + 0.86 * day);
+        fill.intensity = 0.55 * (0.45 + 0.55 * day);   // (some bounce light, or everything facing away from the sun is pure black)
+        const night = Math.max(0, 1 - day / 0.6);   // (the lamp only comes on once it's properly getting dark)
+        headlamp.intensity = 2000 * night;
+        glow.intensity = 60 * night;
+        if (moonFar) {
+          moonFar.userData.lava.material.map.offset.x += dt * 0.012;   // the lava creeps, and its light flickers
+          moonFar.userData.lavaLight.intensity = 800 + 250 * Math.sin(performance.now() / 130) * Math.sin(performance.now() / 47);
+        }
+        if (moonFar) for (const v of moonFar.userData.vents) v.material.opacity = 0.55 + 0.35 * Math.sin(performance.now() / 180 + v.position.x);   // vents pulse
+      }
+      if (level !== 1) {
         glow.position.copy(playerPos).y += 2.4;
         headlamp.position.copy(playerPos).y += 1.7;
         if (aim) headlamp.target.position.copy(aim);
       }
     },
   };
+}
+
+// The Moon's whole arena as one coarse sheet (a point every 4.5 m), sunk a little so the detailed ground covers it.
+function buildMoonFar() {
+  const N = 132, span = (MOON.radius + 45) * 2, step = span / N, x0 = MOON.x - span / 2, z0 = MOON.z - span / 2;
+  const positions = [], indices = [], colors = [], uvs = [];
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const x = x0 + i * step, z = z0 + j * step;
+    uvs.push(x / 14, z / 14);
+    positions.push(x, moonHeight(x, z, true) - (Math.hypot(x - MOON.x, z - MOON.z) > MOON.radius - MOON.wall ? 2.5 : 0.6), z);   // (sunk further on the wall's curve, which it can only follow roughly)
+    const lightness = 0.42 + 0.58 * daylight(x, z);
+    colors.push(lightness, lightness, lightness);
+  }
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const a = j * (N + 1) + i, b = a + 1, d = a + N + 1;
+    indices.push(a, d, b, b, d, d + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: regolithTexture(), color: 0x9b9a9c, roughness: 1, vertexColors: true }));
+  mesh.frustumCulled = false;
+  // The crater wall itself: a ring of sheer rock standing on the lip, all the way round.
+  const strata = strataTexture();
+  strata.repeat.set(70, 3);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(WALL_AT + 10, WALL_AT, 80, 120, 4, true), new THREE.MeshStandardMaterial({ map: strata, color: 0xa8a7ac, roughness: 1, side: THREE.BackSide, flatShading: true }));
+  const p = wall.geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) {   // roughen it: push each point in or out a little
+    const k = Math.sin(p.getX(i) * 0.37 + p.getY(i) * 0.9) * Math.cos(p.getZ(i) * 0.41 + p.getY(i) * 0.5);
+    p.setXYZ(i, p.getX(i) * (1 + 0.012 * k), p.getY(i), p.getZ(i) * (1 + 0.012 * k));
+  }
+  wall.geometry.computeVertexNormals();
+  wall.position.set(MOON.x, 22, MOON.z);
+  wall.frustumCulled = false;
+  mesh.add(wall);
+  // The lava in the Lava Pit: a glowing lake (it creeps: see update), and the light it throws.
+  const lava = new THREE.Mesh(new THREE.PlaneGeometry(LAVA_LAKE.length, LAVA_LAKE.width).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: lavaTexture(), toneMapped: false }));
+  lava.material.map.repeat.set(LAVA_LAKE.length / 14, LAVA_LAKE.width / 14);
+  lava.position.set(LAVA_LAKE.x, LAVA_Y, LAVA_LAKE.z);
+  lava.rotation.y = LAVA_LAKE.turn;
+  const lavaLight = new THREE.PointLight(0xff6a1a, 900, 90, 1.6);
+  lavaLight.position.set(LAVA_LAKE.x, LAVA_Y + 5, LAVA_LAKE.z);
+  mesh.add(lava, lavaLight);
+  mesh.userData.lava = lava;
+  mesh.userData.lavaLight = lavaLight;
+  // Gas vents: a pulsing ring on the ground. (What they do to you is in main.js.)
+  mesh.userData.vents = VENTS.map((v) => {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(MOON.ventRadius * 0.55, MOON.ventRadius, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x7ff0ff, transparent: true, opacity: 0.8, toneMapped: false, side: THREE.DoubleSide, depthWrite: false }));
+    ring.position.set(v.x, moonHeight(v.x, v.z) + 0.12, v.z);
+    mesh.add(ring);
+    return ring;
+  });
+  // Beacons: a mast at each place with a coloured light on top, to steer by.
+  const glowMap = glowTexture();
+  for (const b of BEACONS) {
+    const y = moonHeight(b.x, b.z), mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 18, 6), new THREE.MeshBasicMaterial({ color: 0x55565c }));
+    mast.position.set(b.x, y + 9, b.z);
+    const light = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, color: b.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    light.position.set(b.x, y + 18.5, b.z);
+    light.scale.setScalar(11);
+    mesh.add(mast, light);
+  }
+  return mesh;
+}
+
+function earthTexture() {
+  const c = Object.assign(document.createElement('canvas'), { width: 256, height: 256 }), g = c.getContext('2d');
+  g.beginPath(); g.arc(128, 128, 120, 0, Math.PI * 2); g.clip();
+  g.fillStyle = '#1f55b8'; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#2f8a4a';   // land
+  for (const [x, y, rx, ry, turn] of [[90, 95, 44, 30, 0.5], [150, 150, 36, 52, -0.3], [70, 175, 22, 30, 0.2], [185, 80, 26, 18, 0.8]]) { g.beginPath(); g.ellipse(x, y, rx, ry, turn, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = 'rgba(255, 255, 255, 0.75)';   // cloud
+  for (const [x, y, rx, ry, turn] of [[120, 60, 60, 9, 0.2], [80, 130, 50, 8, -0.3], [170, 190, 55, 10, 0.4], [150, 110, 40, 7, 0.1], [128, 228, 80, 12, 0]]) { g.beginPath(); g.ellipse(x, y, rx, ry, turn, 0, Math.PI * 2); g.fill(); }
+  const night = g.createLinearGradient(40, 0, 220, 256);   // the terminator across it
+  night.addColorStop(0.45, 'rgba(0, 0, 8, 0)'); night.addColorStop(0.7, 'rgba(0, 0, 8, 0.93)');
+  g.fillStyle = night; g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function buildSky() {
@@ -177,8 +286,14 @@ function buildSky() {
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0x9fb4e8, fog: false, transparent: true, opacity: 0.55, depthWrite: false }));
   halo.position.copy(MOON_DIR).multiplyScalar(1190);
   halo.scale.setScalar(420);
-  group.add(disc, halo);
+  // The Earth, as seen from the Moon: a blue disc half in shadow.
+  const earth = new THREE.Sprite(new THREE.SpriteMaterial({ map: earthTexture(), fog: false, depthWrite: false }));
+  earth.position.set(0.35, 0.62, 0.7).normalize().multiplyScalar(1150);
+  earth.scale.setScalar(190);
+  earth.visible = false;
+  group.add(disc, halo, earth);
   group.traverse((o) => { o.frustumCulled = false; });
+  group.userData = { dome, moon: [disc, halo], earth };
   return group;
 }
 

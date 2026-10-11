@@ -1,6 +1,8 @@
 // The shared leaderboard, as a Netlify Function at /api/leaderboard.
 //   GET  -> { top: [...] }                      the best scores
 //   POST { name, score, wave, time, won }       post a score; returns { top, rank, improved }
+// There are two boards: the main one (runs of the levels), and `line` (Free Ride's best single line: ask
+// for it with ?board=line, or "board": "line" in a POST; there, `wave` is how many tricks were in the line).
 //
 // Scores live in Netlify Blobs (storage that comes with the site: nothing to
 // set up). Each name keeps only its best score. There is no real protection
@@ -10,7 +12,7 @@ import { getStore } from '@netlify/blobs';
 const KEEP = 200;              // entries stored
 const SHOW = 20;               // entries sent to the game
 const MAX_SCORE = 100_000_000;
-const KEY = 'level1';
+const KEYS = { main: 'level1', line: 'moon-line' };
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
@@ -20,13 +22,12 @@ const whole = (n, max) => Math.max(0, Math.min(max, Math.floor(Number(n)) || 0))
 
 export default async (req) => {
   const store = getStore({ name: 'leaderboard', consistency: 'strong' });
+  let body = null;
+  if (req.method === 'POST') { try { body = await req.json(); } catch { return json({ error: 'Bad request' }, 400); } }
+  else if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  const KEY = KEYS[body ? body.board : new URL(req.url).searchParams.get('board')] || KEYS.main;
   const board = (await store.get(KEY, { type: 'json' })) || [];
-
-  if (req.method === 'GET') return json({ top: board.slice(0, SHOW) });
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-
-  let body;
-  try { body = await req.json(); } catch { return json({ error: 'Bad request' }, 400); }
+  if (!body) return json({ top: board.slice(0, SHOW) });
   const name = cleanName(body.name), score = whole(body.score, Infinity);
   if (!name) return json({ error: 'Enter a name' }, 400);
   if (score <= 0 || score > MAX_SCORE) return json({ error: 'That score cannot be posted' }, 400);

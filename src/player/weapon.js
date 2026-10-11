@@ -201,6 +201,7 @@ export class Weapon {
     dir.normalize();
     const p = this.beamEnd.copy(muzzle);
     let travelled = 0;
+    this.shot = { origin: muzzle.clone(), dir: dir.clone(), reach: 0 };   // (the last beam fired: Free Ride judges its own hits from it)
     for (; travelled < 420; travelled += 0.5) {
       p.addScaledVector(dir, 0.5);
       if (this.blocked(p)) break;
@@ -211,6 +212,7 @@ export class Weapon {
       horde.damage(victim, damage * (head ? config.gun.headshotMult : 1), dir.x, dir.z, head, W.knock);
       this.burst(p, tmp.copy(dir).multiplyScalar(120), 10);
     }
+    this.shot.reach = travelled;
     this.burst(p, tmp.copy(dir).multiplyScalar(160), 24);   // where it finally lands
 
     const beam = this.beams[this.nextBeam++ % this.beams.length];

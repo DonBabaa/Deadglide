@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const speedFill = $('speed-fill'), speedText = $('speed-text'), chargeFill = $('charge-fill');
 const state = $('state'), popups = $('popups'), overlay = $('overlay'), crosshair = $('crosshair');
 const scorePoints = $('score-points'), scoreMult = $('score-mult'), scoreHeat = $('score-heat'), weaponsEl = $('weapons');
-let shownMult = 1, shownWeapons = '', shownStreak = 0, shownPowers = null;
+let shownMult = 1, shownWeapons = '', shownStreak = 0, shownPowers = null, shownLine = '', lineCount = 0, shownRide = '';
 const chestMarker = $('chest-marker'), chestLabel = chestMarker.querySelector('span');
 const hpFill = $('hp-fill'), hpText = $('hp-text'), statsEl = $('stats'), hurtEl = $('hurt'), xpFill = $('xp-fill'), xpLevel = $('xp-level'), buffsEl = $('buffs');
 
@@ -139,6 +139,48 @@ export const hud = {
   },
 
   // The boss's health bar across the top (health 0..1), or null to hide it.
+  // Free Ride with friends: the session's code and who's riding, best line first.
+  // ride: { code, status, hosting, board() } (freeride/ride.js), or null to hide the panel.
+  ride(ride) {
+    const el = $('ride');
+    el.classList.toggle('hidden', !ride);
+    if (!ride) return;
+    const rows = ride.board(), key = `${ride.code}|${ride.status}|${rows.map((r) => `${r.name}:${r.best}:${Math.round(r.line / 100)}`).join()}`;
+    if (key === shownRide) return;
+    shownRide = key;
+    const status = $('ride-status');
+    status.textContent = ride.code ? `${ride.hosting ? 'Hosting' : 'Session'}  ` : ride.status;
+    if (ride.code) status.append(Object.assign(document.createElement('b'), { textContent: ride.code }));
+    $('ride-board').replaceChildren(...rows.map((r) => {
+      const li = document.createElement('li'), cell = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
+      if (r.me) li.className = 'me';
+      li.append(cell('who', r.name), cell('now', r.line > 0 ? `+${Math.round(r.line).toLocaleString()}` : ''), cell('best', Math.round(r.best).toLocaleString()));
+      return li;
+    }));
+  },
+  // Free Ride: the line you're building. line: a Lines (systems/lines.js), or null to hide it.
+  line(line) {
+    const el = $('line');
+    el.classList.toggle('hidden', !line);
+    if (!line) return;
+    const live = line.count > 0, key = `${line.count}:${line.points}:${line.best}:${line.session}`;
+    $('line-time').style.width = `${line.left * 100}%`;
+    if (key === shownLine) return;
+    if (live && line.count > lineCount) { el.classList.add('bump'); setTimeout(() => el.classList.remove('bump'), 90); }
+    lineCount = line.count;
+    shownLine = key;
+    el.classList.toggle('live', live);
+    $('line-total').textContent = line.total.toLocaleString();
+    $('line-sum').textContent = live ? `${line.points.toLocaleString()} \u00d7 ${line.count}` : 'Land a trick to start a line';
+    $('line-items').replaceChildren(...line.items.slice(-3).map((item) => {
+      const li = document.createElement('li'), points = document.createElement('span');
+      li.textContent = item.label;
+      points.textContent = `+${item.points.toLocaleString()}`;
+      li.append(points);
+      return li;
+    }));
+    $('line-best').textContent = `Best line ${line.best.toLocaleString()}${line.session ? `  \u00b7  this session ${line.session.toLocaleString()}` : ''}`;
+  },
   boss(health, name = '') {
     const el = $('boss'), on = health !== null;
     document.body.classList.toggle('boss-fight', on);
@@ -166,6 +208,8 @@ export const hud = {
     el.style.opacity = color === null ? 0 : opacity;
   },
   dread(amount) { $('dread').style.opacity = amount; },
+  // Speed lines round the edge of the screen (0 = none), for cut-ins.
+  lines(amount) { $('lines').style.opacity = amount; },
 
   // His name slams onto the middle of the screen when he arrives.
   bossIntro(name, label = 'Final boss') {

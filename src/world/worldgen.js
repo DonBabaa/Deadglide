@@ -14,6 +14,7 @@ import { seededRandom } from './random.js';
 import * as F from './features.js';
 import { hillHeight } from './noise.js';
 import { world } from './level.js';
+import { moonHeight, fillMoon } from './moon.js';
 import { cataHeight, cataFloor, fillCatacombs, lapChunk } from './catacombs.js';
 
 export const CHUNK = 96;        // metres per chunk
@@ -211,6 +212,7 @@ const FEATURES = {
 
 // The ground itself (hills, bowls and mounds), without props.
 export function chunkBase(c, x, z) {
+  if (c.level === 3) return moonHeight(x, z);   // (the Moon is one fixed shape: nothing is added to it here)
   let h = c.level === 2 ? cataHeight(x, z, c.seed) : hillHeight(x, z, c.seed);
   for (const b of c.bowls) h += F.bowlHeight(b, x, z);
   for (const m of c.mounds) h += F.moundHeight(m, x, z);
@@ -253,6 +255,7 @@ export function chunkHeight(c, x, z) {
 
 // Is this spot concrete (true) or grass (false)? Lanes run between the slots.
 export function chunkPaved(c, x, z) {
+  if (c.level === 3) return false;
   if (c.level === 2) return cataFloor(x, z, c.seed);   // (the Catacombs: flagstones on the floor, bare rock up the walls)
   const lx = x - c.x0, lz = z - c.z0;
   const ex = lx % SLOT, ez = lz % SLOT;
@@ -276,6 +279,7 @@ export function generateChunk(cx, cz, seed) {
     dirt: [], flames: [], lamps: [], paved: new Uint8Array(9),
   };
   if (c.level === 2) fillCatacombs(c, rand, FEATURES);
+  else if (c.level === 3) fillMoon(c);
   else fillCemetery(c, rand, seed);
 
   // Stand everything on the ground: rigid props at the height under their centre,

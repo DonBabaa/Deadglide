@@ -2,10 +2,20 @@
 // The game is either on the main menu or in a run.
 import * as THREE from 'three';
 import './style.css';
+import './ui/keys.js';
 import { config } from './config.js';
 import { input } from './input.js';
 import { buildArena } from './world/arena.js';
 import { SEED, setLevel } from './world/terrain.js';
+import { LEVELS } from './world/level.js';
+import { MOON, ventAt, lavaAt, LAVA_LAKE } from './world/moon.js';
+import { Lines } from './systems/lines.js';
+import { createRide } from './freeride/ride.js';
+import { createTargets } from './freeride/targets.js';
+import { createEggs } from './freeride/eggs.js';
+import { COSTUMES } from './player/costumes.js';
+import { owns, award, slot } from './systems/cosmetics.js';
+import { TRICKS } from './player/tricks.js';
 import { Skater } from './player/skater.js';
 import { SkaterModel } from './player/skaterModel.js';
 import { ChaseCamera } from './player/chaseCamera.js';
@@ -13,7 +23,7 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playBones, playClang, setFlame, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
@@ -64,6 +74,69 @@ const score = new Score();
 const hotbox = new HotBox(scene);
 const gold = new Gold(scene);
 const portal = new Portal(scene);
+const lines = new Lines();   // Free Ride's score
+// Free Ride with friends (see freeride/ride.js). It asks for our state about twelve times a second.
+let gunIsUp = false;
+const ride = createRide({
+  scene,
+  myName: () => getName() || 'Kirky',
+  myLook: () => { const { goldGuns, ...look } = currentLook(); return look; },
+  me: () => ({
+    x: skater.pos.x, y: skater.pos.y, z: skater.pos.z, vx: skater.vel.x, vy: skater.vel.y, vz: skater.vel.z,
+    fx: skater.fwd.x, fy: skater.fwd.y, fz: skater.fwd.z, ux: skater.up.x, uy: skater.up.y, uz: skater.up.z,
+    flip: skater.flip, speed: skater.speed, ground: skater.grounded ? 1 : 0, grind: skater.grinding ? 1 : 0,
+    trick: skater.trick ? TRICKS.indexOf(skater.trick) : -1, tp: skater.trickProgress, charge: skater.charge, steer: skater.steer,
+    ax: aimPoint.x, ay: aimPoint.y, az: aimPoint.z, gun: gunIsUp ? 1 : 0, line: lines.total, best: lines.session,
+    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0,
+  }),
+  onChange: () => {},
+});
+// Free Ride's targets (see freeride/targets.js). A kill goes on your line: the target's points, times everything
+// that made the shot hard.
+const targets = createTargets({
+  scene, ride,
+  burst: (at, velocity, count) => weapon.burst(at, velocity, count),
+  onKill({ kind, head, dist, points, shot }) {
+    const F = config.freeRide, bonus = [];
+    let worth = points * (1 + (dist / 100) * F.perHundredMetres);
+    if (head) { worth *= F.headshot; bonus.push('headshot'); }
+    if (shot.trick) { worth *= F.trickShot; bonus.push('trick shot'); }
+    else if (shot.air) { worth *= F.airborne; bonus.push('airborne'); }
+    if (!shot.scoped) { worth *= F.noScope; bonus.push('no scope'); }
+    const what = kind === 'golden' ? 'The golden one' : kind === 'drifter' ? 'Alien' : 'Astronaut';
+    lines.add(`${what} ${Math.round(dist)} m${bonus.length ? `, ${bonus.join(', ')}` : ''}`, worth);
+    hud.popup(`${head ? 'Headshot' : what}  ${Math.round(dist)} m${bonus.filter((b) => b !== 'headshot').map((b) => `  \u00b7  ${b}`).join('')}`, head || kind === 'golden' ? 'loot' : 'trick');
+    hud.hitMarker('kill');
+    playKill();
+    if (kind === 'golden') playGolden(); else if (kind === 'drifter') playAlien(); else playRadio();
+    if (head) playHeadshot();
+  },
+});
+ride.onGame = (from, message) => targets.onGame(from, message);
+// Another rider has shot you: nothing is hurt, but you're off your board, your line is gone, and for a moment you can't be shot again.
+ride.onHit = (by, head) => {
+  if (!LEVELS[level].freeRide || invulnerable > 0) return;
+  invulnerable = config.freeRide.safeAfterHit;
+  lines.fail(`Shot by ${by}`);
+  skater.vel.multiplyScalar(0.2);
+  if (skater.rail) skater.leaveRail();
+  if (skater.ceiling) skater.dropCeiling();
+  if (skater.grounded) { skater.vel.y = 5; skater.takeoff(); }
+  chase.onSloppy();
+  hud.flashHurt();
+  hud.popup(head ? `Headshot by ${by}` : `Shot by ${by}`, 'sloppy');
+  playHurt();
+};
+// The Moon's secrets (freeride/eggs.js: spoilers). Winning a costume gives you both its pieces, and puts them on.
+const eggs = createEggs({
+  scene, skater,
+  ghosts: () => ride.ghosts,
+  has: (id) => owns(slot('outfit'), slot('outfit').options.find((o) => o.id === id)),
+  onFound(id) {
+    for (const s of ['outfit', 'mask']) award(slot(s), slot(s).options.find((o) => o.id === id));
+    cutscenes.found({ name: COSTUMES[id].name, wear: applyLook });
+  },
+});
 const powerups = new Powerups(scene);
 const chase = new ChaseCamera(camera);
 const menuScene = new MenuScene(scene, camera);
@@ -157,6 +230,26 @@ function restart() {
     if (hasUnlock('headStart')) powerups.grant(powerups.random());
   }
   config.horde.enabled = creative ? creative.monsters : true;
+  // Free Ride (the Moon): everyone is equal. No upgrades or power-ups, nothing can hurt you, nothing to
+  // fight (yet), and the only gun is the sniper.
+  document.body.classList.toggle('free-ride', !!LEVELS[level].freeRide);
+  lines.reset();
+  hud.line(LEVELS[level].freeRide ? lines : null);
+  targets.reset();
+  targets.setVisible(!!LEVELS[level].freeRide);
+  eggs.reset();
+  eggs.setVisible(!!LEVELS[level].freeRide);
+  overLava = false;
+  if (LEVELS[level].freeRide) {
+    resetStats();
+    powerups.reset();
+    weapon.reset();
+    weapon.give('sniper');
+    weapon.owned = ['sniper'];
+    config.horde.enabled = false;
+    hotbox.wait = Infinity;
+    setMusicStyle('moon');
+  }
   hp = maxHp();
   model.setWeapon(weapon.def);
   hud.weapons(weapon, WEAPONS);
@@ -175,6 +268,7 @@ shop.onLook(applyLook);
 const panel = createTweakPanel({ onRespawn: () => { if (!inMenu) restart(); } });
 
 function hurt(amount) {
+  if (LEVELS[level].freeRide) return;   // (nothing hurts in Free Ride)
   if (invulnerable > 0 || shield > 0 || dead || won || creative?.noDamage) return;
   if (powerups.absorb(amount)) {   // the HotBox shield takes it
     invulnerable = config.player.invulnerableTime + stats.invulnerable;
@@ -267,6 +361,12 @@ function lockPointer() {
 
 function showMenu() {
   inMenu = true;
+  document.body.classList.remove('free-ride');
+  hud.line(null);
+  ride.leave();
+  hud.ride(null);
+  targets.setVisible(false);
+  eggs.setVisible(false);
   if (level !== 1) { setWorld(1); arena.prime(menuScene.origin); }
   paused = true;
   document.exitPointerLock?.();
@@ -315,9 +415,12 @@ document.getElementById('menu-casino-open').addEventListener('click', () => {
 });
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
-menu.onStart((loadout, chosen = 1) => {
+menu.onStart((loadout, chosen = 1, session = null) => {
   creative = loadout;
   setWorld(chosen);
+  ride.leave();
+  if (session?.host) ride.host();   // (Free Ride with friends)
+  else if (session?.join) ride.join(session.join);
   hud.name(getName() || 'Kirky');
   inMenu = false;
   menu.hide();
@@ -389,7 +492,16 @@ resize();
 
 // ---- Loop ------------------------------------------------------------------
 const renderPos = new THREE.Vector3(), aimPoint = new THREE.Vector3(), marker = new THREE.Vector3();
-let last = performance.now(), accumulator = 0, runTime = 0;
+const perfEl = document.getElementById('perf');
+let perfOn = false, perfFrames = 0, perfTime = 0;
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'F3') return;
+  e.preventDefault();
+  perfOn = !perfOn;
+  perfEl.classList.toggle('hidden', !perfOn);
+});
+let last = performance.now(), accumulator = 0, runTime = 0, ventWait = 0, overLava = false, burnWait = 0;
+const freeRide = () => !!LEVELS[level].freeRide;
 
 const kmh = (boost) => `+${Math.round(boost * 3.6)} km/h`;
 
@@ -414,6 +526,13 @@ function handleEvents() {
   for (const e of skater.events) {
     if (e.type === 'land') {
       chase.onLand(e.impact);
+      if (freeRide()) {   // Free Ride: it all goes on your line
+        const F = config.freeRide;
+        if (e.trick) lines.add(e.trick, F.trickBase + e.boost * 3.6 * F.trickPerBoost);
+        if (overLava) lines.add('Lava gap', F.lavaGap);
+        if ((e.trick || lines.count) && e.airTime > F.airFrom) lines.add('Big air', (e.airTime - F.airFrom) * F.airPerSecond);
+      }
+      overLava = false;
       if (e.trick) {
         hud.popup(`${e.trick}  ${kmh(e.boost)}`, 'trick');
         playTrickLand(e.boost);
@@ -421,13 +540,17 @@ function handleEvents() {
         score.trick(e.boost);
       }
     } else if (e.type === 'sloppy') {
+      lines.fail('Sloppy landing');
+      overLava = false;
       chase.onSloppy();
       hud.popup('Sloppy landing', 'sloppy');
     } else if (e.type === 'grind') {
       hud.popup(e.trick ? `${e.trick} to grind  ${kmh(e.boost)}` : 'Grind', 'trick');
       if (e.trick) { playTrickLand(e.boost); trickLanded(); score.trick(e.boost); }
+      if (freeRide() && e.trick) lines.add(e.trick, config.freeRide.trickBase + e.boost * 3.6 * config.freeRide.trickPerBoost);
     } else if (e.type === 'grindEnd') {
       score.grind(e.distance);
+      if (freeRide() && e.distance > 2) lines.add(`Grind ${Math.round(e.distance)} m`, e.distance * config.freeRide.grindPerMetre);
     } else if (e.type === 'ceiling') {   // (the Catacombs) stuck to the roof
       hud.popup('Roof ride', 'trick');
       playTrickLand(4);
@@ -583,9 +706,18 @@ function endDrag(reward) {
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));   // (never backwards: `last` is sometimes reset to a moment after this frame began)
   last = now;
   const [mouseDX, mouseDY] = input.takeMouse();
+  // F3: a readout of frames per second and how much was drawn last frame (for finding what makes it slow).
+  if (perfOn) {
+    perfFrames++;
+    if ((perfTime += dt) >= 0.5) {
+      const r = renderer.info.render;
+      perfEl.textContent = `${Math.round(perfFrames / perfTime)} fps   ${(1000 * perfTime / perfFrames).toFixed(1)} ms\n${r.calls} draws   ${Math.round(r.triangles / 1000)}k triangles`;
+      perfFrames = perfTime = 0;
+    }
+  }
   if (paused || inMenu || dead) setFlame(false);
 
   if (casino.active) {   // in the casino (a room of its own, reached from the menu)
@@ -599,6 +731,9 @@ function frame(now) {
     renderer.render(scene, camera);
     return;
   }
+  // Riding with friends carries on whatever you're doing (paused, in a cutscene): the others are still moving.
+  ride.update(dt);
+  hud.ride(ride.active || ride.status ? ride : null);
 
   if (!paused && drag) updateDrag(dt);
   else if (!paused && cutscenes.active) cutscenes.update(dt);
@@ -607,6 +742,46 @@ function frame(now) {
     while (accumulator >= STEP) {
       skater.update(STEP, input);
       accumulator -= STEP;
+    }
+    // (The Moon) The line you're building, the lava, and the vents.
+    if (freeRide()) {
+      const lava = lavaAt(skater.pos.x, skater.pos.z);
+      burnWait -= dt;
+      if (lava !== null && !skater.grounded && !skater.grinding) overLava = true;   // in the air over the pit: clear it and it's a gap
+      if (lava !== null && skater.pos.y <= lava + 0.15 && burnWait <= 0) {
+        // In the lava: no harm done (nothing harms you here), but the line is gone and you're thrown back out.
+        burnWait = 1;
+        overLava = false;
+        lines.fail('Burnt');
+        const dx = skater.pos.x - LAVA_LAKE.x, dz = skater.pos.z - LAVA_LAKE.z, d = Math.hypot(dx, dz) || 1;
+        skater.vel.set((dx / d) * 9, config.freeRide.burnKick, (dz / d) * 9);
+        skater.pos.y = lava + 0.3;
+        skater.takeoff();
+        hud.popup('Toasted!', 'sloppy');
+        hud.flashHurt();
+        playHurt();
+      }
+      targets.update(dt, skater.pos);
+      eggs.update(dt);
+      lines.update(dt, skater.grounded && !skater.grinding);
+      for (const e of lines.events) {
+        if (e.type === 'banked') {
+          hud.popup(e.record ? `New best line!  ${e.total.toLocaleString()}` : `Line banked  ${e.total.toLocaleString()}`, e.record ? 'loot' : 'trick');
+          if (e.record) { playPowerup(); leaderboard.postLine(e.total, e.count); } else playPickup();
+        } else if (e.total > 0) hud.popup(`Line lost  ${e.total.toLocaleString()}`, 'sloppy');
+      }
+      lines.events.length = 0;
+      hud.line(lines);
+    }
+    // (The Moon) Roll over a gas vent and it throws you into the air.
+    ventWait -= dt;
+    if (LEVELS[level].freeRide && ventWait <= 0 && skater.grounded && ventAt(skater.pos.x, skater.pos.z) >= 0) {
+      ventWait = 0.8;
+      eggs.vent(ventAt(skater.pos.x, skater.pos.z));
+      skater.vel.y = Math.max(skater.vel.y, 0) + MOON.ventKick;
+      skater.takeoff();
+      hud.popup('Vent!', 'trick');
+      playVent();
     }
 
     // Draw between the last two physics states for smooth motion.
@@ -624,6 +799,7 @@ function frame(now) {
 
     // Gun: the arm points at whatever is under the crosshair, bullets fly there.
     weapon.aimPoint(camera, aimPoint);
+    gunIsUp = aiming || firing;
     model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
     trickBuff = Math.max(0, trickBuff - dt);
     const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1);
@@ -633,6 +809,23 @@ function frame(now) {
       if (weapon.def.beam) {
         playSniper();
         hud.scopeFlash();
+        if (freeRide() && weapon.shot) {
+          // Free Ride: what did that hit? A target, or another rider (whichever is nearer).
+          const { origin, dir, reach } = weapon.shot;
+          eggs.shot(dir);
+          const rider = ride.rayHit(origin, dir, reach);
+          const doing = { air: !skater.grounded && !skater.grinding, trick: !!skater.trick || Math.abs(skater.spin) > 1.2 || Math.abs(skater.flip) > 1.2, scoped: chase.scope > 0.5 };
+          const target = targets.shoot(origin, dir, rider ? rider.dist : reach, doing);
+          if (target) hud.hitMarker(target.head ? 'crit' : 'hit');
+          else if (rider) {
+            ride.hit(rider.id, rider.head);
+            hud.hitMarker(rider.head ? 'crit' : 'hit');
+            playHit();
+            // A headshot on another rider gets the kill cam.
+            if (rider.head) cutscenes.headshot({ origin, aim: dir, name: rider.name, victim: () => ({ pos: rider.ghost.pos, up: rider.ghost.skater.up }) });
+            else hud.popup(`Tagged ${rider.name}`, 'trick');
+          }
+        }
       } else if (!weapon.def.flame) playShot(weapon.def.id);   // (the flamethrower roars for as long as it's held: see below)
     }
     setFlame(firing && !!weapon.def.flame);
@@ -712,4 +905,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, gold, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, gold, lines, ride, targets, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

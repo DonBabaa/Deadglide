@@ -7,6 +7,7 @@
 // tracers, main.js) understand its value.
 import { profile, pay, saveProfile } from './profile.js';
 import { WEAPONS } from '../player/weapons.js';
+import { COSTUMES } from '../player/costumes.js';
 
 export const SLOTS = [
   { id: 'hoodie', name: 'Hoodie', price: 150, options: [
@@ -77,7 +78,12 @@ export const SLOTS = [
     { id: 'nothing', name: 'Nothing' },
     { id: 'cigar', name: 'Cigar', casino: true },
   ] },
+  // Costumes (player/costumes.js). They can't be bought: each is found on the Moon, in Free Ride, and shows
+  // as "???" until you have. Each comes in two pieces, the body and the head, to wear together or apart.
+  { id: 'outfit', name: 'Costume: body', price: 0, options: [{ id: 'none', name: 'None' }, ...Object.entries(COSTUMES).map(([id, c]) => ({ id, name: c.name, secret: true }))] },
+  { id: 'mask', name: 'Costume: head', price: 0, options: [{ id: 'none', name: 'None' }, ...Object.entries(COSTUMES).map(([id, c]) => ({ id, name: c.name, secret: true }))] },
 ];
+export const slot = (id) => SLOTS.find((s) => s.id === id);
 
 // A gold finish for each gun.
 export const GOLD_SKIN_PRICE = 1000;

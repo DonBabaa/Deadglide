@@ -561,6 +561,18 @@ export function playBones(seconds = 0.6) {
   }
   hiss('bandpass', 1800, 700, seconds, 0.05);
 }
+// Free Ride's targets going down. A dead astronaut: his radio, at last, a squelch of static and two falling beeps.
+// An alien: a warble that slides off the top of your hearing. The golden one: a run of chimes.
+export const playRadio = () => ready() && (hiss('bandpass', 2400, 900, 0.28, 0.22), tone('square', 880, 880, 0.07, 0.07, 0.05), tone('square', 660, 660, 0.09, 0.07, 0.14));
+export const playAlien = () => ready() && (tone('sine', 520, 2600, 0.38, 0.16), tone('triangle', 780, 3900, 0.38, 0.07), tone('sine', 2600, 300, 0.22, 0.1, 0.36));
+export function playGolden() {
+  if (!ready()) return;
+  [84, 88, 91, 96, 100, 103].forEach((note, i) => { tone('sine', midi(note), midi(note), 0.5, 0.09, i * 0.06); tone('triangle', midi(note + 12), midi(note + 12), 0.3, 0.04, i * 0.06); });
+}
+
+// A gas vent letting go under you.
+export const playVent = () => ready() && (hiss('bandpass', 700, 3200, 0.5, 0.35), hiss('highpass', 5000, 2500, 0.35, 0.12), tone('sine', 90, 240, 0.3, 0.3));
+
 // A sawblade glancing off stone: a bright ring.
 export function playClang() {
   if (!ready() || !spaced('clang', 0.05)) return;

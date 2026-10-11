@@ -118,6 +118,8 @@ export function moundHeight(m, x, z) {
 
 // ---- Rails -----------------------------------------------------------------
 // Straight grind rail between two points; ay / by are absolute heights.
+// Rails can be chained: give one a `next` and / or a `prev` (another rail that starts where it ends, or ends
+// where it starts) and a grind runs on from one to the other. That is how curved and very long rails are made.
 export function rail(x1, ay, z1, x2, by, z2) {
   const len = Math.hypot(x2 - x1, by - ay, z2 - z1);
   return {

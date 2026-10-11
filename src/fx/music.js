@@ -1,6 +1,7 @@
 // Generated background music: haunted drum & bass / jungle at 172 BPM, which
 // turns to hard rock (same tempo, same key) when the final boss arrives.
 // The casino has its own: a slow swing trio (brushes, walking bass, piano).
+// So does the Moon (Free Ride): the same tempo at half speed, wide open and weightless.
 // Nothing is recorded. A small sequencer schedules synthesized drums and sub
 // bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
 // a wailing ghost voice, a broken music box and gusts of wind.
@@ -61,7 +62,7 @@ const LICKS = [[76, 79, 81, 79], [84, 81, 79, 76], [72, 74, 76, 79, 81], [81, 79
 
 let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null, lick = null;
 
-// 'dnb' (the usual music), 'rock' (the boss fight) or 'casino'. The new groove starts from bar one, at once.
+// 'dnb' (the usual music), 'rock' (the boss fight), 'casino' or 'moon'. The new groove starts from bar one, at once.
 export function setMusicStyle(next) {
   if (next === style) return;
   style = next;
@@ -101,6 +102,7 @@ export function startMusic() {
 function schedule(index, t) {
   if (style === 'rock') return rock(index, t);
   if (style === 'casino') return lounge(index, t);
+  if (style === 'moon') return moon(index, t);
   const bar = Math.floor(index / 16), s = index % 16;
   const chord = CHORDS[Math.floor(bar / 2) % CHORDS.length];
   const intro = bar < 4;                          // atmosphere and hats only
@@ -126,6 +128,30 @@ function schedule(index, t) {
   if (kick) drumKick(t, kick);
   if (snare) drumSnare(t, snare);
   for (const [at, length] of BASS_HITS) if (s === at) bass(t, STEP * length, chord.root);
+}
+
+// The Moon: half-time and floating. Big major-ninth pads two bars long, a slow kick and a lazy snare on three,
+// a sub bass holding the root, and a vibraphone picking its way up through the chord with the long echo on it.
+const MOON_CHORDS = [
+  { root: 29, notes: [53, 57, 60, 64, 67] },   // F major 9
+  { root: 26, notes: [50, 53, 57, 60, 64] },   // D minor 9
+  { root: 22, notes: [46, 53, 57, 62, 64] },   // Bb major 7 (#11)
+  { root: 24, notes: [48, 52, 55, 59, 62] },   // C major 9
+];
+const MOON_CLIMB = [0, 2, 4, 3, 1, 4, 2, 3];
+function moon(index, t) {
+  const bar = Math.floor(index / 16), s = index % 16, chord = MOON_CHORDS[Math.floor(bar / 2) % MOON_CHORDS.length];
+  const intro = bar < 2, drift = !intro && bar % 16 >= 14;   // every so often the drums fall away and it just hangs there
+  if (s === 0 && bar % 2 === 0) pad(t, BAR * 2, chord.notes);
+  if (s === 0 && bar % 8 === 5) noiseBurst(t, 1.4, 0.02, 'bandpass', 1900, 0.5);    // a burst of static on the radio
+  if (s % 2 === 0 && Math.random() < (drift ? 0.75 : 0.45)) vibes(t, chord.notes[MOON_CLIMB[(index >> 1) % 8]] + 12);
+  if (intro || drift) return;
+  if (s === 0 || s === 10) drumKick(t, s === 0 ? 0.85 : 0.55);
+  if (s === 8) drumSnare(t, 0.6);
+  if (s % 4 === 2) hat(t, 0.28, false);
+  if (bar % 4 === 3 && s === 14) hat(t, 0.35, true);
+  if (s === 0) bass(t, STEP * 8, chord.root);
+  if (s === 10) bass(t, STEP * 5, chord.root + (bar % 2 ? 7 : 0));
 }
 
 function rock(index, t) {

@@ -1,9 +1,10 @@
 // The ground as a pure height function over an endless, procedurally
 // generated world: heightAt(x, z), normalAt(x, z) and the rails near a point.
 // Physics samples this directly; chunkMesh.js builds matching meshes.
-import { CHUNK, generateChunk, chunkHeight, chunkBase, chunkPaved } from './worldgen.js';
+import { CHUNK, generateChunk, chunkHeight, chunkBase } from './worldgen.js';
 import { world } from './level.js';
-import { cataPlace, cataConfine, cataAirFloor, floorAt, route, CATA, EDGE, loopNear, pipePoint, pipeCoord, pipeAround } from './catacombs.js';
+import { moonConfine } from './moon.js';
+import { cataPlace, cataConfine, cataAirFloor, route, CATA, EDGE, loopNear, pipePoint, pipeCoord, pipeAround } from './catacombs.js';
 
 // World seed: random each run, or fixed with ?seed=1234 in the URL.
 const fromUrl = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('seed')) : 0;
@@ -38,8 +39,6 @@ export const placeAt = (px, pz, angle, dist) => (world.level === 2 ? cataPlace(p
 // Keep something that flies inside the walls.
 export const confineX = (x, z) => (world.level === 2 ? cataConfine(x, z, SEED) : x);
 
-// The nearest x that is inside the tunnel's walls (the Catacombs), for something up in the air.
-export const insideWalls = (x, z) => (world.level === 2 ? cataConfine(x, z, SEED, EDGE - 0.5) : x);
 // The tunnel's pipe at this z ({ x: its middle, w: half the floor's width, floor }), or null where there isn't one.
 // (The same object every call: read it before asking again.)
 export const pipeAt = (z) => (world.level === 2 ? route(z, SEED) : null);
@@ -64,11 +63,10 @@ export const onPipe = (s, z, out) => pipePoint(s, z, SEED, out);
 export const pipeS = (x, y, z) => pipeCoord(x, y, z, SEED);
 export const pipeRound = (z) => pipeAround(z, SEED);
 export const hasPipe = () => world.level === 2;
-// How high the roof is (the Catacombs have one; the Cemetery is open sky).
-export const ceilingAt = (z) => (world.level === 2 ? floorAt(z) + CATA.ceiling : Infinity);
 // Keep the camera (a THREE.Vector3) out of solid rock: in the Catacombs, inside the pipe (a good
 // arm's length off its walls, roof and floor), wherever in it the player has got to.
 export function fitCamera(pos) {
+  if (world.level === 3) return moonConfine(pos);   // the Moon: inside the crater wall
   if (world.level !== 2) return;
   const r = route(pos.z, SEED), off = pos.x - r.x, side = off < 0 ? -1 : 1, d = Math.abs(off) - r.w, R = CATA.ceiling / 2, GAP = 1.3;
   let h = Math.max(0.6, Math.min(2 * R - GAP, pos.y - r.floor));
@@ -87,7 +85,6 @@ export const chunkAt = (x, z) => getChunk(Math.floor(x / CHUNK), Math.floor(z / 
 
 export const heightAt = (x, z) => chunkHeight(chunkAt(x, z), x, z);
 export const groundAt = (x, z) => chunkBase(chunkAt(x, z), x, z);   // the land alone, ignoring props
-export const pavedAt = (x, z) => chunkPaved(chunkAt(x, z), x, z);
 export const railsNear = (x, z) => chunkAt(x, z).rails;
 
 const E = 0.03;      // finite-difference distance

@@ -387,7 +387,7 @@ body.run-over #audio-controls { display: none; }
 
 /* ---- The HotBox cutscene: the HUD steps aside and black bars slide in ---- */
 #hud > *:not(#flash):not(#dread) { transition: opacity 0.25s; }
-body.cutscene #hud > *:not(#bars):not(#popups):not(#flash):not(#dread):not(#boss-intro) { opacity: 0; }
+body.cutscene #hud > *:not(#bars):not(#popups):not(#flash):not(#dread):not(#boss-intro):not(#lines) { opacity: 0; }
 #bars i { position: absolute; left: 0; right: 0; height: 11vh; background: #000; transition: transform 0.4s ease-out; }
 #bars i:first-child { top: 0; transform: translateY(-100%); }
 #bars i:last-child { bottom: 0; transform: translateY(100%); }
@@ -596,3 +596,44 @@ body.casino-tipsy #game { filter: blur(0.8px) saturate(1.25); animation: woozy 3
 #casino #casino-board button.theirs { border-color: #4f9fe0; box-shadow: inset 0 0 0 2px #4f9fe0; }
 #casino #casino-board button.theirs.hit { box-shadow: 0 0 0 3px #ffd76a, 0 0 18px #ffd76a; border-color: #ffd76a; }
 #casino-roulette-help { max-width: 640px; }
+
+/* ---- Free Ride: your line ---- */
+body.free-ride #score, body.free-ride #xp, body.free-ride #stats, body.free-ride #hp, body.free-ride #gold, body.free-ride #powers { display: none; }
+#line { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); width: 420px; text-align: center; font-family: var(--display); text-transform: uppercase; text-shadow: 3px 3px 0 var(--ink); }
+#line-total { font-size: 58px; line-height: 1; letter-spacing: 2px; color: var(--bone); transition: transform 0.08s; }
+#line.live #line-total { color: #ffd23a; }
+#line.bump #line-total { transform: scale(1.18); }
+#line-sum { min-height: 22px; font-size: 19px; letter-spacing: 2px; opacity: 0.9; }
+#line .bar { height: 7px; margin: 6px 60px 8px; background: rgba(0, 0, 0, 0.55); border: 2px solid var(--ink); }
+#line-time { height: 100%; width: 0; background: #ffd23a; }
+#line-items { list-style: none; margin: 0; padding: 0; min-height: 66px; font-size: 16px; letter-spacing: 1.5px; line-height: 22px; }
+#line-items li { opacity: 0.55; }
+#line-items li:last-child { opacity: 1; color: #ffd23a; }
+#line-items li span { margin-left: 10px; opacity: 0.8; }
+#line-best { margin-top: 4px; font-family: var(--text); font-size: 13px; font-weight: 700; letter-spacing: 2px; opacity: 0.75; }
+#line-board-box { margin: 6px 0 14px; }
+body.free-ride #popups { top: 36%; }   /* (below the line panel) */
+
+/* ---- Free Ride: riding with friends ---- */
+#ride-box { margin: 4px 0 14px; }
+#ride-box .menu-row { margin-top: 8px; align-items: stretch; }
+#ride-code { width: 120px; box-sizing: border-box; padding: 6px 12px; font-family: var(--display); font-size: 24px; letter-spacing: 4px; text-transform: uppercase; text-align: center; color: var(--bone); background: #17181c; border: 3px solid var(--bone); }
+#ride-code:focus { border-color: var(--amber); outline: none; }
+#ride-note { min-height: 18px; margin-top: 6px; font-size: 13px; font-weight: 600; letter-spacing: 1px; color: #ffd76a; }
+body.free-ride #seed { display: none; }
+#ride { position: absolute; right: 28px; top: 20px; min-width: 250px; padding: 10px 14px 8px; background: rgba(12, 12, 14, 0.72); border: 3px solid var(--bone); box-shadow: 5px 5px 0 var(--ink); font-family: var(--display); text-transform: uppercase; }
+#ride-status { font-size: 17px; letter-spacing: 2px; color: #ffd76a; }
+#ride-status b { font-size: 24px; letter-spacing: 5px; color: var(--bone); font-weight: 400; }
+#ride-board { list-style: none; margin: 6px 0 0; padding: 0; font-size: 18px; letter-spacing: 1px; }
+#ride-board li { display: flex; gap: 12px; align-items: baseline; padding: 2px 0; border-top: 1px solid rgba(243, 239, 228, 0.18); }
+#ride-board li.me { color: #ffd23a; }
+#ride-board .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ride-board .now { font-family: var(--text); font-size: 12px; font-weight: 700; opacity: 0.7; }
+
+/* Speed lines, for cut-ins in the main game (the casino has its own). */
+#lines { position: absolute; inset: -30%; opacity: 0; pointer-events: none; background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0) 0deg 2.2deg, rgba(255, 255, 255, 0.6) 2.2deg 2.9deg, rgba(255, 255, 255, 0) 2.9deg 6deg); -webkit-mask-image: radial-gradient(circle, transparent 22%, #000 62%); mask-image: radial-gradient(circle, transparent 22%, #000 62%); animation: linespin 0.5s steps(6) infinite; }
+@keyframes linespin { to { transform: rotate(6deg); } }
+
+#line.hidden, #ride.hidden, #perf.hidden { display: none; }
+/* F3: frames per second, and how much is being drawn. */
+#perf { position: absolute; left: 12px; bottom: 12px; padding: 4px 8px; font: 700 12px/1.4 ui-monospace, Consolas, monospace; letter-spacing: 0.5px; color: #9dff9d; background: rgba(0, 0, 0, 0.7); white-space: pre; z-index: 5; }

@@ -11,8 +11,8 @@ const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seco
 
 let run = null;   // the finished run waiting to be posted: { score, wave, time, won }
 
-async function call(body) {
-  const res = await fetch(API, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+async function call(body, board = '') {
+  const res = await fetch(board ? `${API}?board=${board}` : API, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await res.json().catch(() => null);   // (under `npm run dev` there is no function: this isn't JSON)
   if (!data) throw new Error('The leaderboard only works on the published site');
   if (!res.ok) throw new Error(data.error || 'The leaderboard is not answering');
@@ -20,12 +20,14 @@ async function call(body) {
 }
 
 // Fill a list element with rows. `mine` is highlighted.
-function draw(list, rows, count, mine = '') {
+// how(row): the text in the third column.
+const runHow = (r) => (r.won ? `Escaped ${clock(r.time)}` : `Wave ${r.wave}`), lineHow = (r) => `${r.wave} trick${r.wave === 1 ? '' : 's'}`;
+function draw(list, rows, count, mine = '', how = runHow) {
   list.replaceChildren(...rows.slice(0, count).map((r, i) => {
     const li = document.createElement('li');
     if (mine && r.name.toLowerCase() === mine.toLowerCase()) li.className = 'mine';
     const cell = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
-    li.append(cell('rank', i + 1), cell('who', r.name), cell('how', r.won ? `Escaped ${clock(r.time)}` : `Wave ${r.wave}`), cell('pts', r.score.toLocaleString()));
+    li.append(cell('rank', i + 1), cell('who', r.name), cell('how', how(r)), cell('pts', r.score.toLocaleString()));
     return li;
   }));
   if (!rows.length) {
@@ -79,6 +81,17 @@ export const leaderboard = {
     run = null;
     box.classList.add('hidden');
     document.body.classList.remove('run-over');
+  },
+  // Free Ride's board: the best single lines. Shown when you pick Free Ride on the menu.
+  async showLines() {
+    const list = $('line-board');
+    try { draw(list, (await call(null, 'line')).top, 8, getName(), lineHow); }
+    catch (err) { list.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty', textContent: err.message })); }
+  },
+  // Post a line (it only counts if it beats the one this name already has). Quietly: there is nobody to tell if it fails.
+  postLine(total, count) {
+    const name = getName();
+    if (name && total > 0) call({ board: 'line', name, score: total, wave: count, time: 0, won: false }).catch(() => {});
   },
   // The list on the main menu.
   showMenu() { load($('menu-board'), 8, getName()); },

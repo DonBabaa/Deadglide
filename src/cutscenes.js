@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { heightAt } from './world/terrain.js';
 import { hud } from './ui/hud.js';
-import { playBones, playDread, playThunder, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop } from './fx/audio.js';
+import { playBones, playDread, playThunder, playHeadshot, playPowerup, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
 
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
@@ -39,6 +39,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     document.body.classList.remove('cutscene');
     hud.flash(null);
     hud.dread(0);
+    hud.lines(0);
     model.root.scale.setScalar(1);
     if (horde.boss) { horde.boss.rise = 1; horde.boss.roar = 0; }
     horde.corpse = null;
@@ -129,6 +130,117 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           setMusicStyle('rock');
         });
         if (t >= 4.5) goHome();
+      });
+    },
+
+    // ---- Kill cam: you've headshot another rider (Free Ride) -----------------------------
+    // Five shots, cut hard on white flashes, speed lines throughout:
+    //   1. right in on your own face behind the rifle
+    //   2. the muzzle, as it goes off
+    //   3. the bullet's own view, tearing across the Moon toward them, slowing to a crawl as it arrives
+    //   4. the hit: three snap zooms onto their head, in time with a white strobe
+    //   5. from the dust, looking up at them going over, as HEADSHOT and their name slam across the screen
+    // origin, aim: where the shot left the rifle and the way it went. victim(): { pos, up } of whoever was hit (they're still moving).
+    headshot({ origin, aim, victim, name }) {
+      const CUTS = [0, 0.4, 0.62, 1.6, 1.86], start = origin.clone(), way = aim.clone(), head = new THREE.Vector3();
+      playThunder();
+      begin(2.9, (t) => {
+        const v = victim(), k = (a, len) => smooth((t - a) / len);
+        head.copy(v.pos).addScaledVector(v.up, 1.7);
+        let lines = 1, shake = 0.01;
+        if (t < CUTS[1]) {            // 1: your face
+          centre.copy(skater.pos).addScaledVector(skater.up, 1.62);
+          eye.copy(centre).addScaledVector(way, 1.5 - 0.35 * k(0, 0.4));
+          eye.y += 0.05;
+          target.copy(centre);
+          view(26 - 8 * k(0, 0.12));
+        } else if (t < CUTS[2]) {     // 2: the muzzle
+          side.crossVectors(way, UP).normalize();
+          eye.copy(start).addScaledVector(side, 0.55).addScaledVector(way, -0.5);
+          eye.y += 0.12;
+          target.copy(start).addScaledVector(way, 2.5);
+          shake = 0.05;
+          view(40, shake);
+        } else if (t < CUTS[3]) {     // 3: the bullet's view. Away like a shot, then slower and slower as it closes on them.
+          const u = (t - CUTS[2]) / (CUTS[3] - CUTS[2]), flown = 1 - (1 - u) ** 3.2;
+          dir.subVectors(head, start);
+          const far = dir.length();
+          dir.normalize();
+          eye.copy(start).addScaledVector(dir, 2 + (far - 4.5) * flown);
+          target.copy(head);
+          view(70 - 42 * flown, 0.05 * (1 - flown));
+          lines = 1 - 0.5 * flown;
+        } else if (t < CUTS[4]) {     // 4: the hit, in three snaps
+          const step = Math.min(2, Math.floor((t - CUTS[3]) / 0.085));
+          dir.subVectors(head, start).normalize();
+          side.crossVectors(dir, UP).normalize();
+          eye.copy(head).addScaledVector(dir, -2.2).addScaledVector(side, 1.5 - step * 0.35);
+          eye.y += 0.2;
+          target.copy(head);
+          shake = 0.07;
+          view([44, 27, 15][step], shake);
+        } else {                      // 5: from the dust, as they go over
+          dir.subVectors(head, start).normalize();
+          side.crossVectors(dir, UP).normalize();
+          eye.copy(v.pos).addScaledVector(dir, 3.4 - 0.8 * k(CUTS[4], 1)).addScaledVector(side, -1.7);
+          eye.y = Math.max(heightAt(eye.x, eye.z) + 0.35, v.pos.y - 0.6);
+          target.copy(head);
+          shake = 0.12 * Math.exp(-(t - CUTS[4]) * 4);
+          view(52 - 10 * k(CUTS[4], 0.2), shake);
+          lines = 0.8 * (1 - k(2.3, 0.4));
+        }
+        hud.lines(lines);
+        // A white flash on every cut; a strobe through the hit.
+        let pop = 0;
+        for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 9));
+        if (t >= CUTS[3] && t < CUTS[4]) pop = Math.max(pop, Math.floor((t - CUTS[3]) / 0.085) % 2 === 0 ? 0.9 : 0.2);
+        const dark = blink(t, 2.75);
+        if (dark > 0.02) hud.flash('#000', dark);
+        else hud.flash('#ffffff', pop * 0.9);
+        once('hit', t, CUTS[3], () => playHeadshot());
+        once('name', t, CUTS[4], () => { playThunder(); hud.bossIntro(name, 'Headshot'); });
+        if (t >= 2.75) goHome();
+      });
+    },
+
+    // ---- A costume, found (Free Ride) ---------------------------------------------------
+    // Three shots: a snap zoom onto his face; a white flash, and from down low we circle him wearing it;
+    // then back and up as its name comes across. wear(): put it on him (called on the flash).
+    found({ name, wear }) {
+      const CUTS = [0, 0.65, 1.55];
+      playDread();
+      begin(2.9, (t) => {
+        const k = (a, len) => smooth((t - a) / len), p = skater.pos;
+        dir.copy(skater.fwd).setY(0);
+        if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+        dir.normalize();
+        side.set(dir.z, 0, -dir.x);
+        centre.copy(p).addScaledVector(skater.up, 1.5);
+        if (t < CUTS[1]) {
+          eye.copy(centre).addScaledVector(dir, 2.6).addScaledVector(side, 0.5);
+          target.copy(centre);
+          view(58 - 38 * k(0, 0.18), 0.012);
+        } else if (t < CUTS[2]) {
+          const around = 0.5 + 1.5 * k(CUTS[1], 0.9);
+          eye.copy(p).addScaledVector(dir, Math.cos(around) * 2.6).addScaledVector(side, Math.sin(around) * 2.6);
+          eye.y = p.y + 0.45;
+          target.copy(centre);
+          view(46, 0.03 * (1 - k(CUTS[1], 0.5)));
+        } else {
+          eye.copy(p).addScaledVector(dir, 4.2 + 1.2 * k(CUTS[2], 1.2)).addScaledVector(side, -1.4);
+          eye.y = p.y + 1.1 + 0.6 * k(CUTS[2], 1.2);
+          target.copy(centre);
+          view(48, 0);
+        }
+        hud.lines(t < CUTS[2] ? 0.85 : 0.5 * (1 - k(2.2, 0.5)));
+        let pop = 0;
+        for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 7));
+        const dark = blink(t, 2.75);
+        if (dark > 0.02) hud.flash('#000', dark);
+        else hud.flash('#ffffff', pop * 0.95);
+        once('wear', t, CUTS[1], () => { wear(); playPowerup(); });
+        once('name', t, CUTS[2], () => { playThunder(); hud.bossIntro(name, 'Costume found'); });
+        if (t >= 2.75) goHome();
       });
     },
 

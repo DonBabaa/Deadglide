@@ -58,6 +58,7 @@
       <div id="boss-intro" class="hidden"><small>Final boss</small><span></span></div>
       <div id="dread"></div>
       <div id="flash"></div>
+      <div id="lines"></div>
       <div id="bars"><i></i><i></i></div>
       <div id="capture" class="hidden"><span id="capture-label">HotBox Zone</span><div class="bar"><div id="capture-fill"></div></div></div>
       <div id="crosshair"><i></i><i></i><i></i><i></i></div>
@@ -76,8 +77,17 @@
         <div id="score-row"><span id="score-mult">x1</span><div class="bar"><div id="score-heat"></div></div></div>
         <div id="streak" class="hidden"><span id="streak-count">2</span> kill streak<div class="bar"><div id="streak-time"></div></div></div>
       </div>
+      <div id="line" class="hidden">
+        <div id="line-total">0</div>
+        <div id="line-sum"></div>
+        <div class="bar"><div id="line-time"></div></div>
+        <ol id="line-items"></ol>
+        <div id="line-best"></div>
+      </div>
+      <div id="ride" class="hidden"><div id="ride-status"></div><ol id="ride-board"></ol></div>
       <div id="xp"><div id="xp-level">Level 1</div><div class="bar"><div id="xp-fill"></div></div></div>
       <div id="seed"></div>
+      <div id="perf" class="hidden"></div>
     </div>
 
     <!-- Main menu: sits over the menu scene (Kirky by the tomb). -->
@@ -95,6 +105,10 @@
         <button id="level-2" class="level" type="button">
           <span class="level-name">Level 2</span>
           <span class="level-desc">The Catacombs &middot; in the dark</span>
+        </button>
+        <button id="level-3" class="level" type="button">
+          <span class="level-name">Free Ride</span>
+          <span class="level-desc">The Moon &middot; ride with friends &middot; no damage</span>
         </button>
         <div id="menu-best"></div>
         <div class="menu-row">
@@ -114,6 +128,19 @@
       <div id="menu-launch" class="hidden">
         <h2>Level 1</h2>
         <p class="tagline">The Cemetery &middot; endless waves</p>
+        <div id="line-board-box" class="hidden">
+          <div class="menu-label">Best lines</div>
+          <ol id="line-board" class="board"></ol>
+        </div>
+        <div id="ride-box" class="hidden">
+          <div class="menu-label">Ride with friends <small>(up to 4: one hosts, the others join with the code)</small></div>
+          <div class="menu-row">
+            <button id="ride-host" type="button">Host a session</button>
+            <input id="ride-code" type="text" maxlength="5" placeholder="Code" autocomplete="off" spellcheck="false">
+            <button id="ride-join" type="button">Join</button>
+          </div>
+          <div id="ride-note"></div>
+        </div>
         <button id="creative-toggle" type="button">Creative mode: off</button>
         <div id="loadout" class="hidden">
           <div class="menu-label">Starting weapons <small>(you always have the pistol)</small></div>
@@ -156,8 +183,8 @@
         </div>
         <div id="casino-net-status"></div>
       </div>
-      <div id="casino-help">W / S walk &middot; A / D turn &middot; hold left mouse and drag to look around</div>
-      <div id="casino-prompt" class="hidden"><b>E</b> <span id="casino-prompt-text">Take a seat</span></div>
+      <div id="casino-help"><span data-key="KeyW KeyS">W / S</span> walk &middot; <span data-key="KeyA KeyD">A / D</span> turn &middot; hold left mouse and drag to look around</div>
+      <div id="casino-prompt" class="hidden"><b data-key="KeyE">E</b> <span id="casino-prompt-text">Take a seat</span></div>
       <div id="casino-roulette" class="hidden">
         <div id="casino-roulette-top"><span id="casino-roulette-result">Place your bets</span><span id="casino-roulette-history"></span></div>
         <div id="casino-roulette-others"></div>
@@ -179,7 +206,7 @@
       <div id="casino-bar" class="hidden">
         <div id="casino-bar-status"></div>
         <div id="casino-drinks"></div>
-        <button id="casino-drink" class="hidden" type="button">Drink <kbd>E</kbd></button>
+        <button id="casino-drink" class="hidden" type="button">Drink <kbd data-key="KeyE">E</kbd></button>
       </div>
       <div id="casino-cine"><i></i><i></i><div id="casino-lines"></div><div id="casino-flash"></div><div id="casino-title"></div></div>
       <div id="casino-banner"></div>
@@ -196,10 +223,10 @@
           <button id="casino-deal" type="button">Deal</button>
         </div>
         <div id="casino-actions" class="hidden">
-          <button id="casino-hit" type="button">Hit <kbd>H</kbd></button>
-          <button id="casino-stay" type="button">Stand <kbd>S</kbd></button>
-          <button id="casino-double" type="button">Double <kbd>D</kbd></button>
-          <button id="casino-split" type="button">Split <kbd>P</kbd></button>
+          <button id="casino-hit" type="button">Hit <kbd data-key="KeyH">H</kbd></button>
+          <button id="casino-stay" type="button">Stand <kbd data-key="KeyS">S</kbd></button>
+          <button id="casino-double" type="button">Double <kbd data-key="KeyD">D</kbd></button>
+          <button id="casino-split" type="button">Split <kbd data-key="KeyP">P</kbd></button>
         </div>
       </div>
     </div>
@@ -242,15 +269,15 @@
         <ol id="board" class="board"></ol>
       </div>
       <div id="controls">
-        <div><b>Q</b> push</div><div><b>W</b> roll</div>
-        <div><b>A / D</b> carve (spin in the air)</div><div><b>S</b> brake, then reverse</div>
+        <div><b data-key="KeyQ">Q</b> push</div><div><b data-key="KeyW">W</b> roll</div>
+        <div><b data-key="KeyA KeyD">A / D</b> carve (spin in the air)</div><div><b data-key="KeyS">S</b> brake, then reverse</div>
         <div><b>Shift</b> powerslide</div><div><b>Space</b> hold and release to ollie</div>
-        <div><b>E</b> trick (in the air)</div><div><b>W / S</b> front / back flip (in the air)</div>
+        <div><b data-key="KeyE">E</b> trick (in the air)</div><div><b data-key="KeyW KeyS">W / S</b> front / back flip (in the air)</div>
         <div><b>Right mouse</b> aim</div><div><b>Left mouse</b> fire</div>
         <div>Land on a rail to grind</div><div>Aim for the head</div>
         <div><b>1 - 9</b> switch gun</div><div><b>Mouse wheel</b> zoom in / out</div>
-        <div><b>M</b> music on / off</div><div><b>Esc</b> pause</div>
-        <div><b>Backspace</b> restart the run</div><div><b>`</b> tuning panel</div>
+        <div><b data-key="KeyM">M</b> music on / off</div><div><b>Esc</b> pause</div>
+        <div><b>Backspace</b> restart the run</div><div><b>F3</b> frame rate</div><div><b data-key="Backquote">`</b> tuning panel</div>
       </div>
       <button id="to-menu" type="button">Main menu</button>
       <div id="audio-controls">

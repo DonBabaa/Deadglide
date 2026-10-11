@@ -38,32 +38,6 @@ function blotches(g, size, count, alpha) {
   }
 }
 
-// Poured concrete slab: one texture tile = one slab, with a joint around it.
-export function concreteTexture() {
-  return canvas(512, (g, s) => {
-    g.fillStyle = '#8d8c87';
-    g.fillRect(0, 0, s, s);
-    blotches(g, s, 26, 0.06);
-    // hairline cracks
-    g.strokeStyle = 'rgba(40,40,38,0.35)';
-    g.lineWidth = 1;
-    for (let i = 0; i < 4; i++) {
-      let x = Math.random() * s, y = Math.random() * s;
-      g.beginPath(); g.moveTo(x, y);
-      for (let k = 0; k < 12; k++) { x += (Math.random() - 0.5) * 50; y += Math.random() * 30; g.lineTo(x, y); }
-      g.stroke();
-    }
-    grain(g, s, 22);
-    // expansion joint
-    g.strokeStyle = 'rgba(30,30,28,0.75)';
-    g.lineWidth = 4;
-    g.strokeRect(0, 0, s, s);
-    g.strokeStyle = 'rgba(255,255,255,0.08)';
-    g.lineWidth = 2;
-    g.strokeRect(4, 4, s - 8, s - 8);
-  });
-}
-
 // Neutral ground detail. The ground mesh tints it grey (concrete) or green
 // (grass) per vertex, so one texture serves the whole world.
 export function groundTexture() {
@@ -80,6 +54,97 @@ export function groundTexture() {
       g.stroke();
     }
     grain(g, s, 34);
+  });
+}
+
+// Moon dust: grey, grainy, blotched, and pocked with little craters (a dark hollow with a bright far edge).
+export function regolithTexture() {
+  return canvas(1024, (g, s) => {
+    g.fillStyle = '#b9b8ba';
+    g.fillRect(0, 0, s, s);
+    blotches(g, s, 90, 0.09);
+    for (let i = 0; i < 260; i++) {
+      const x = Math.random() * s, y = Math.random() * s, r = 2 + Math.random() * Math.random() * 26;
+      for (const [ox, oy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {   // (wrapped copies: it tiles)
+        g.fillStyle = 'rgba(40, 40, 46, 0.22)';
+        g.beginPath(); g.arc(x + ox, y + oy, r, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(245, 245, 250, 0.28)'; g.lineWidth = Math.max(1, r * 0.16);
+        g.beginPath(); g.arc(x + ox, y + oy, r, -0.5, 1.9); g.stroke();
+        g.strokeStyle = 'rgba(20, 20, 26, 0.3)';
+        g.beginPath(); g.arc(x + ox, y + oy, r * 0.92, 2.6, 5); g.stroke();
+      }
+    }
+    for (let i = 0; i < 1400; i++) {   // stones
+      g.fillStyle = Math.random() < 0.5 ? 'rgba(30, 30, 34, 0.35)' : 'rgba(235, 235, 240, 0.3)';
+      g.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 2.5, 1 + Math.random() * 2);
+    }
+    grain(g, s, 46);
+  });
+}
+
+// Bare rock, in layers: the crater wall.
+export function strataTexture() {
+  return canvas(512, (g, s) => {
+    g.fillStyle = '#8a898c';
+    g.fillRect(0, 0, s, s);
+    for (let y = 0; y < s;) {
+      const h = 6 + Math.random() * 40, shade = 95 + Math.random() * 80;
+      g.fillStyle = `rgb(${shade}, ${shade}, ${shade + 4})`;
+      g.fillRect(0, y, s, h);
+      g.fillStyle = 'rgba(20, 20, 24, 0.5)';
+      g.fillRect(0, y + h - 1.5, s, 1.5);
+      y += h;
+    }
+    g.strokeStyle = 'rgba(15, 15, 18, 0.5)';   // cracks running down it
+    for (let i = 0; i < 26; i++) {
+      let x = Math.random() * s, y = Math.random() * s;
+      g.lineWidth = 0.6 + Math.random() * 1.6;
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < 9; k++) { x += (Math.random() - 0.5) * 22; y += Math.random() * 30; g.lineTo(x, y); }
+      g.stroke();
+    }
+    blotches(g, s, 30, 0.08);
+    grain(g, s, 30);
+  });
+}
+
+// Plating: the Moon base's ramps and decks. Panels with seams and rivets, scuffed.
+export function plateTexture() {
+  return canvas(512, (g, s) => {
+    g.fillStyle = '#c4c6cc';
+    g.fillRect(0, 0, s, s);
+    blotches(g, s, 18, 0.06);
+    const N = 4, cell = s / N;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      g.strokeStyle = 'rgba(30, 32, 40, 0.6)'; g.lineWidth = 3;
+      g.strokeRect(i * cell + 1.5, j * cell + 1.5, cell - 3, cell - 3);
+      g.strokeStyle = 'rgba(255, 255, 255, 0.35)'; g.lineWidth = 1;
+      g.strokeRect(i * cell + 5, j * cell + 5, cell - 10, cell - 10);
+      g.fillStyle = 'rgba(40, 42, 50, 0.7)';
+      for (const [x, y] of [[12, 12], [cell - 12, 12], [12, cell - 12], [cell - 12, cell - 12]]) { g.beginPath(); g.arc(i * cell + x, j * cell + y, 3, 0, Math.PI * 2); g.fill(); }
+    }
+    g.strokeStyle = 'rgba(60, 60, 66, 0.25)';   // scuffs
+    for (let i = 0; i < 60; i++) { const x = Math.random() * s, y = Math.random() * s; g.lineWidth = 1 + Math.random(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 70, y + (Math.random() - 0.5) * 20); g.stroke(); }
+    grain(g, s, 16);
+  });
+}
+
+// Lava: a dark crust broken by bright cracks.
+export function lavaTexture() {
+  return canvas(512, (g, s) => {
+    g.fillStyle = '#ff8a1c';
+    g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 70; i++) {   // plates of cooling crust, with the glow showing between them
+      const x = Math.random() * s, y = Math.random() * s, r = 22 + Math.random() * 46;
+      for (const [ox, oy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {
+        const fade = g.createRadialGradient(x + ox, y + oy, r * 0.2, x + ox, y + oy, r);
+        fade.addColorStop(0, 'rgba(46, 10, 4, 0.96)'); fade.addColorStop(0.75, 'rgba(120, 22, 6, 0.9)'); fade.addColorStop(1, 'rgba(255, 120, 20, 0)');
+        g.fillStyle = fade;
+        g.beginPath(); g.arc(x + ox, y + oy, r, 0, Math.PI * 2); g.fill();
+      }
+    }
+    g.fillStyle = 'rgba(255, 240, 150, 0.9)';   // the hottest spots
+    for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(Math.random() * s, Math.random() * s, 1 + Math.random() * 3, 0, Math.PI * 2); g.fill(); }
   });
 }
 
@@ -125,20 +190,6 @@ export function stoneTexture() {
     g.fillRect(0, 0, s, s);
     blotches(g, s, 30, 0.12);
     grain(g, s, 30);
-  });
-}
-
-export function grassTexture() {
-  return canvas(512, (g, s) => {
-    g.fillStyle = '#2c3a22';
-    g.fillRect(0, 0, s, s);
-    blotches(g, s, 40, 0.12);
-    for (let i = 0; i < 9000; i++) {
-      const x = Math.random() * s, y = Math.random() * s, v = 40 + Math.random() * 50;
-      g.strokeStyle = `rgba(${v * 0.75},${v},${v * 0.5},0.5)`;
-      g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 4, y - 3 - Math.random() * 5); g.stroke();
-    }
-    grain(g, s, 16);
   });
 }
 

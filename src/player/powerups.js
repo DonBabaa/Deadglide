@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { stats, POWER_IDS } from './stats.js';
 import { config } from '../config.js';
+import { world, LEVELS } from '../world/level.js';
 import { glowTexture } from '../world/textures.js';
 
 export const POWERUPS = {
@@ -241,7 +242,7 @@ export class Powerups {
     if (ticking) this.tick = 0.25;
     const alive = horde.enemies;
 
-    stats.gravity = level('float') ? numbers('float').gravity : 1;
+    stats.gravity = (level('float') ? numbers('float').gravity : 1) * (LEVELS[world.level].gravity || 1);   // (the Moon's is low to begin with)
 
     this.updateShield(dt, pos);
     this.updateGas(dt, player, pos, horde, ticking);

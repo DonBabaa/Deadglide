@@ -3,7 +3,7 @@
 import { Vector3 } from 'three';
 import { config } from '../config.js';
 import { heightAt, normalAt, railsNear, SPAWN, pipeAt, airFloorAt } from '../world/terrain.js';
-import { PIPE_R, PIPE_FROM, LIP, EDGE } from '../world/catacombs.js';
+import { PIPE_R, PIPE_FROM, EDGE } from '../world/catacombs.js';
 import { TRICKS } from './tricks.js';
 import { stats } from './stats.js';
 
@@ -577,6 +577,11 @@ export class Skater {
     this.railT += v * dt;
     this.grindDistance += Math.abs(v) * dt;
 
+    // Off the end of this piece and onto the next, if the rail carries on.
+    let r2 = r;
+    while (this.railT > r2.len && r2.next) { this.railT -= r2.len; r2 = r2.next; }
+    while (this.railT < 0 && r2.prev) { r2 = r2.prev; this.railT += r2.len; }
+    if (r2 !== r) return this.onto(r2);
     const t = clamp(this.railT, 0, r.len);
     this.pos.set(r.ax + r.dx * t, r.ay + r.dy * t, r.az + r.dz * t);
     this.vel.set(r.dx * v, r.dy * v, r.dz * v);
@@ -584,6 +589,16 @@ export class Skater {
     this.up.copy(UP).addScaledVector(this.fwd, -this.fwd.y).normalize();
 
     if (this.railT < 0 || this.railT > r.len) this.leaveRail();
+  }
+
+  // The grind carries on along the next piece of a chained rail.
+  onto(rail) {
+    this.rail = rail;
+    const t = clamp(this.railT, 0, rail.len), v = this.railSpeed, sign = v < 0 ? -1 : 1;
+    this.pos.set(rail.ax + rail.dx * t, rail.ay + rail.dy * t, rail.az + rail.dz * t);
+    this.vel.set(rail.dx * v, rail.dy * v, rail.dz * v);
+    this.fwd.set(rail.dx * sign, rail.dy * sign, rail.dz * sign);
+    this.up.copy(UP).addScaledVector(this.fwd, -this.fwd.y).normalize();
   }
 
   leaveRail() {

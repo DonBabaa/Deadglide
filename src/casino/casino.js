@@ -155,7 +155,10 @@ export function createCasino({ onLeave }) {
           net.sendTo(id, { t: 'table', state: structuredClone(engine.state), busy: engine.steps.length > 0, events: [] });
           shareWheel();
           refresh();
-        } else if (m.t === 'here' && people.has(id)) Object.assign(people.get(id), { x: Number(m.x) || 0, z: Number(m.z) || 0, yaw: Number(m.yaw) || 0, bar: Number.isInteger(m.bar) ? m.bar : -1 });
+        } else if (m.t === 'here' && people.has(id)) {
+          const whole = (n) => (Number.isInteger(n) ? n : -1);
+          Object.assign(people.get(id), { x: Number(m.x) || 0, z: Number(m.z) || 0, yaw: Number(m.yaw) || 0, bar: whole(m.bar), glass: whole(m.glass), sip: Number(m.sip) || 0, slot: whole(m.slot), spin: !!m.spin, win: !!m.win });
+        }
         else if (['sit', 'stand', 'act'].includes(m.t) && people.has(id)) request(id, m.t, m.arg, m.amount);
         else if (m.t === 'rbet' && people.has(id)) { wheelBets.set(id, cleanBets(m.bets)); shareWheel(); refresh(); }   // roulette: their chips...
         else if (m.t === 'rspin' && people.has(id)) hostSpin(id);                                                       // ...and they want it spun
@@ -168,7 +171,13 @@ export function createCasino({ onLeave }) {
     closed(why) { goAlone(why); },
   };
 
-  const me = () => ({ id: myId, name: myName(), look: myLook(), x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar });
+  // What the others need to know to draw you: where you are, and what you're up to at the bar or a slot machine.
+  const doing = () => ({
+    x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar,
+    glass: room.glass && room.glass.ready && room.glass.level > 0 ? DRINKS.findIndex((d) => d.id === room.glass.drinkId) : -1, sip: +room.sip.toFixed(2),
+    slot: room.slot, spin: !!spinning, win: room.slot >= 0 && room.win > 0,
+  });
+  const me = () => ({ id: myId, name: myName(), look: myLook(), ...doing() });
 
   function connect(asHost, joinCode) {
     if (staked > 0 || rolling || role !== 'alone') return;   // finish the hand (or the spin) first
@@ -632,7 +641,7 @@ export function createCasino({ onLeave }) {
         if (role === 'host' && code) {
           people.set(myId, me());
           net.broadcast({ t: 'people', list: [...people.values()] });
-        } else if (role === 'guest') net.send({ t: 'here', x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar });
+        } else if (role === 'guest') net.send({ t: 'here', ...doing() });
       }
 
       // Walking about: offer the free stool you're standing next to, at the table or at the bar.

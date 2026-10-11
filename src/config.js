@@ -153,6 +153,25 @@ export const config = {
   },
 
   // The casino (from the main menu): walk in and bet your banked gold.
+  // Free Ride (the Moon): how a line scores (see systems/lines.js).
+  freeRide: {
+    lineGap: 3.2,         // seconds rolling without adding to your line before it's banked
+    trickBase: 100,       // every trick landed...
+    trickPerBoost: 55,    // ...plus this for each km/h of boost it earned (harder tricks earn more)
+    grindPerMetre: 14,
+    airFrom: 1.2,         // seconds in the air before it counts as big air...
+    airPerSecond: 150,    // ...and what each second after that is worth
+    lavaGap: 1500,        // clearing the Lava Pit
+    // Sniping a target is worth its points (see freeride/targets.js), multiplied by everything that applies:
+    headshot: 2.5,
+    perHundredMetres: 1,  // +100% for every 100 m of range
+    airborne: 1.5,        // fired in the air
+    trickShot: 2,         // fired mid-spin, mid-flip or mid-trick
+    noScope: 1.5,         // fired without looking down the scope
+    safeAfterHit: 3,      // seconds you can't be shot again after another rider knocks you off your board
+    burnKick: 13,         // how hard the lava throws you back out (m/s, upward)
+  },
+
   casino: {
     minBet: 10,
     maxBet: 500,

@@ -6,6 +6,7 @@ import { UPGRADES, describe } from '../systems/upgrades.js';
 import { POWERUPS } from '../player/powerups.js';
 import { getName, setName, cleanName } from '../ui/playerName.js';
 import { LEVELS } from '../world/level.js';
+import { leaderboard } from '../ui/leaderboard.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch');
@@ -80,7 +81,7 @@ nameInput.addEventListener('input', () => {
 });
 nameInput.addEventListener('keydown', (e) => { if (e.code === 'Enter') $('level-1').click(); });
 
-for (const n of [1, 2]) $(`level-${n}`).addEventListener('click', () => {
+for (const n of [1, 2, 3]) $(`level-${n}`).addEventListener('click', () => {
   if (!getName()) {   // no name yet: point at the box instead of going on
     nameInput.classList.remove('missing');
     void nameInput.offsetWidth;
@@ -89,6 +90,12 @@ for (const n of [1, 2]) $(`level-${n}`).addEventListener('click', () => {
     return;
   }
   level = n;
+  toggle.classList.toggle('hidden', !!LEVELS[n].freeRide);   // (Free Ride has no loadout to choose)
+  if (LEVELS[n].freeRide) setCreative(false);
+  $('ride-box').classList.toggle('hidden', !LEVELS[n].freeRide);
+  $('ride-note').textContent = '';
+  $('line-board-box').classList.toggle('hidden', !LEVELS[n].freeRide);   // Free Ride opens on its board of best lines
+  if (LEVELS[n].freeRide) leaderboard.showLines();
   launch.querySelector('h2').textContent = LEVELS[n].name;
   launch.querySelector('.tagline').textContent = LEVELS[n].tagline;
   home.classList.add('hidden');
@@ -96,6 +103,15 @@ for (const n of [1, 2]) $(`level-${n}`).addEventListener('click', () => {
 });
 $('menu-back').addEventListener('click', () => { launch.classList.add('hidden'); home.classList.remove('hidden'); });
 toggle.addEventListener('click', () => setCreative(!creative));
+// Free Ride with friends: host a session, or join one with its code. (Start, as ever, is riding alone.)
+$('ride-host').addEventListener('click', () => onStart?.(null, level, { host: true }));
+$('ride-join').addEventListener('click', () => {
+  const code = $('ride-code').value.trim().toUpperCase();
+  if (code.length < 4) { $('ride-note').textContent = 'Type the code your friend gave you'; $('ride-code').focus(); return; }
+  onStart?.(null, level, { join: code });
+});
+$('ride-code').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.code === 'Enter') $('ride-join').click(); });
+$('ride-code').addEventListener('keyup', (e) => e.stopPropagation());
 $('menu-play').addEventListener('click', () => {
   // A copy, so later menu changes don't alter a run in progress. null = a normal run.
   onStart?.(creative ? { weapons: [...loadout.weapons], upgrades: { ...loadout.upgrades }, powers: { ...loadout.powers }, monsters: loadout.monsters, noDamage: loadout.noDamage } : null, level);

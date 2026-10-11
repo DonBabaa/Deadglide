@@ -369,15 +369,18 @@ export class CasinoRoom {
       add(new THREE.CylinderGeometry(0.045, 0.045, STOOL_Y - 0.1, 8), gold, x, (STOOL_Y - 0.1) / 2, z);
       add(new THREE.CylinderGeometry(0.24, 0.26, 0.04, 14), gold, x, 0.02, z);
       add(new THREE.TorusGeometry(0.19, 0.02, 6, 16).rotateX(Math.PI / 2), gold, x, 0.3, z);
-      // (Other players' drinks aren't sent over the connection yet: anyone else at the bar is shown with a whisky.)
-      const drink = this.barShop.makeGlass(DRINKS[0]);
-      drink.position.set(x + 0.78, 1.25, z + 0.12);
-      drink.liquid.scale.y = 1;
-      drink.level = 1;
-      drink.garnish.visible = true;
-      drink.visible = false;
-      this.scene.add(drink);
-      this.barStools.push({ stand: new THREE.Vector3(x, 0, z), drink });
+      // One glass of each drink per stool: whichever a friend sitting there has ordered is the one shown.
+      const drinks = DRINKS.map((kind) => {
+        const glass = this.barShop.makeGlass(kind);
+        glass.position.set(x + 0.78, 1.25, z + 0.12);
+        glass.liquid.scale.y = 1;
+        glass.level = 1;
+        glass.garnish.visible = true;
+        glass.visible = false;
+        this.scene.add(glass);
+        return glass;
+      });
+      this.barStools.push({ stand: new THREE.Vector3(x, 0, z), drinks });
     }
 
     this.buildTable();
@@ -1038,6 +1041,7 @@ export class CasinoRoom {
     if (this.glass) this.scene.remove(this.glass);   // he clears the old glass away
     const glass = (this.glass = this.barShop.makeGlass(drink));
     glass.ready = false;
+    glass.drinkId = drink.id;
     return this.barShop.order(drink, glass, this.barStools[this.bar].stand.z, () => { glass.ready = true; });
   }
   // A full glass in front of you, waiting to be drunk?
@@ -1142,17 +1146,27 @@ export class CasinoRoom {
         const tag = sign([p.name], 0.95, 0.22, { size: 0.62, color: '#f3efe4', board: 'rgba(12, 12, 14, 0.7)' });
         tag.material.transparent = true;
         this.scene.add(tag);
-        o = { model, tag, pos: new THREE.Vector3(p.x, 0, p.z), yaw: p.yaw, speed: 0, walk: 0, sitBlend: 0, seat: -1, bar: -1 };
+        o = { model, tag, pos: new THREE.Vector3(p.x, 0, p.z), yaw: p.yaw, speed: 0, walk: 0, sitBlend: 0, seat: -1, bar: -1, slot: -1, pulled: 9, reach: 0, cheer: 0, sip: 0, spinning: false };
         this.guests.set(p.id, o);
       }
       o.seat = p.seat;
       o.bar = p.seat < 0 && p.bar >= 0 && p.bar < this.barStools.length ? p.bar : -1;
+      // At a slot machine: pulling its lever when they spin, both arms up when they win big.
+      o.slot = p.seat < 0 && o.bar < 0 && p.slot >= 0 && p.slot < this.machines.length ? p.slot : -1;
+      if (p.spin && !o.spinning) o.pulled = 0;
+      o.spinning = !!p.spin;
+      o.pulled += dt;
+      o.reach = o.slot >= 0 ? Math.sin(Math.min(1, o.pulled / 0.55) * Math.PI) : 0;
+      o.cheer = lerp(o.cheer, o.slot >= 0 && p.win ? 1 : 0, 1 - Math.exp(-9 * dt));
+      // At the bar: which drink is in front of them (-1: none yet), and how far it's raised.
+      o.glass = o.bar >= 0 && Number.isInteger(p.glass) ? p.glass : -1;
+      o.sip = lerp(o.sip, o.bar >= 0 ? Math.max(0, Math.min(1, Number(p.sip) || 0)) : 0, 1 - Math.exp(-12 * dt));
       // Glide to where they say they are (or onto their stool, facing the table).
-      const spot = p.seat >= 0 ? this.seats[p.seat].stand : o.bar >= 0 ? this.barStools[o.bar].stand : v.set(p.x, 0, p.z);
+      const spot = p.seat >= 0 ? this.seats[p.seat].stand : o.bar >= 0 ? this.barStools[o.bar].stand : o.slot >= 0 ? this.machines[o.slot].stand : v.set(p.x, 0, p.z);
       const before = v2.copy(o.pos);
       o.pos.lerp(spot, 1 - Math.exp(-10 * dt));
       o.speed = before.distanceTo(o.pos) / Math.max(dt, 1e-3);
-      const face = p.seat >= 0 ? Math.atan2(TABLE.x - spot.x, TABLE.z - spot.z) : o.bar >= 0 ? Math.PI / 2 : p.yaw;
+      const face = p.seat >= 0 ? Math.atan2(TABLE.x - spot.x, TABLE.z - spot.z) : o.bar >= 0 ? Math.PI / 2 : o.slot >= 0 ? -Math.PI / 2 : p.yaw;
       o.yaw += Math.atan2(Math.sin(face - o.yaw), Math.cos(face - o.yaw)) * (1 - Math.exp(-10 * dt));
       this.pose(o.model, o, dt);
       o.tag.position.set(o.pos.x, lerp(2.2, 2.05, o.sitBlend), o.pos.z);
@@ -1193,7 +1207,12 @@ export class CasinoRoom {
     const sat = (this.tableBlend = lerp(this.tableBlend, this.seat >= 0 ? 1 : 0, 1 - Math.exp(-7 * dt)));   // (the camera only leaves him for the blackjack table)
     this.showOthers(others, dt);
     // A drink on the bar for everyone else sitting at it. (Yours is whatever you ordered.)
-    this.barStools.forEach((stool, i) => { stool.drink.visible = others.some((p) => p.seat < 0 && p.bar === i); });
+    // Everyone else's drink, on the bar in front of them: the one they ordered, and gone from the bar while it's at their lips.
+    this.barStools.forEach((stool, i) => {
+      let who = null;
+      for (const o of this.guests.values()) if (o.bar === i) who = o;
+      stool.drinks.forEach((glass, k) => { glass.visible = !!who && who.glass === k && who.sip < 0.25; });
+    });
     this.barShop.update(dt);
 
     // Drinking: he reaches for the glass, lifts it, throws his head back, drains it and bangs it down.
@@ -1267,11 +1286,14 @@ export class CasinoRoom {
     this.win = Math.max(0, this.win - dt);
     this.reach = this.slot >= 0 ? Math.sin(Math.min(1, this.pulled / 0.55) * Math.PI) : 0;
     this.cheer = Math.max(this.updateRoulette(dt), this.win > 0 ? smooth((WIN_TIME - this.win - 0.7) / 0.2) * smooth(this.win / 0.3) : 0);
-    this.machines.forEach((m, i) => { m.lever.rotation.x = i === this.slot ? this.reach * 1.1 : 0; });
+    // (A machine someone else is playing does the same for them.)
+    const at = this.machines.map(() => null);
+    for (const o of this.guests.values()) if (o.slot >= 0) at[o.slot] = o;
+    this.machines.forEach((m, i) => { m.lever.rotation.x = (i === this.slot ? this.reach : at[i] ? at[i].reach : 0) * 1.1; });
     this.screens.forEach((s, i) => {
-      const mine = i === this.slot;
-      if (mine && this.win > 0) s.material.color.setHSL((this.time * 4) % 1, 1, 0.5 + 0.25 * Math.sin(this.time * 40));
-      else s.material.color.setHSL((this.time * (mine && this.pulled < 2.4 ? 1.6 : 0.15) + i * 0.17) % 1, 0.8, 0.55);
+      const mine = i === this.slot, winning = (mine && this.win > 0) || (at[i] && at[i].cheer > 0.3), spinning = (mine && this.pulled < 2.4) || (at[i] && at[i].spinning);
+      if (winning) s.material.color.setHSL((this.time * 4) % 1, 1, 0.5 + 0.25 * Math.sin(this.time * 40));
+      else s.material.color.setHSL((this.time * (spinning ? 1.6 : 0.15) + i * 0.17) % 1, 0.8, 0.55);
     });
     this.crystals.forEach((c, i) => { c.rotation.y = this.time * 0.6 + i; });
 

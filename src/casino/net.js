@@ -20,9 +20,11 @@ const reason = (err) => ({
 
 // handlers: open(code)  join(id)  leave(id)  message(id, msg)  closed(why)
 // For a guest, the host's id is 'host'.
+// prefix: what kind of thing is being hosted (so a casino table's code can never join a Free Ride session).
 export class Net {
-  constructor(handlers) {
+  constructor(handlers, prefix = PREFIX) {
     this.on = handlers;
+    this.prefix = prefix;
     this.peer = null;
     this.links = new Map();   // host: guest id -> connection
     this.toHost = null;       // guest: the connection to the host
@@ -31,7 +33,7 @@ export class Net {
 
   host() {
     const code = newCode();
-    this.peer = new Peer(PREFIX + code);
+    this.peer = new Peer(this.prefix + code);
     this.peer.on('open', () => this.on.open(code));
     this.peer.on('connection', (link) => {
       link.on('open', () => { this.links.set(link.peer, link); this.on.join(link.peer); });
@@ -49,7 +51,7 @@ export class Net {
     this.peer = new Peer();
     this.peer.on('open', (id) => {
       this.id = id;
-      const link = (this.toHost = this.peer.connect(PREFIX + code, { reliable: true }));
+      const link = (this.toHost = this.peer.connect(this.prefix + code, { reliable: true }));
       link.on('open', () => this.on.open(code));
       link.on('data', (msg) => this.on.message('host', msg));
       link.on('close', () => this.fail('The host closed the table'));

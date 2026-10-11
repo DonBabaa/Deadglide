@@ -3,10 +3,12 @@
 // He wears a hoodie with the hood up over a beanie, belted jeans and black
 // Vans-style skate shoes, and he is never without a cigarette.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
 import { hoodieTexture, denimTexture, ribTexture, canvasTexture, deckTexture, emblemTexture } from './kirkyTextures.js';
 import { buildGuns } from './gunModels.js';
+import { COSTUMES, buildMask, buildPack } from './costumes.js';
 
 const TAU = Math.PI * 2;
 const x = new THREE.Vector3(), z = new THREE.Vector3(), basis = new THREE.Matrix4();
@@ -27,6 +29,26 @@ function part(geometry, material, px = 0, py = 0, pz = 0) {
 const limb = (radius, length, material, px, py, pz) => part(new THREE.CapsuleGeometry(radius, length, 4, 12), material, px, py, pz);
 const box = (w, h, d, material, px, py, pz) => part(new THREE.BoxGeometry(w, h, d), material, px, py, pz);
 const tube = (radius, length, material, px, py, pz, radiusTop = radius) => part(new THREE.CylinderGeometry(radiusTop, radius, length, 16), material, px, py, pz);
+
+// Weld the loose pieces of a group that share a material into one mesh. He is built from a couple of hundred
+// small shapes, each one a separate thing to draw (twice: once for its shadow), which adds up fast with four
+// riders on the Moon. Only pieces that never move or hide on their own may be welded: list the others in `keep`.
+function weld(group, keep = []) {
+  const sets = new Map();
+  for (const m of group.children) {
+    if (!m.isMesh || m.children.length || keep.includes(m) || !m.castShadow || !m.visible) continue;
+    if (!sets.has(m.material)) sets.set(m.material, []);
+    sets.get(m.material).push(m);
+  }
+  for (const [material, pieces] of sets) {
+    if (pieces.length < 2) continue;
+    const merged = mergeGeometries(pieces.map((m) => { m.updateMatrix(); return (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix); }));
+    if (!merged) continue;
+    for (const m of pieces) { group.remove(m); m.geometry.dispose(); }
+    group.add(part(merged, material));
+  }
+  return group;
+}
 
 const HAND = new THREE.Vector3(0, 0, 0.56);   // his gun hand, in the gun arm's space
 const FLIP_PIVOT = 0.85;   // he flips about this height (his middle)
@@ -62,6 +84,7 @@ export class SkaterModel {
         deck.add(part(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 12).rotateZ(Math.PI / 2), urethane, wx, -0.075, end * 0.2));
       }
     }
+    weld(deck);
     deck.scale.setScalar(1.35);   // slightly oversized so it reads from the chase camera
     this.board.add(deck);
     this.board.position.y = 0.142;
@@ -88,7 +111,7 @@ export class SkaterModel {
         g.add(stripe);
       }
       for (let i = 0; i < 4; i++) g.add(box(0.068, 0.006, 0.011, white, 0, 0.107 - i * 0.004, 0.005 + i * 0.03));   // laces
-      return g;
+      return weld(g);
     };
     const leg = (side) => {
       const group = new THREE.Group();
@@ -104,6 +127,7 @@ export class SkaterModel {
         tube(0.076, 0.05, denim, 0, -0.355, -0.01),   // turned-up cuff
         foot,
       );
+      weld(knee);
       group.add(limb(0.085, 0.3, denim, 0, -0.2, 0.03), knee);
       return group;
     };
@@ -129,6 +153,12 @@ export class SkaterModel {
     const hood = part(new THREE.SphereGeometry(0.178, 20, 14, Math.PI / 2 + 0.78, TAU - 1.56, 0, 2.35), hoodie, 0, 0.79, -0.025);
     hood.scale.set(1, 1.1, 1.14);
     const brim = part(new THREE.CylinderGeometry(0.137, 0.137, 0.05, 20, 1, true), beanie, 0, 0.845, 0);
+    this.hood = hood;
+    // Costumes: a holder on his head for a helmet or an alien's head, and one on his back for a pack (see applyLook).
+    this.maskHolder = new THREE.Group();
+    this.maskHolder.position.set(0, 0.8, 0);
+    this.packHolder = new THREE.Group();
+    this.packHolder.position.set(0, 0.37, -0.2);
     this.torso.add(
       flat(tube(0.165, 0.16, denim, 0, -0.04, 0, 0.17)),                    // hips
       flat(tube(0.178, 0.045, leather, 0, 0.045, 0)),                       // belt...
@@ -137,7 +167,7 @@ export class SkaterModel {
       flat(tube(0.192, 0.07, hoodieRib, 0, 0.11, 0, 0.196)),                // ribbed hem
       box(0.25, 0.13, 0.03, hoodie, 0, 0.24, 0.132),                        // kangaroo pocket
       tube(0.006, 0.17, white, -0.045, 0.52, 0.142), tube(0.006, 0.14, white, 0.045, 0.535, 0.142),   // drawstrings
-      this.leftArm, emblem,
+      this.leftArm, emblem, this.maskHolder, this.packHolder,
       part(new THREE.SphereGeometry(0.17, 14, 10), hoodie, 0, 0.61, -0.06),          // hood gathered at the neck
       part(new THREE.SphereGeometry(0.125, 16, 12), skin, 0, 0.8, 0),                // head
       (this.beanieDome = part(new THREE.SphereGeometry(0.133, 16, 8, 0, TAU, 0, Math.PI / 2), beanie, 0, 0.825, 0)),   // beanie...
@@ -151,6 +181,7 @@ export class SkaterModel {
       part(new THREE.SphereGeometry(0.128, 14, 8, 0, TAU, 1.2, 0.5), dark, 0, 0.8, -0.004),                                                           // hair showing under the beanie, round the back and sides
       hood,
     );
+    weld(this.torso, [hood, brim, this.beanieDome, this.hair]);   // (those four come and go with what he wears)
 
     // Cigarette, with a glowing tip. (Smoke puffs are made in updateSmoke.)
     const paper = std(0xf2efe6, 0.9), filter = std(0xc98a4b, 0.9);
@@ -223,6 +254,7 @@ export class SkaterModel {
     this.guns = buildGuns(gunmetal);
     for (const id in this.guns) {
       const g = this.guns[id];
+      weld(g.group);
       g.group.position.add(HAND);
       g.group.visible = id === 'pistol';
       this.gunArm.add(g.group);
@@ -383,21 +415,29 @@ export class SkaterModel {
   // Dress him. look: see currentLook() in systems/cosmetics.js.
   applyLook(look) {
     const M = this.mats, repaint = (material, texture) => { material.map?.dispose(); material.map = texture; material.needsUpdate = true; };
-    if (look.hoodie !== this.look?.hoodie) {
-      repaint(M.hoodie, hoodieTexture(look.hoodie));
-      repaint(M.hoodieRib, ribTexture(`#${new THREE.Color(look.hoodie).multiplyScalar(0.8).getHexString()}`));   // cuffs and hem a shade darker
+    // Costumes. The body: the hoodie becomes the suit, with a pack on his back, and perhaps another skin.
+    // The head: a helmet or an alien's head goes on over his own (and nothing fits in his mouth).
+    const body = COSTUMES[look.outfit], masked = !!COSTUMES[look.mask], hoodieColor = body ? body.suit : look.hoodie;
+    if (hoodieColor !== this.shownHoodie) {
+      this.shownHoodie = hoodieColor;
+      repaint(M.hoodie, hoodieTexture(hoodieColor));
+      repaint(M.hoodieRib, ribTexture(`#${new THREE.Color(hoodieColor).multiplyScalar(0.8).getHexString()}`));   // cuffs and hem a shade darker
     }
-    const bare = look.beanie === 'none';
+    M.skin.color.set(body?.skin ?? COSTUMES[look.mask]?.skin ?? 0xc99873);
+    if (look.outfit !== this.look?.outfit) { this.packHolder.clear(); const pack = buildPack(look.outfit); if (pack) this.packHolder.add(pack); }
+    if (look.mask !== this.look?.mask) { this.maskHolder.clear(); this.maskHolder.add(buildMask(look.mask)); }
+    this.hood.visible = !masked;
+    const bare = look.beanie === 'none' || masked;
     this.beanieDome.visible = this.brim.visible = !bare;
-    this.hair.visible = bare;
+    this.hair.visible = bare && !masked;
     if (!bare && look.beanie !== this.look?.beanie) repaint(M.beanie, ribTexture(look.beanie));
     if (look.deck !== this.look?.deck) {
       repaint(M.wood, look.deck === 'wood' ? null : deckTexture(look.deck));
       M.wood.color.set(look.deck === 'wood' ? 0x9a6a3c : 0xffffff);
     }
     M.urethane.color.set(look.wheels);
-    for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke;
-    this.smoking = this.ember.visible = look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe';
+    for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke && !masked;
+    this.smoking = this.ember.visible = !masked && (look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe');
     this.look = { ...look };
     this.paintGun();   // (the gun may have gone gold)
   }
