@@ -472,7 +472,7 @@ export function createCasino({ onLeave }) {
     $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, profile.houseTake).toLocaleString()}`;
     $('casino-table').classList.toggle('hidden', !seated);
     $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.slot < 0 && !room.roulette);
-    $('casino-smoke').classList.toggle('hidden', !seated);
+    $('casino-smoke').classList.toggle('hidden', !seated && room.bar < 0);
     $('casino-view').textContent = room.firstPerson ? 'Third person' : 'First person';
     $('casino-stand').textContent = seated ? 'Leave table' : room.slot >= 0 || room.roulette ? 'Walk away' : 'Get up';
     refreshBar();
@@ -595,13 +595,14 @@ export function createCasino({ onLeave }) {
 
   window.addEventListener('keydown', (e) => {
     if (!active) return;
-    if (e.code === 'Escape') { seat >= 0 || room.bar >= 0 || room.slot >= 0 || room.roulette ? standUp() : leave(); return; }
+    if (e.code === 'Escape') { standUp(); return; }   // (gets you up from wherever you are sat; it doesn't leave the casino: there's a button for that)
+    if (e.code === 'KeyF' && (seat >= 0 || room.bar >= 0)) { room.smoke(); return; }
     if (room.roulette && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); spinRoulette(); return; }
     if (room.slot >= 0 && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); pullLever(); return; }
     if (e.code === 'KeyV') { toggleView(); return; }
     if (seat < 0) return;
     if (view.state.phase === 'betting' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); deal(); }
-    else if (e.code === 'KeyF') room.smoke();
+
     else if (e.code === 'KeyH') play('hit');
     else if (e.code === 'KeyS') play('stand');
     else if (e.code === 'KeyD') play('double');
@@ -625,7 +626,7 @@ export function createCasino({ onLeave }) {
     // Play an emote (see player/emotes.js). A smoke at the blackjack table gets the full cut-in.
     emote(i) {
       if (!active || room.smokeLeft > 0 || room.cine.on) return;
-      if (EMOTES[i]?.id === 'smoke' && seat >= 0) room.smoke();
+      if (EMOTES[i]?.id === 'smoke' && (seat >= 0 || room.bar >= 0)) room.smoke();
       else room.emoter.play(i);
     },
     get table() { return engine; },

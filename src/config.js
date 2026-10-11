@@ -85,10 +85,11 @@ export const config = {
   },
 
   grind: {
-    catchRadius: 1.5,     // how close (sideways) you must come down to a rail to lock on
-    catchHeight: 0.8,
-    pullRadius: 3.4,      // within this, coming down along a rail, you are drawn sideways onto its line...
-    pull: 5,              // ...this quickly (per second)
+    catchRadius: 0.8,     // how close (sideways) you must come down to a rail to lock on
+    catchHeight: 0.5,
+    pullRadius: 1.4,      // within this, coming down along a rail, you are drawn sideways onto its line...
+    pull: 1.4,            // ...this quickly (per second)
+    stepOff: 7,           // getting off a rail that has a safe side (the Moon's rim): how hard you are pushed that way (m/s)
     styleHold: 0.2,       // seconds a grind has to be held before it counts
     minSpeed: 2,
     accel: 4,             // rails speed you up
@@ -169,6 +170,8 @@ export const config = {
     headshot: 2.5,
     perHundredMetres: 1,  // +100% for every 100 m of range
     grindStyle: 200,      // each different grind in a line (nosegrind, boardslide...)
+    goldPerPoint: 0.0004, // a banked line pays a little gold: this much per point (10,000 points: 4 gold)...
+    goldMax: 20,          // ...up to this much for one line
     airborne: 1.5,        // fired in the air
     trickShot: 2,         // fired mid-spin, mid-flip or mid-trick
     noScope: 1.5,         // fired without looking down the scope

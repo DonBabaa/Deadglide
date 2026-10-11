@@ -795,6 +795,9 @@ function frame(now) {
         if (e.type === 'banked') {
           hud.popup(e.record ? `New best line!  ${e.total.toLocaleString()}` : `Line banked  ${e.total.toLocaleString()}`, e.record ? 'loot' : 'trick');
           if (e.record) { playPowerup(); leaderboard.postLine(e.total, e.count); } else playPickup();
+          // A little gold for it, straight into the bank (there is nothing to lose it to out here).
+          const pay = Math.min(config.freeRide.goldMax, Math.floor(e.total * config.freeRide.goldPerPoint));
+          if (pay > 0) { bank(pay); hud.popup(`+${pay} gold`, 'loot'); }
         } else if (e.total > 0) hud.popup(`Line lost  ${e.total.toLocaleString()}`, 'sloppy');
       }
       lines.events.length = 0;

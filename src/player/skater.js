@@ -108,9 +108,9 @@ export class Skater {
       inp.jumpReleased = false;
       // Off a rail you hop: you stay over it and come back down on it (hold the powerslide key to jump clear).
       const from = this.rail && !inp.drift ? { rail: this.rail, t: this.railT, v: this.railSpeed } : null;
-      const clear = this.rail && !from;
+      const clear = this.rail && !from ? this.rail : null;
       if (this.rail) this.leaveRail();
-      if (clear) this.clearOfRails = true;   // (or you would be drawn straight back onto it)
+      if (clear) this.pushOff(clear);
       if (this.ceiling) this.dropCeiling();   // (jump lets go of the roof)
       else if (this.sinceGround <= config.jump.coyoteTime) { this.ollie(); this.hop = from; }
       this.charge = 0;
@@ -126,6 +126,9 @@ export class Skater {
       }
     }
 
+    // The powerslide key, pressed while on a rail, steps off it.
+    if (this.rail && inp.drift && !this.driftHeld) { const r = this.rail; this.leaveRail(); this.pushOff(r); }
+    this.driftHeld = inp.drift;
     if (this.hop && (inp.drift || this.grounded || this.rail || this.ceiling)) this.hop = null;
     if (this.grounded) { this.styleDone.clear(); this.clearOfRails = false; }
     if (this.rail) this.stepGrind(dt, inp);
@@ -660,6 +663,15 @@ export class Skater {
     this.vel.set(rail.dx * v, rail.dy * v, rail.dz * v);
     this.fwd.set(rail.dx * sign, rail.dy * sign, rail.dz * sign);
     this.up.copy(UP).addScaledVector(this.fwd, -this.fwd.y).normalize();
+  }
+
+  // Off a rail on purpose: nothing catches you again until you have touched the ground (or you would be drawn
+  // straight back onto it), and a rail with a safe side (`exit`: the Moon's rim) sends you that way.
+  pushOff(rail) {
+    this.clearOfRails = true;
+    if (!rail.exit) return;
+    this.vel.x += rail.exit.x * config.grind.stepOff;
+    this.vel.z += rail.exit.z * config.grind.stepOff;
   }
 
   leaveRail() {

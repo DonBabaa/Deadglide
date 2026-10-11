@@ -56,7 +56,7 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 - Speed is conserved: gravity speeds you up downhill and slows you uphill. Rolling tops out around 79 km/h, pushing around 122 km/h.
 - Ollies charge with how long you hold. Rails can be ground, and are magnetic: come down along one within a few metres and you are drawn onto it.
   On a rail the movement keys change the grind (50-50, nosegrind, 5-0, boardslide, tailslide, noseslide, crooked, smith, feeble). Space hops:
-  you stay over the rail, can trick, and land back on it. Shift + Space jumps clear.
+  you stay over the rail, can trick, and land back on it. Shift steps off a rail (with Space, jumps off); off the Moon's rim rail that pushes you in toward the arena.
 - Tricks, spins and flips in the air pay a speed boost on a clean landing.
 - A landing is clean if the board is roughly level and pointing the way you are going; otherwise it is sloppy and costs speed.
 
@@ -108,6 +108,7 @@ friends at once. There is no clock, no waves and no damage. You chase the bigges
   close or miss and they speed up, duck or bolt. They cannot hurt you and come back about 20 seconds after being shot. A kill adds to your line.
 - **What a shot is worth:** the target's points, plus 1% per metre of distance, times 2.5 for a headshot, 1.5 in the air or 2 in the
   middle of a trick, and 1.5 without the scope.
+- **Gold:** a banked line pays a little gold straight into the bank: 4 per 10,000 points, at most 20 a line.
 - **Secrets:** there are costumes hidden on the Moon, each in two pieces (body and head) that can be worn together or apart. Each is won
   by finding something and doing something there, and each player has to win it personally. They show in the shop as "???" until
   found. How to get them is deliberately not written here; it is in `src/freeride/eggs.js`, behind a spoiler warning.
@@ -147,7 +148,8 @@ You start with the pistol. Others are unlocked in the shop, then turn up in ches
 A Monte-Carlo style room reached from the menu, where you walk instead of skate. Up to five friends can share it.
 - **Blackjack:** five seats; six decks; the dealer (Babitus Goyitus, a zombie in a dinner suit) stands on 17; blackjack pays 3 to 2;
   one split; bets from 10 to 500. Play runs from the right-hand seat to the left. Every bet is written over its chips for the whole table to read.
-  F at the table has a smoke (a cut-in for you; the others see you do it). The more the house takes, the more jewellery he wears.
+  F at the table (or the bar) has a smoke: a cut-in for you; the others see you do it. Smoke hangs over the table, and
+  after three cigarettes' worth the dealer has a coughing fit and waves it away. The more the house takes, the more jewellery he wears.
 - **Roulette:** one European wheel for the whole room, spun by a second Babitus. Anyone with a bet down can spin.
 - **Slot machines:** 5 gold a spin, gold prizes, and three skulls wins a casino-only cosmetic.
 - **The bar:** a skeleton barman mixes drinks. Three drinks make you tipsy, five make you sick and get you cut off for a while.

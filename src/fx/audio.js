@@ -534,6 +534,8 @@ export function playRetch() {
   blast(1500, 180, 0.9, 0.3);
   hiss('bandpass', 900, 300, 1.0, 0.2);
 }
+// The dealer, in a fog of somebody's cigarette: four dry coughs.
+export const playCough = () => ready() && [0.17, 0.87, 1.57, 2.27].forEach((at) => (hiss('bandpass', 750, 280, 0.17, 0.3, at), tone('sawtooth', 200, 85, 0.15, 0.13, at)));
 export const playSplash = () => ready() && (hiss('lowpass', 1800, 300, 0.14, 0.2), tone('sine', 240 + Math.random() * 120, 110, 0.1, 0.12));
 // Slot machines: the lever, the reels ticking round, each one clunking to a stop, and a big win.
 export const playLever = () => ready() && (tone('square', 220, 110, 0.12, 0.1), hiss('lowpass', 1200, 300, 0.2, 0.12, 0.05));

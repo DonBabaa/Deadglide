@@ -171,7 +171,12 @@ export const RIM_LENGTH = 2 * Math.PI * (WALL_AT - 0.5);
   const N = 280, r = WALL_AT - 0.5, ring = [], first = RAILS.length;
   for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI * 2; ring.push([Math.cos(a) * r, Math.sin(a) * r, 0.4]); }
   line(ring, true);
-  for (let i = first; i < RAILS.length; i++) RAILS[i].rim = true;
+  // (`exit`: which way is off it. Straight down from the lip there is only the wall, so getting off pushes you in toward the middle.)
+  for (let i = first; i < RAILS.length; i++) {
+    const r = RAILS[i], mx = MOON.x - (r.ax + r.bx) / 2, mz = MOON.z - (r.az + r.bz) / 2, far = Math.hypot(mx, mz);
+    r.rim = true;
+    r.exit = { x: mx / far, z: mz / far };
+  }
 }
 // The Monorail: from high on Mons, straight down over the highlands to the edge of the Base.
 span(-138, -138, 3, -30, -30, 1.2, 22);

@@ -10,7 +10,8 @@ import { createEmoter } from '../player/emotes.js';
 import { Bar, DRINKS } from './bar.js';
 import { WHEEL, SPOTS, LAYOUT, colour } from './roulette.js';
 import { config } from '../config.js';
-import { playGulp, playGlassDown, playLaugh, playThunder, playHic, playWoozy, playGurgle, playRetch, playSplash } from '../fx/audio.js';
+import { glowTexture } from '../world/textures.js';
+import { playGulp, playGlassDown, playLaugh, playThunder, playHic, playWoozy, playGurgle, playRetch, playSplash, playCough } from '../fx/audio.js';
 
 const W = 38, D = 30, H = 9;                       // the room: width (x), depth (z), height
 const TABLE = new THREE.Vector3(0, 0, -5);         // where the blackjack table stands (the dealer is on its -z side)
@@ -32,6 +33,8 @@ const ROU_DROP = 4.2, ROU_CALL = 4.7, ROU_END = 6.2, ROU_CHEER = 1.7;   // a spi
 const CROUPIER_X = -0.55;                          // where the croupier stands along the roulette table (the wheel is on his right)
 const WOOZY_TIME = 4.8;                            // seconds of the cut-in when the drink catches up with you
 const TIPSY_AFTER = 3;                             // drinks before it does
+const COUGH_TIME = 3.3;                            // seconds the dealer spends coughing and waving the smoke away
+const HAZE_LIMIT = 3;                              // smokes hanging over his table before he does
 const SMOKE_TIME = 4.4;                            // seconds of the cut-in for a smoke at the blackjack table
 const DRINK_TIME = 3.6;                            // seconds to down a drink
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -640,6 +643,17 @@ export class CasinoRoom {
     this.slammed = false;      // (the glass has gone back down, this drink)
     this.gloat = 0;            // seconds of the dealer's 21 cut-in left
     this.cine = { on: false, lines: 0, flash: 0, title: '', blur: false };   // the cut-in being filmed, for casino.js to dress the screen
+    this.haze = 0;             // how much smoke is hanging over the blackjack table (one per cigarette; it thins out slowly)
+    this.coughing = 0;         // seconds of the dealer's coughing fit left
+    if (!this.hazeSprites) {   // the smoke itself: soft grey puffs adrift over the felt
+      const map = glowTexture();
+      this.hazeSprites = Array.from({ length: 16 }, (_, i) => {
+        const puff = new THREE.Sprite(new THREE.SpriteMaterial({ map, color: 0xaeb3c0, transparent: true, opacity: 0, depthWrite: false }));
+        puff.userData = { a: i * 2.4, r: 0.5 + (i % 5) * 0.42, y: 1.45 + (i % 4) * 0.26, size: 1.8 + (i % 3) * 0.7, rate: 0.12 + (i % 4) * 0.05 };
+        this.scene.add(puff);
+        return puff;
+      });
+    }
     this.smokeLeft = 0;        // seconds of a smoke at the table left
     this.drag = 0;             // 0..1: his hand up at his mouth
     this.puffing = 0;          // 1: drawing on it, 2: blowing it out (what the others are told)
@@ -772,9 +786,10 @@ export class CasinoRoom {
   }
 
   // ---- A smoke at the table --------------------------------------------------------------
-  // Sat at the blackjack table: a long drag and a slow cloud, filmed as a cut-in. Returns false if he can't just now.
+  // Sat at the blackjack table or the bar: a long drag and a slow cloud, filmed as a cut-in. Returns false if he
+  // can't just now. At the table the smoke hangs about (this.haze), and too much of it sets the dealer coughing.
   smoke() {
-    if (this.seat < 0 || this.smokeLeft > 0 || this.cine.on) return false;
+    if ((this.seat < 0 && this.bar < 0) || this.smokeLeft > 0 || this.cine.on || this.drinking > 0 || this.barShop.busy) return false;
     this.emoter.stop();
     this.smokeLeft = SMOKE_TIME;
     this.light(this.kirky, true);
@@ -789,7 +804,7 @@ export class CasinoRoom {
   // Its shots: a snap zoom on him, the ember in close-up as he draws on it, a hard cut to his profile holding it in,
   // then from low across the felt as the cloud rolls out.
   smokeShot() {
-    if (this.smokeLeft <= 0 || this.seat < 0) return null;
+    if (this.smokeLeft <= 0 || (this.seat < 0 && this.bar < 0)) return null;
     const t = SMOKE_TIME - this.smokeLeft, k = this.kirky;
     k.root.updateMatrixWorld(true);
     const head = k.torso.localToWorld(new THREE.Vector3(0, 0.8, 0));
@@ -802,6 +817,19 @@ export class CasinoRoom {
     else if (t < 2.15) s = { pos: at(0.45, -1.4, -0.05), look: at(0.3, 0, 0.05), fov: 30, lines: 1 };                                                          // hard cut: in profile, holding it
     else s = { pos: at(1.3 + 0.3 * smooth((t - 2.15) / 2), -0.9, -0.3), look: at(0.4, 0, 0.12), fov: 42 - 6 * smooth((t - 2.15) / 2), title: t > 3.1 ? 'Smooth.' : '' };   // and out it rolls
     return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.7) * 0.6, pop(1.9), pop(2.15) * 0.8) };
+  }
+
+  // The dealer's coughing fit, if you are sat at his table to see it: up at him from the baize, from the side as
+  // he bats at the air, and the whole table from behind the players.
+  coughShot() {
+    if (this.coughing <= 0 || this.seat < 0) return null;
+    const t = COUGH_TIME - this.coughing, at = (x, y, z) => new THREE.Vector3(TABLE.x + x, y, TABLE.z + z);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0), head = this.dealerHead.getWorldPosition(new THREE.Vector3()), hack = Math.max(0, Math.sin(t * 9)) ** 3;
+    let s;
+    if (t < 0.95) s = { pos: at(-0.5, 1.15, -0.15), look: head, fov: 44 - 16 * smooth(t / 0.2), lines: 1, shake: 0.012 * hack };                      // snap zoom, from the baize
+    else if (t < 2.3) s = { pos: this.dealer.position.clone().add(new THREE.Vector3(2.3, 1.95, 1.55)), look: head, fov: 34, lines: 0.5 + 0.5 * hack, shake: 0.014 * hack, title: 'Koff! Koff!' };      // from the side: one fist at his mouth, the other hand flapping
+    else s = { pos: at(0.4, 2.7, 3.4 - 0.3 * smooth((t - 2.3) / 1)), look: at(0, 1.45, -0.6), fov: 50, title: 'Put that out.' };                    // and the table he has to work at
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.95) * 0.7, pop(2.3) * 0.6) };
   }
 
   // Left-button drag: swing the camera round (dx) and tip it (dy), in pixels.
@@ -1210,7 +1238,9 @@ export class CasinoRoom {
       const face = p.seat >= 0 ? Math.atan2(TABLE.x - spot.x, TABLE.z - spot.z) : o.bar >= 0 ? Math.PI / 2 : o.slot >= 0 ? -Math.PI / 2 : p.yaw;
       o.yaw += Math.atan2(Math.sin(face - o.yaw), Math.cos(face - o.yaw)) * (1 - Math.exp(-10 * dt));
       // Having a smoke at the table: 1 = drawing on it, 2 = blowing it out.
-      const smoking = p.seat >= 0 && (p.smoke === 1 || p.smoke === 2) ? p.smoke : 0;
+      const smoking = (p.seat >= 0 || o.bar >= 0) && (p.smoke === 1 || p.smoke === 2) ? p.smoke : 0;
+      if (smoking === 2 && o.smokeWas !== 2 && p.seat >= 0) this.haze++;   // (their cloud joins the rest over the table)
+      o.smokeWas = smoking;
       if (!!smoking !== !!o.lit) { o.lit = !!smoking; this.light(o.model, o.lit); }
       o.drag = lerp(o.drag || 0, smoking === 1 ? 1 : 0, 1 - Math.exp(-8 * dt));
       o.model.inhale = smoking === 1 ? o.drag : 0;
@@ -1257,9 +1287,11 @@ export class CasinoRoom {
       const t = SMOKE_TIME - (this.smokeLeft -= dt);
       this.drag = smooth(t / 0.5) * (1 - smooth((t - 1.9) / 0.3));
       k.inhale = smooth((t - 0.7) / 0.4) * (1 - smooth((t - 1.85) / 0.1));
+      const was = this.puffing;
       this.puffing = t > 2.15 && t < 3.6 ? 2 : t < 2.15 ? 1 : 0;
+      if (this.puffing === 2 && was !== 2 && this.seat >= 0) this.haze++;
       if (this.puffing === 2) k.exhale(dt);
-      if (this.smokeLeft <= 0 || this.seat < 0) {
+      if (this.smokeLeft <= 0 || (this.seat < 0 && this.bar < 0)) {
         this.smokeLeft = this.drag = this.puffing = k.inhale = 0;
         this.light(k, false);
       }
@@ -1342,6 +1374,32 @@ export class CasinoRoom {
     this.dealerHead.rotation.set(-0.45 * ha + shake * 0.06, Math.sin(this.time * 0.45) * 0.22 * (1 - ha), 0);   // looking from player to player; thrown back to laugh
     this.dealerArms.forEach((arm, i) => { arm.rotation.x = -ha * (1.5 + Math.sin(this.time * 24 + i * 2) * 0.22); });
 
+    // Smoke over his table: it hangs there, thinning slowly. Too much and he has a coughing fit: bent over one
+    // fist, batting the air clear with the other hand (which does clear it).
+    this.haze = Math.max(0, this.haze - dt / 50);
+    if (this.haze >= HAZE_LIMIT && this.coughing <= 0 && this.smokeLeft <= 0 && !this.cine.on && ha <= 0) { this.coughing = COUGH_TIME; playCough(); }
+    const [fist, flap] = this.dealerArms;
+    flap.rotation.z = 0;
+    if (this.coughing > 0) {
+      const t = COUGH_TIME - (this.coughing -= dt), w = smooth(t / 0.25) * smooth(this.coughing / 0.3);
+      const hack = t < 2.5 ? Math.max(0, Math.sin(t * 9)) ** 3 : 0;   // each cough
+      d.rotation.x += (0.2 + 0.2 * hack) * w;
+      d.position.y += 0.03 * hack;
+      this.dealerHead.rotation.x += (0.28 + 0.25 * hack) * w;
+      fist.rotation.x = -1.05 * w;
+      flap.rotation.x = (-1.25 + Math.sin(t * 14) * 0.3) * w;
+      flap.rotation.z = Math.sin(t * 14) * 0.55 * w;
+      this.haze = Math.max(0.3, this.haze - dt * 1.4);
+    }
+    const thick = Math.min(1, this.haze / 4);
+    for (const puff of this.hazeSprites) {
+      const u = puff.userData, a = u.a + this.time * u.rate;
+      puff.position.set(TABLE.x + Math.cos(a) * u.r * 1.5, u.y + Math.sin(this.time * 0.4 + u.a) * 0.12, TABLE.z + 0.3 + Math.sin(a) * u.r);
+      puff.scale.setScalar(u.size);
+      puff.material.opacity += (thick * 0.6 - puff.material.opacity) * (1 - Math.exp(-2.5 * dt));
+      puff.visible = puff.material.opacity > 0.004;
+    }
+
     // Slot screens cycle colours; chandelier crystals glint.
     // Slot machines: the one being played flickers faster (and strobes on a big win); its lever dips when pulled.
     this.pulled += dt;
@@ -1392,7 +1450,7 @@ export class CasinoRoom {
     cam.fov = this.firstPerson ? 72 : lerp(62, 56, sat);
 
     // A cut-in takes the camera over completely: the barman's performance, or you drinking.
-    const shot = this.barShop.shot() || this.smokeShot() || this.drinkShot() || this.sickShot() || this.woozyShot() || this.winShot() || this.rouletteShot() || this.dealerShot();
+    const shot = this.barShop.shot() || this.smokeShot() || this.drinkShot() || this.sickShot() || this.woozyShot() || this.winShot() || this.rouletteShot() || this.dealerShot() || this.coughShot();
     this.cine.on = !!shot;
     if (this.firstPerson && !shot) k.root.visible = false;   // (you don't see yourself, except in a cut-in)
     if (shot) {
