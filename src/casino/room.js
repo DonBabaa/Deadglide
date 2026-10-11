@@ -7,8 +7,9 @@
 import * as THREE from 'three';
 import { SkaterModel } from '../player/skaterModel.js';
 import { Bar, DRINKS } from './bar.js';
+import { WHEEL, SPOTS, LAYOUT, colour } from './roulette.js';
 import { config } from '../config.js';
-import { playGulp, playGlassDown, playLaugh, playThunder } from '../fx/audio.js';
+import { playGulp, playGlassDown, playLaugh, playThunder, playHic, playWoozy, playGurgle, playRetch, playSplash } from '../fx/audio.js';
 
 const W = 38, D = 30, H = 9;                       // the room: width (x), depth (z), height
 const TABLE = new THREE.Vector3(0, 0, -5);         // where the blackjack table stands (the dealer is on its -z side)
@@ -18,6 +19,18 @@ const SEAT_ANGLES = [-64, -32, 0, 32, 64];         // degrees round the table's 
 const SUIT_SYMBOL = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const TAU = Math.PI * 2;
 const GLOAT_TIME = 3.6;                            // seconds of the dealer's cut-in when he makes a long 21
+const SICK_TIME = 6.4;                             // seconds of the cut-in when it all comes back up
+const SICK_AFTER = 5;                              // drinks before it does
+const CUT_OFF = 40;                                // seconds the barman refuses to serve you afterwards
+const SKIN = new THREE.Color(0xc99873), QUEASY = new THREE.Color(0x8fae5e);
+const WIN_TIME = 3.4;                              // seconds of the cut-in for a big win on the slots
+const ROU = new THREE.Vector3(-6.5, 0, 5.5);       // where the roulette table stands (you play it from its +z side)
+const ROU_WHEEL_X = -1.6, ROU_LAYOUT_X = 0.95, ROU_CELL = 0.2;   // along the table: the wheel, the middle of the layout; the size of one layout cell
+const ROU_DISC = 0.68, ROU_RIM = 0.74, ROU_POCKET = 0.39;        // the wheel: its radius, where the ball runs, where it comes to rest
+const ROU_DROP = 4.2, ROU_CALL = 4.7, ROU_END = 6.2, ROU_CHEER = 1.7;   // a spin, in seconds: the ball is home; the number is called; it's over; (winners) celebrating
+const CROUPIER_X = -0.55;                          // where the croupier stands along the roulette table (the wheel is on his right)
+const WOOZY_TIME = 4.8;                            // seconds of the cut-in when the drink catches up with you
+const TIPSY_AFTER = 3;                             // drinks before it does
 const DRINK_TIME = 3.6;                            // seconds to down a drink
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
@@ -316,9 +329,12 @@ export class CasinoRoom {
       });
     }
 
-    // Slot machines along the left wall (to look at: they don't work).
+    this.buildRoulette();
+
+    // Slot machines along the left wall. Walk up to one to play it (the game itself is in slots.js).
     const cabinet = std(0x1b1014, 0.4), chrome = std(0xb9bec4, 0.25, { metalness: 0.6 });
     this.screens = [];
+    this.machines = [];   // { stand: where you play it from, lever }
     for (const z of [-11.2, -3.8, 3.7, 11.2]) {
       const g = new THREE.Group();
       g.position.set(-W / 2 + 0.85, 0, z);
@@ -327,8 +343,12 @@ export class CasinoRoom {
       add(new THREE.BoxGeometry(1.16, 0.28, 1.06), gold, 0, 2.42, 0, g);
       add(new THREE.BoxGeometry(1.16, 0.1, 1.06), gold, 0, 0.05, 0, g);
       this.screens.push(add(new THREE.PlaneGeometry(0.85, 0.6), glow(0x7dffb0), 0, 1.55, 0.51, g));
-      add(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), chrome, 0.66, 1.3, 0.2, g);
-      add(new THREE.SphereGeometry(0.08, 8, 6), glow(0xc8201b), 0.66, 1.62, 0.2, g);
+      const lever = new THREE.Group();   // hinged at the bottom, so it can be pulled
+      lever.position.set(0.66, 1.0, 0.2);
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), chrome, 0, 0.3, 0, lever);
+      add(new THREE.SphereGeometry(0.08, 8, 6), glow(0xc8201b), 0, 0.62, 0, lever);
+      g.add(lever);
+      this.machines.push({ stand: new THREE.Vector3(-W / 2 + 2.25, 0, z), lever });
       this.scene.add(g);
     }
 
@@ -361,6 +381,10 @@ export class CasinoRoom {
     }
 
     this.buildTable();
+    // Two of him: the first one built goes to the roulette table to spin the wheel, the second deals the cards.
+    this.buildDealer();
+    this.croupier = { group: this.dealer, arms: this.dealerArms, head: this.dealerHead, riches: this.riches };
+    this.croupier.group.position.set(ROU.x + CROUPIER_X, 0, ROU.z - 1.5);
     this.buildDealer();
 
     // Kirky, on foot: no board, facing the way he walks.
@@ -372,6 +396,22 @@ export class CasinoRoom {
     for (const id in k.guns) k.guns[id].group.visible = false;   // (he checked his guns at the door)
 
     this.guests = new Map();  // other players: id -> { model, tag, pos, yaw, ... }
+    // For when someone has one too many: a gold ice bucket the barman shoves across, and what goes into it.
+    this.bucket = new THREE.Group();
+    const bucketGold = this.gold.clone();   // (its own copy: you can see inside it)
+    bucketGold.side = THREE.DoubleSide;
+    add(new THREE.CylinderGeometry(0.17, 0.13, 0.26, 18, 1, true), bucketGold, 0, 0.13, 0, this.bucket);
+    add(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 18), this.gold, 0, 0.01, 0, this.bucket);
+    add(new THREE.TorusGeometry(0.17, 0.012, 6, 20).rotateX(Math.PI / 2), this.gold, 0, 0.26, 0, this.bucket);
+    this.scene.add(this.bucket);
+    this.drops = Array.from({ length: 90 }, () => ({ life: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3() }));
+    this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 6, 5), new THREE.MeshBasicMaterial({ toneMapped: false }), this.drops.length);
+    this.dropMesh.frustumCulled = false;
+    const sick = [0x9fbf3a, 0xc9c24a, 0x7a9a2a, 0xd9a35a];
+    this.drops.forEach((_, i) => { this.dropMesh.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); this.dropMesh.setColorAt(i, new THREE.Color(sick[i % 4])); });
+    this.scene.add(this.dropMesh);
+    this.nextDrop = 0;
+
     this.cards = new Map();   // "owner:index" -> card mesh
     this.chips = [];
     this.time = 0;
@@ -521,7 +561,10 @@ export class CasinoRoom {
     amount = Math.max(0, Math.floor(amount));
     if (amount === this.wealth) return;
     this.wealth = amount;
-    for (const [at, name] of RICHES) for (const m of this.riches[name]) m.visible = amount >= at;
+    for (const [at, name] of RICHES) {
+      for (const m of this.riches[name]) m.visible = amount >= at;
+      for (const m of this.croupier.riches[name]) m.visible = amount >= at && name !== 'hoard' && name !== 'throne';   // (the croupier wears it all too, but the gold and the throne stay at the card table)
+    }
     this.houseSign.redraw(['BABITUS GOYITUS', `THE HOUSE HAS TAKEN ${amount.toLocaleString()}`]);
   }
 
@@ -553,14 +596,44 @@ export class CasinoRoom {
     this.walk = 0;             // how far through a stride
     this.seat = -1;            // the seat at the blackjack table you're sitting at, or -1
     this.bar = -1;             // the bar stool you're sitting on, or -1
+    this.slot = -1;            // the slot machine you're standing at, or -1
+    // The reels, drawn on the screen of the machine being played.
+    if (!this.reels) {
+      this.reelCanvas = Object.assign(document.createElement('canvas'), { width: 340, height: 240 });
+      this.reelTexture = new THREE.CanvasTexture(this.reelCanvas);
+      this.reelTexture.colorSpace = THREE.SRGBColorSpace;
+      this.reels = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.6), new THREE.MeshBasicMaterial({ map: this.reelTexture, toneMapped: false }));
+      this.reels.rotation.y = Math.PI / 2;
+      this.scene.add(this.reels);
+    }
+    this.reels.visible = false;
+    this.pulled = 9;           // seconds since the lever was last pulled
+    this.win = 0;              // seconds of the big-win cut-in left
+    this.winTitle = '';
+    this.roulette = false;     // standing at the roulette table
+    this.rtime = -1;           // seconds into a spin of the wheel (-1: it's idling)
+    this.called = false;       // this spin's number has been called
+    this.rtitle = this.rwin = '';
+    this.rlost = false;
+    this.croupierLaugh = 0;
     if (this.glass) this.scene.remove(this.glass);
     this.glass = null;         // your drink (see order / drink)
     this.sip = 0;              // 0..1: the glass raised to drink
     this.drinking = 0;         // seconds of the drinking animation left
-    this.tipsy = 0;            // how many drinks are still in you (the camera sways)
+    this.tipsy = 0;            // how many drinks are still in you (it wears off)
+    this.isTipsy = false;      // past the point where it shows
+    this.sick = 0;             // seconds of the being-sick cut-in left
+    this.heave = 0;            // 0..1: doubled over the bar
+    this.cutOff = 0;           // seconds until the barman will serve you again
+    this.bucket.visible = false;
+    for (const drop of this.drops) drop.life = 0;
+    this.kirky?.mats.skin.color.copy(SKIN);
+    this.woozy = 0;            // seconds of the "it's hit you" cut-in left
+    this.hic = 0;              // 0..1: a hiccup jolting through him
+    this.lean = 0;             // how far he's toppling sideways on his stool (radians)
     this.slammed = false;      // (the glass has gone back down, this drink)
     this.gloat = 0;            // seconds of the dealer's 21 cut-in left
-    this.cine = { on: false, lines: 0, flash: 0, title: '' };   // the cut-in being filmed, for casino.js to dress the screen
+    this.cine = { on: false, lines: 0, flash: 0, title: '', blur: false };   // the cut-in being filmed, for casino.js to dress the screen
     this.barShop.reset();
     this.tableBlend = 0;       // 0..1: the camera easing to its place over the blackjack table
     this.sitBlend = 0;         // 0 = on his feet, 1 = sat down
@@ -579,6 +652,96 @@ export class CasinoRoom {
       if (!taken[i] && d < bestDist) { best = i; bestDist = d; }
     });
     return best;
+  }
+
+  // One too many. A cut-in in six shots: his face going green, the barman seeing what's coming, a
+  // bucket fired down the bar, the moment itself (slowed right down), the barman unable to watch,
+  // and the aftermath. It sobers him up, and he's cut off for a while.
+  updateSick(dt, k) {
+    const skin = k.mats.skin.color;
+    if (this.sick > 0 && this.bar >= 0) {
+      const before = this.sickClock;
+      const t = (this.sickClock += dt * (before > 3.0 && before < 3.5 ? 0.4 : 1));   // (the first heave hangs)
+      this.sick = SICK_TIME - t;
+      const crossed = (at) => before < at && t >= at, st = this.barStools[this.bar].stand, backX = this.barShop.at.backX;
+      for (const at of [0.5, 1.15, 1.8]) if (crossed(at)) { this.hicAt = this.time; playGurgle(); }   // his stomach turning over
+      skin.copy(SKIN).lerp(QUEASY, smooth(t / 1.4) * (1 - smooth((t - 5.2) / 1.0)));
+      if (crossed(1.5)) this.barShop.alarm(st.z, SICK_TIME - 1.5);
+      // The bucket: shot down the marble from the barman's side, just in time.
+      const slide = smooth((t - 2.5) / 0.42);
+      this.bucket.visible = t > 2.45;
+      this.bucket.position.set(lerp(backX - 0.7, st.x + 0.86, slide), 1.25, st.z - 0.3 * slide);
+      if (crossed(2.5)) playGlassDown();
+      this.heave = smooth((t - 2.9) / 0.14) * (1 - 0.35 * smooth((t - 4.3) / 0.5));   // doubled over; afterwards, slumped
+      if (crossed(3.0)) { this.retched = true; playRetch(); }
+      if (t > 3.0 && t < 4.2) {
+        // Out it comes, in an arc, into the bucket.
+        k.root.updateMatrixWorld(true);
+        k.torso.localToWorld(v.set(0.03, 0.74, 0.16));
+        for (let n = 0; n < 4; n++) {
+          const drop = this.drops[this.nextDrop++ % this.drops.length];
+          drop.life = 0.9;
+          drop.pos.copy(v);
+          drop.vel.copy(this.bucket.position).setY(1.45).sub(v).multiplyScalar(2.6).add(v2.set((Math.random() - 0.5) * 0.5, 1.7 + Math.random() * 0.8, (Math.random() - 0.5) * 0.5));
+        }
+        if (this.time - (this.splashed || 0) > 0.16) { this.splashed = this.time; playSplash(); }
+      }
+      if (this.sick <= 0) {
+        // Better out than in. He's a good deal soberer, and the barman has had enough of him for now.
+        this.sick = 0;
+        this.heave = 0;
+        this.tipsy = 1;
+        this.isTipsy = false;
+        this.cutOff = CUT_OFF;
+        this.bucket.visible = false;
+        skin.copy(SKIN);
+      }
+    }
+    // The drops fly whether or not the cut-in is still on them.
+    const sc = v2, m = this.dropM || (this.dropM = new THREE.Matrix4());
+    this.drops.forEach((drop, i) => {
+      if (drop.life > 0) {
+        drop.life -= dt;
+        drop.vel.y -= 7 * dt;
+        drop.pos.addScaledVector(drop.vel, dt);
+        if (drop.pos.y < 1.27 && drop.vel.y < 0) drop.life = 0;   // into the bucket (or onto the bar)
+      }
+      this.dropMesh.setMatrixAt(i, drop.life > 0 ? m.makeTranslation(drop.pos.x, drop.pos.y, drop.pos.z) : m.makeScale(0, 0, 0));
+    });
+    this.dropMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  sickShot() {
+    if (this.sick <= 0 || this.bar < 0) return null;
+    const t = this.sickClock, st = this.barStools[this.bar].stand, backX = this.barShop.at.backX, b = this.bucket.position;
+    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = at(0.14, 1.6, 0);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
+    let s;
+    if (t < 1.5) s = { pos: at(1.8 - 0.35 * smooth(t / 1.5), 1.52, 0.42), look: headAt, fov: 36 - 12 * smooth(t / 1.4), lines: 0.3 + 0.5 * smooth(t / 1.4), shake: 0.025 * this.hic, title: t > 0.9 ? 'Uh oh.' : '' };   // his face, going green
+    else if (t < 2.5) s = { pos: new THREE.Vector3(backX - 2.0, 1.72, st.z + 0.45), look: new THREE.Vector3(backX, 1.82, st.z), fov: 46 - 22 * smooth((t - 1.5) / 0.16), lines: 1, shake: 0.01 };            // the barman has seen that colour before
+    else if (t < 3.0) s = { pos: new THREE.Vector3(b.x - 0.25, 1.36, b.z + 0.75), look: b.clone().setY(1.4), fov: 38, lines: 1 };                                                                              // the bucket, at speed
+    else if (t < 4.35) s = { pos: at(0.45, 1.55, 2.1), look: at(0.42, 1.28, -0.1), fov: 46 - 6 * smooth((t - 3.0) / 0.5), shake: 0.03, lines: 0.8, title: 'Bleurgh!' };                                          // and there it goes, in slow motion
+    else if (t < 5.2) s = { pos: new THREE.Vector3(backX - 1.9, 1.75, st.z - 0.5), look: new THREE.Vector3(backX, 1.8, st.z), fov: 30, lines: 0.4 };                                                           // he can't look
+    else s = { pos: new THREE.Vector3(backX - 0.9, 2.2, st.z + 1.6), look: at(0.45, 1.3, 0), fov: 44, title: 'Cut off' };                                                                                      // from behind the bar: the damage
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(1.5) * 0.7, pop(3.0), pop(5.2) * 0.6) };
+  }
+
+  // How tipsy he is, once it has caught up with him (0 until then). Sways the camera and his walk.
+  get drunk() { return this.isTipsy ? Math.max(0, this.tipsy - 1.2) : 0; }
+
+  // The camera's shots for the moment the drink hits: his face as he hiccups, the bar swimming
+  // through his own eyes, the barman shaking his head, then from the side as he nearly leaves his stool.
+  woozyShot() {
+    if (this.woozy <= 0 || this.bar < 0) return null;
+    const t = WOOZY_TIME - this.woozy, st = this.barStools[this.bar].stand, backX = this.barShop.at.backX;
+    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = at(0.14, 1.6, 0);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
+    let s;
+    if (t < 0.95) s = { pos: at(1.75, 1.52, 0.4), look: headAt, fov: 36 - 10 * smooth(t / 0.3), lines: 0.5, shake: 0.02 * this.hic, title: t > 0.35 ? 'Hic!' : '' };       // his face. Hic.
+    else if (t < 2.1) s = { pos: at(0.3, 1.62, 0), look: at(4, 1.95 + Math.sin(t * 2.3) * 0.5, Math.sin(t * 1.7) * 1.6), fov: 72 + Math.sin(t * 3.1) * 9, roll: Math.sin(t * 2.6) * 0.3, blur: true };   // through his eyes: the bottles swim
+    else if (t < 3.05) s = { pos: new THREE.Vector3(backX - 2.0, 1.72, st.z + 0.45), look: new THREE.Vector3(backX, 1.82, st.z), fov: 46 - 22 * smooth((t - 2.1) / 0.18), lines: 1 };   // snap zoom: the barman has seen this before
+    else s = { pos: at(0.35, 1.45, 2.5), look: at(0.15, 1.15, 0), fov: 44 - 6 * smooth((t - 3.9) / 0.4), roll: this.lean * 0.25, lines: t > 3.9 ? 0.7 : 0, shake: 0.02 * this.hic, title: t > 3.9 ? 'Tipsy' : '' };   // from the side: over he goes... and back
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0.35), pop(2.1) * 0.7, pop(3.9)) };
   }
 
   // The camera's shots while you drink (see Bar.shot for the idea): the glass, the lift, the long
@@ -604,6 +767,250 @@ export class CasinoRoom {
     this.tilt = Math.max(-0.5, Math.min(0.75, this.tilt + dy * 0.004));
   }
 
+  // ---- Roulette ---------------------------------------------------------------------------
+  // The table: a wheel at the left end, the betting layout on the felt beside it. (The rules are in roulette.js.)
+  buildRoulette() {
+    const std = this.std, add = this.add, gold = this.gold, t = new THREE.Group();
+    t.position.copy(ROU);
+    const wood = std(0x3a2116, 0.45), basic = (map) => new THREE.MeshBasicMaterial({ map, toneMapped: false });
+    const canvasTexture = (w, h, draw) => {
+      const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
+      draw(c.getContext('2d'));
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+    const INK = { red: '#b3201b', black: '#16161a', green: '#1f7a45', out: '#0d4129' };
+    add(new THREE.BoxGeometry(5.3, 0.16, 2.3), wood, 0, FELT_Y - 0.09, 0, t);
+    add(new THREE.BoxGeometry(5.36, 0.05, 2.36), gold, 0, FELT_Y - 0.19, 0, t);
+    add(new THREE.PlaneGeometry(5.0, 2.0).rotateX(-Math.PI / 2), std(0x0d4129, 0.95), 0, FELT_Y, 0, t);
+    for (const x of [-1.7, 1.7]) {
+      add(new THREE.BoxGeometry(0.7, FELT_Y - 0.2, 1.2), wood, x, (FELT_Y - 0.2) / 2, 0, t);
+      add(new THREE.BoxGeometry(0.9, 0.08, 1.4), gold, x, 0.04, 0, t);
+    }
+    // The layout, painted from the same list of spots the on-screen board is built from.
+    const CELL = 80;
+    add(new THREE.PlaneGeometry(LAYOUT.width * ROU_CELL, LAYOUT.height * ROU_CELL).rotateX(-Math.PI / 2), basic(canvasTexture(LAYOUT.width * CELL, LAYOUT.height * CELL, (g) => {
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = 4;
+      g.strokeStyle = '#e9e4d4';
+      for (const s of SPOTS) {
+        g.fillStyle = INK[s.kind];
+        g.fillRect(s.x * CELL, s.y * CELL, s.w * CELL, s.h * CELL);
+        g.strokeRect(s.x * CELL + 2, s.y * CELL + 2, s.w * CELL - 4, s.h * CELL - 4);
+        g.fillStyle = '#f6f2e6';
+        g.font = `${s.w > 1 ? 34 : 40}px Anton, Impact, sans-serif`;
+        g.fillText(s.label.toUpperCase(), (s.x + s.w / 2) * CELL, (s.y + s.h / 2) * CELL + 3);
+      }
+    })), ROU_LAYOUT_X, FELT_Y + 0.004, 0, t);
+
+    // The wheel: a wooden bowl, and in it the part that turns.
+    const cx = ROU_WHEEL_X;
+    add(new THREE.CylinderGeometry(0.86, 0.8, 0.16, 40), wood, cx, FELT_Y + 0.08, 0, t);
+    add(new THREE.TorusGeometry(0.85, 0.035, 8, 40).rotateX(Math.PI / 2), gold, cx, FELT_Y + 0.17, 0, t);
+    add(new THREE.CircleGeometry(0.8, 40).rotateX(-Math.PI / 2), std(0x24130c, 0.5), cx, FELT_Y + 0.163, 0, t);
+    const wheel = new THREE.Group();
+    wheel.position.set(cx, FELT_Y + 0.17, 0);
+    const seg = TAU / WHEEL.length;
+    add(new THREE.CircleGeometry(ROU_DISC, 74).rotateX(-Math.PI / 2), basic(canvasTexture(1024, 1024, (g) => {
+      const c = 512, wedge = (i, from, to, color) => {
+        g.beginPath();
+        g.arc(c, c, to * c, i * seg - seg / 2 - Math.PI / 2, i * seg + seg / 2 - Math.PI / 2);
+        g.arc(c, c, from * c, i * seg + seg / 2 - Math.PI / 2, i * seg - seg / 2 - Math.PI / 2, true);
+        g.closePath();
+        g.fillStyle = color;
+        g.fill();
+        g.stroke();
+      };
+      g.strokeStyle = '#d9b24a';
+      g.lineWidth = 4;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '58px Anton, Impact, sans-serif';
+      WHEEL.forEach((n, i) => {
+        wedge(i, 0.7, 1, INK[colour(n)]);                                                             // the number...
+        wedge(i, 0.44, 0.7, { red: '#7a1512', black: '#0c0c0e', green: '#14532f' }[colour(n)]);       // ...and its pocket
+        g.save();
+        g.translate(c + Math.cos(i * seg - Math.PI / 2) * 0.855 * c, c + Math.sin(i * seg - Math.PI / 2) * 0.855 * c);
+        g.rotate(i * seg);
+        g.fillStyle = '#f6f2e6';
+        g.fillText(`${n}`, 0, 4);
+        g.restore();
+      });
+      g.beginPath();
+      g.arc(c, c, 0.44 * c, 0, TAU);
+      g.fillStyle = '#3a2116';
+      g.fill();
+      g.stroke();
+    })), 0, 0, 0, wheel);
+    add(new THREE.ConeGeometry(0.2, 0.2, 20), gold, 0, 0.1, 0, wheel);
+    add(new THREE.SphereGeometry(0.05, 10, 8), gold, 0, 0.22, 0, wheel);
+    for (let i = 0; i < 4; i++) add(new THREE.CylinderGeometry(0.014, 0.014, 0.52, 6).rotateZ(Math.PI / 2), gold, 0, 0.05, 0, wheel).rotation.y = i * Math.PI / 4;
+    // (The ball rides on the wheel's group, so "in a pocket" is just a fixed angle on it.)
+    const ball = add(new THREE.SphereGeometry(0.034, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), 0, 0.03, -ROU_POCKET, wheel);
+    t.add(wheel);
+    // The marker that goes on the winning number.
+    const marker = add(new THREE.CylinderGeometry(0.045, 0.06, 0.16, 12), gold, 0, FELT_Y + 0.09, 0, t);
+    marker.visible = false;
+    this.scene.add(t);
+    this.rou = {
+      wheel, ball, marker, table: t, speed: 0.35, index: 0,
+      centre: new THREE.Vector3(ROU.x + cx, 0, ROU.z),
+      stand: new THREE.Vector3(ROU.x + ROU_LAYOUT_X, 0, ROU.z + 1.8),
+      chips: new Map(),
+    };
+  }
+  // Where a spot is on the felt (in the table's own space).
+  spotPlace(s) {
+    return v2.set(ROU_LAYOUT_X + (s.x + s.w / 2 - LAYOUT.width / 2) * ROU_CELL, FELT_Y, (s.y + s.h / 2 - LAYOUT.height / 2) * ROU_CELL);
+  }
+  nearRoulette() {
+    return Math.hypot(Math.max(0, Math.abs(this.pos.x - ROU.x) - 2.65), Math.max(0, Math.abs(this.pos.z - ROU.z) - 1.15)) < 1.0;
+  }
+  playRoulette() {
+    this.orbit = this.tilt = 0;
+    this.roulette = true;
+    this.pos.copy(this.rou.stand);
+    this.yaw = Math.PI;   // facing the table
+    this.speed = 0;
+  }
+  // Put chips on the felt to match the bets: { spot id: gold }.
+  showBets(bets) {
+    const chips = this.rou.chips;
+    for (const s of SPOTS) {
+      const amount = bets[s.id] || 0;
+      let chip = chips.get(s.id);
+      if (!amount) { if (chip) chip.visible = false; continue; }
+      if (!chip) {
+        chip = this.add(new THREE.CylinderGeometry(0.055, 0.055, 1, 14), this.std(0xffffff, 0.5), 0, 0, 0, this.rou.table);
+        chips.set(s.id, chip);
+      }
+      const tall = 0.014 * Math.min(12, Math.ceil(amount / 10));
+      chip.visible = true;
+      chip.scale.y = tall;
+      chip.position.copy(this.spotPlace(s)).y += tall / 2 + 0.005;
+      chip.material.color.set(amount >= 100 ? 0xd9b24a : amount >= 25 ? 0x3fbf6a : 0xc8201b);
+    }
+  }
+  // Spin it: the ball will land on `number`. `title` goes up when it does; `winTitle` (if you won) after, over him celebrating.
+  // `lost`: you got nothing back, and the croupier is going to enjoy it.
+  spinRoulette(number, title, winTitle = '', lost = false) {
+    this.rlost = lost;
+    this.rou.index = WHEEL.indexOf(number);
+    this.rou.number = number;
+    this.rou.marker.visible = false;
+    this.rtime = 0;
+    this.called = false;
+    this.rtitle = title;
+    this.rwin = winTitle;
+  }
+  rouletteShot() {
+    if (this.rtime < 0) return null;
+    const t = this.rtime, w = this.rou.centre, st = this.rou.stand;
+    const at = (x, y, z) => new THREE.Vector3(w.x + x, y, w.z + z), me = (x, y, z) => new THREE.Vector3(st.x + x, y, st.z + z);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
+    let s;
+    if (t < 1.3) s = { pos: at(1.5 - 0.3 * smooth(t / 1.3), 1.55, 1.3), look: at(0, 1.15, 0), fov: 54 - 14 * smooth(t / 0.2), lines: 0.9, shake: 0.012 };               // snap in: the wheel, spinning up
+    else if (t < 2.3) s = { pos: me(-0.4, 1.62, -1.0), look: me(0, 1.64, 0), fov: 30 - 7 * smooth((t - 1.3) / 1.0), lines: 0.35 };                                      // his face, watching it
+    else if (t < ROU_CALL) s = { pos: at(0.01, 3.1 - 1.1 * smooth((t - 2.3) / (ROU_CALL - 2.3)), 0.3), look: at(0, 1.15, 0), fov: 40, roll: (t - 2.3) * 0.25, shake: 0.004 };   // from above, turning, as the ball slows and drops
+    else if (t < ROU_END) {                                                                                                                                              // right in on the pocket
+      const b = this.rou.ball.getWorldPosition(new THREE.Vector3());
+      s = { pos: b.clone().add(v2.set(0.05, 0.6 - 0.15 * smooth((t - ROU_CALL) / 1.2), 0.5)), look: b, fov: 32, title: this.rtitle };
+    } else if (this.rlost) {                                                                                                                                             // (cleaned out) from the baize, looking up at him laughing
+      const c = this.croupier.group.position;
+      s = { pos: new THREE.Vector3(c.x + 0.8, 1.15, c.z + 2.1), look: new THREE.Vector3(c.x, 1.62, c.z), fov: 48 - 10 * smooth((t - ROU_END) / 0.25), lines: 1, shake: 0.01, title: 'The house wins' };
+    } else s = { pos: me(1.5, 0.7, 0.7), look: me(0, 1.5, 0), fov: 46, lines: 0.8, shake: 0.008, title: this.rwin };                                                    // (a winner) from the floor: arms up
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(1.3), pop(2.3), pop(ROU_CALL), this.rwin || this.rlost ? pop(ROU_END) : 0) };
+  }
+  updateRoulette(dt) {
+    const R = this.rou;
+    if (this.rtime >= 0) {
+      this.rtime += dt;
+      if (!this.called && this.rtime >= ROU_CALL) {
+        this.called = true;
+        R.marker.visible = true;
+        R.marker.position.copy(this.spotPlace(SPOTS.find((s) => s.id === `n${R.number}`))).y += 0.09;
+      }
+      if (this.rlost && this.croupierLaugh <= 0 && this.rtime >= ROU_END && this.rtime < ROU_END + 0.5) { this.croupierLaugh = 2.4; playLaugh(); }
+      if (this.rtime >= ROU_END + (this.rwin || this.rlost ? ROU_CHEER : 0)) this.rtime = -1;
+    }
+    // The croupier: breathing like his twin; he reaches across and flicks the wheel to start a spin, watches the ball, and laughs when you lose.
+    {
+      const c = this.croupier, t = this.rtime;
+      this.croupierLaugh = Math.max(0, this.croupierLaugh - dt);
+      const ha = Math.min(1, this.croupierLaugh * 2) * Math.min(1, (2.4 - this.croupierLaugh) * 5), shake = Math.sin(this.time * 24) * ha;
+      const back = t >= 0 ? 1 - smooth((t - 0.7) / 0.5) : 0, reach = t >= 0 ? smooth(t / 0.3) * back : 0, flick = t >= 0 ? smooth((t - 0.38) / 0.12) * back : 0;
+      const watching = t >= 0 && t < ROU_CALL ? smooth(t / 0.3) : 0;
+      c.group.rotation.set(-0.16 * ha + shake * 0.025 + 0.12 * reach, Math.sin(this.time * 0.6 + 2) * 0.04 - 0.35 * reach, 0);
+      c.group.position.y = Math.abs(shake) * 0.05;
+      c.group.scale.y = 1 + Math.sin(this.time * 1.7 + 1) * 0.005 - shake * 0.02;
+      c.head.rotation.set(-0.45 * ha + shake * 0.06 + 0.25 * watching, lerp(Math.sin(this.time * 0.4) * 0.18 * (1 - ha), -0.85, watching), 0);
+      c.arms.forEach((arm, i) => arm.rotation.set(-ha * (1.5 + Math.sin(this.time * 24 + i * 2) * 0.22) - (i === 0 ? 0.3 * reach : 0), i === 0 ? -1.2 * reach + 0.95 * flick : 0, 0));
+    }
+    R.speed = lerp(R.speed, this.rtime >= 0.4 && this.rtime < ROU_DROP ? 2.6 : 0.35, 1 - Math.exp(-(this.rtime >= 0.4 && this.rtime < 0.9 ? 9 : 1.5) * dt));   // (it takes off when he flicks it)
+    R.wheel.rotation.y += R.speed * dt;
+    // The ball: whirling round the rim against the wheel, slowing, then spiralling down into its pocket with a bounce or two.
+    const left = this.rtime >= 0 ? Math.max(0, ROU_DROP - this.rtime) : 0, fall = smooth(1 - left / 1.1);
+    const angle = R.index * (TAU / WHEEL.length) - Math.PI / 2 - 3.0 * left ** 1.5, r = lerp(ROU_RIM, ROU_POCKET, fall);
+    R.ball.position.set(Math.cos(angle) * r, lerp(0.09, 0.03, fall) + Math.abs(Math.sin(left * 15)) * 0.05 * fall * smooth(left / 0.5), Math.sin(angle) * r);
+    return this.rwin && this.rtime >= ROU_END ? smooth((this.rtime - ROU_END) / 0.2) * smooth((ROU_END + ROU_CHEER - this.rtime) / 0.3) : 0;   // (how hard he's celebrating)
+  }
+
+  // The slot machine you're close enough to play (-1 if none).
+  nearSlot() {
+    let best = -1, bestDist = 1.5;
+    this.machines.forEach((m, i) => {
+      const d = Math.hypot(this.pos.x - m.stand.x, this.pos.z - m.stand.z);
+      if (d < bestDist) { best = i; bestDist = d; }
+    });
+    return best;
+  }
+  playSlot(index) {
+    this.orbit = this.tilt = 0;
+    this.slot = index;
+    this.pos.copy(this.machines[index].stand);
+    this.yaw = -Math.PI / 2;   // facing the machine
+    this.speed = 0;
+    this.reels.position.set(-W / 2 + 1.37, 1.55, this.pos.z);
+    this.reels.visible = true;
+  }
+  // Draw the reels: three strings (an emoji, '7' or 'BAR').
+  showReels(symbols) {
+    const g = this.reelCanvas.getContext('2d');
+    g.fillStyle = '#0a0a0c';
+    g.fillRect(0, 0, 340, 240);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    symbols.forEach((s, i) => {
+      const x = 12 + i * 108, dark = s === 'BAR';
+      g.fillStyle = dark ? '#16161a' : '#f6f2e6';
+      g.fillRect(x, 30, 100, 180);
+      g.strokeStyle = '#d9b24a';
+      g.lineWidth = 5;
+      g.strokeRect(x, 30, 100, 180);
+      g.fillStyle = dark ? '#f6f2e6' : s === '7' ? '#c8201b' : '#16161a';
+      g.font = s === '7' ? '130px Anton, Impact, sans-serif' : dark ? '44px Anton, Impact, sans-serif' : '68px serif';
+      g.fillText(s, x + 50, 124);
+    });
+    this.reelTexture.needsUpdate = true;
+  }
+  // Pull the lever (the reels are casino.js's business).
+  pull() { this.pulled = 0; }
+  // A big win: a cut-in, with `title` across the screen at the end of it.
+  bigWin(title) { this.win = WIN_TIME; this.winTitle = title; }
+  winShot() {
+    if (this.win <= 0 || this.slot < 0) return null;
+    const t = WIN_TIME - this.win, m = this.machines[this.slot].stand, at = (dx, y, dz) => new THREE.Vector3(m.x + dx, y, m.z + dz);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0), screen = at(-0.85, 1.55, 0);
+    let s;
+    if (t < 0.8) s = { pos: at(0.25, 1.6, 0.5), look: screen, fov: 44 - 22 * smooth(t / 0.2), lines: 1, shake: 0.012 };                               // snap zoom: the reels, lined up
+    else if (t < 1.9) s = { pos: at(-0.55, 0.75, 1.3), look: at(0.05, 1.55, 0), fov: 50 - 8 * smooth((t - 0.8) / 0.3), lines: 0.8, shake: 0.01 };     // from the carpet, looking up: both arms in the air
+    else s = { pos: at(2.6 - 0.4 * smooth((t - 1.9) / 1.2), 1.9, 1.7), look: at(-0.3, 1.4, 0), fov: 46, title: this.winTitle };                       // pulled back: him, the machine, and what he's won
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.8), pop(1.9)) };
+  }
+
   // The free bar stool you're close enough to take (-1 if none). taken[i]: someone is on stool i.
   nearBar(taken = []) {
     let best = -1, bestDist = 1.5;
@@ -616,14 +1023,14 @@ export class CasinoRoom {
 
   // Order a drink at the bar (you must be sat there). Returns false if the barman is busy.
   order(drink) {
-    if (this.bar < 0 || this.barShop.busy || this.drinking > 0) return false;
+    if (this.bar < 0 || this.barShop.busy || this.drinking > 0 || this.woozy > 0 || this.sick > 0 || this.cutOff > 0) return false;
     if (this.glass) this.scene.remove(this.glass);   // he clears the old glass away
     const glass = (this.glass = this.barShop.makeGlass(drink));
     glass.ready = false;
     return this.barShop.order(drink, glass, this.barStools[this.bar].stand.z, () => { glass.ready = true; });
   }
   // A full glass in front of you, waiting to be drunk?
-  get canDrink() { return !!this.glass && this.glass.ready && this.glass.level > 0 && this.drinking <= 0; }
+  get canDrink() { return !!this.glass && this.glass.ready && this.glass.level > 0 && this.drinking <= 0 && this.woozy <= 0 && this.sick <= 0; }
   // Drink it: up to his mouth, head back, down in one, glass back on the bar.
   drink() {
     if (!this.canDrink) return false;
@@ -648,8 +1055,23 @@ export class CasinoRoom {
   }
   // Up, and a step back from the stool.
   stand() {
+    if (this.roulette) {
+      if (this.rtime >= 0) return;   // not while the wheel's spinning
+      this.orbit = this.tilt = 0;
+      this.pos.z += 0.4;
+      this.roulette = false;
+      return;
+    }
+    if (this.slot >= 0) {
+      if (this.win > 0) return;
+      this.orbit = this.tilt = 0;
+      this.pos.x += 0.8;
+      this.slot = -1;
+      this.reels.visible = false;
+      return;
+    }
     if (this.bar >= 0) {
-      if (this.barShop.busy || this.drinking > 0) return;   // not while he's making it, or mid-swallow
+      if (this.barShop.busy || this.drinking > 0 || this.woozy > 0 || this.sick > 0) return;   // not while he's making it, mid-swallow, mid-wobble or mid-heave
       this.orbit = this.tilt = 0;
       this.pos.x -= 0.9;
       this.bar = -1;
@@ -681,9 +1103,14 @@ export class CasinoRoom {
     k.backLeg.knee.rotation.x = lerp(Math.max(0, swing) * 1.3, 1.25, sat);
     k.backLeg.rotation.z = 0;
     const sip = who.sip || 0;   // raising a glass: the arm comes up and he leans back into it
-    k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip;
-    k.gunArm.rotation.set(lerp(lerp(1.48 - swing * 0.5, 0.5, sat), -0.95, sip), lerp(lerp(0.1, -0.2, sat), -0.5, sip), 0);
-    k.leftArm.rotation.set(lerp(swing * 0.5, -1.15, sat), 0, lerp(0, 0.35, sat));
+    const reach = who.reach || 0, cheer = who.cheer || 0;   // pulling a slot machine's lever; both arms up for a big win
+    const hic = who.hic || 0;   // a hiccup: his chest jumps
+    k.root.rotation.z = who.lean || 0;
+    k.root.position.y += 0.05 * hic;
+    k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
+    k.gunArm.rotation.set(lerp(lerp(lerp(1.48 - swing * 0.5, 0.5, sat), -0.95, sip), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(lerp(0.1, -0.2, sat), -0.5, sip), 0);
+    k.leftArm.rotation.set(lerp(lerp(swing * 0.5, -1.15, sat), -2.7, cheer), 0, lerp(0, 0.35, sat));
+    if (cheer) k.root.position.y += Math.abs(Math.sin(this.time * 11)) * 0.12 * cheer;   // (and he's jumping)
     k.updateSmoke(dt);
   }
 
@@ -733,8 +1160,8 @@ export class CasinoRoom {
     this.time += dt;
     const C = config.casino, k = this.kirky;
 
-    if (this.seat < 0 && this.bar < 0) {
-      this.yaw += inp.steer * C.turnRate * dt + Math.sin(this.time * 1.7) * 0.22 * this.tipsy * Math.min(1, Math.abs(this.speed)) * dt;   // (a few drinks in, he weaves)
+    if (this.seat < 0 && this.bar < 0 && this.slot < 0 && !this.roulette) {
+      this.yaw += inp.steer * C.turnRate * dt + Math.sin(this.time * 1.7) * 0.3 * this.drunk * Math.min(1, Math.abs(this.speed)) * dt;   // (a few drinks in, he weaves)
       const want = (inp.push ? 1 : 0) * C.walkSpeed - (inp.brake ? 1 : 0) * C.walkSpeed * 0.55;
       this.speed = lerp(this.speed, want, 1 - Math.exp(-10 * dt));
       this.pos.x += Math.sin(this.yaw) * this.speed * dt;
@@ -742,6 +1169,11 @@ export class CasinoRoom {
       // Stay inside the room, and out of the slots, the bar and the table.
       this.pos.x = Math.max(-W / 2 + 2, Math.min(W / 2 - 5.4, this.pos.x));
       this.pos.z = Math.max(-D / 2 + 1.2, Math.min(D / 2 - 0.9, this.pos.z));
+      const rx = this.pos.x - ROU.x, rz = this.pos.z - ROU.z, hx = 3.1, hz = 1.6;   // (the roulette table is a box)
+      if (Math.abs(rx) < hx && Math.abs(rz) < hz) {
+        if (hx - Math.abs(rx) < hz - Math.abs(rz)) this.pos.x = ROU.x + Math.sign(rx || 1) * hx;
+        else this.pos.z = ROU.z + Math.sign(rz || 1) * hz;
+      }
       const dx = this.pos.x - TABLE.x, dz = this.pos.z - (TABLE.z + 0.4), d = Math.hypot(dx, dz);
       if (d < STOOL - 0.1 && d > 1e-3) { this.pos.x = TABLE.x + (dx / d) * (STOOL - 0.1); this.pos.z = TABLE.z + 0.4 + (dz / d) * (STOOL - 0.1); }
     }
@@ -766,9 +1198,35 @@ export class CasinoRoom {
         this.sip = 0;
         this.slammed = false;
         this.tipsy = Math.min(6, this.tipsy + 1);
+        if (this.tipsy > SICK_AFTER - 0.8) {   // one too many
+          this.sick = SICK_TIME;
+          this.sickClock = 0;
+          this.retched = false;
+          playGurgle();
+        } else if (!this.isTipsy && this.tipsy > TIPSY_AFTER - 0.8) {   // that one did it
+          this.isTipsy = true;
+          this.woozy = WOOZY_TIME;
+          playWoozy();
+        }
       }
     }
     this.tipsy = Math.max(0, this.tipsy - dt / 45);   // it wears off
+    if (this.isTipsy && this.tipsy < 1.2) this.isTipsy = false;
+
+    this.cutOff = Math.max(0, this.cutOff - dt);
+    this.updateSick(dt, k);
+
+    // The cut-in when it hits him: a hiccup, the room swimming, the barman's disapproval, and very nearly the floor.
+    if (this.woozy > 0) {
+      const t = WOOZY_TIME - this.woozy;
+      this.woozy -= dt;
+      const now = WOOZY_TIME - this.woozy, crossed = (at) => t < at && now >= at;
+      for (const at of [0.35, 4.15]) if (crossed(at)) { this.hicAt = this.time; playHic(); }
+      if (crossed(2.1)) this.barShop.scold(this.barStools[Math.max(0, this.bar)].stand.z);
+      // He goes over sideways... and hauls himself back.
+      this.lean = now > 3.1 && now < 4.1 ? Math.sin(((now - 3.1) / 1.0) * Math.PI) * 0.62 : 0;
+    } else this.lean = Math.sin(this.time * 1.1) * 0.05 * this.drunk * (this.bar >= 0 ? 1 : 0);   // (afterwards he just sways on his stool)
+    this.hic = Math.max(0, 1 - (this.time - (this.hicAt ?? -9)) * 4);
     if (this.glass && this.glass.ready) {
       const g = this.glass, rest = this.barStools[Math.max(0, this.bar)].stand;
       k.root.updateMatrixWorld(true);
@@ -793,16 +1251,30 @@ export class CasinoRoom {
     this.dealerArms.forEach((arm, i) => { arm.rotation.x = -ha * (1.5 + Math.sin(this.time * 24 + i * 2) * 0.22); });
 
     // Slot screens cycle colours; chandelier crystals glint.
-    this.screens.forEach((s, i) => s.material.color.setHSL((this.time * 0.15 + i * 0.17) % 1, 0.8, 0.55));
+    // Slot machines: the one being played flickers faster (and strobes on a big win); its lever dips when pulled.
+    this.pulled += dt;
+    this.win = Math.max(0, this.win - dt);
+    this.reach = this.slot >= 0 ? Math.sin(Math.min(1, this.pulled / 0.55) * Math.PI) : 0;
+    this.cheer = Math.max(this.updateRoulette(dt), this.win > 0 ? smooth((WIN_TIME - this.win - 0.7) / 0.2) * smooth(this.win / 0.3) : 0);
+    this.machines.forEach((m, i) => { m.lever.rotation.x = i === this.slot ? this.reach * 1.1 : 0; });
+    this.screens.forEach((s, i) => {
+      const mine = i === this.slot;
+      if (mine && this.win > 0) s.material.color.setHSL((this.time * 4) % 1, 1, 0.5 + 0.25 * Math.sin(this.time * 40));
+      else s.material.color.setHSL((this.time * (mine && this.pulled < 2.4 ? 1.6 : 0.15) + i * 0.17) % 1, 0.8, 0.55);
+    });
     this.crystals.forEach((c, i) => { c.rotation.y = this.time * 0.6 + i; });
 
     // Camera: behind Kirky while he walks. When he sits it rises over his shoulder to look down the table.
-    const sway = Math.sin(this.time * 0.9) * 0.05 * this.tipsy;   // a few drinks in, the room moves
-    const cam = this.camera, behind = this.bar >= 0 ? 4.8 - 2.8 * this.sitBlend : 4.8, round = this.yaw + this.orbit + sway;   // (closer at the bar: there are columns behind the stools)
-    cam.position.set(this.pos.x - Math.sin(round) * behind * Math.cos(this.tilt * 0.6), 2.8 + this.tilt * 4, this.pos.z - Math.cos(round) * behind * Math.cos(this.tilt * 0.6));
+    const sway = Math.sin(this.time * 0.9) * 0.07 * this.drunk;   // tipsy: the room moves
+    const cam = this.camera, behind = this.roulette ? 2.6 : this.slot >= 0 ? 2.5 : this.bar >= 0 ? 4.8 - 2.8 * this.sitBlend : 4.8, round = this.yaw + this.orbit + sway;   // (closer at the bar: there are columns behind the stools)
+    cam.position.set(this.pos.x - Math.sin(round) * behind * Math.cos(this.tilt * 0.6), (this.roulette ? 4.6 : this.slot >= 0 ? 2.25 : 2.8) + this.tilt * 4, this.pos.z - Math.cos(round) * behind * Math.cos(this.tilt * 0.6));
     cam.position.x = Math.max(-W / 2 + 0.5, Math.min(W / 2 - 0.5, cam.position.x));
     cam.position.z = Math.max(-D / 2 + 0.5, Math.min(D / 2 - 0.5, cam.position.z));
     v.set(this.pos.x + Math.sin(round) * 2, 1.5, this.pos.z + Math.cos(round) * 2);
+    if (this.roulette) {   // looking down over his shoulder at the whole table, held high in the frame (the betting board is below it)
+      v.set(this.pos.x + Math.sin(round) * 0.5 - 0.95, -0.4, this.pos.z + Math.cos(round) * 0.5);
+      cam.position.x -= 0.95;
+    }
     if (sat > 0.001 && this.lastSeat !== undefined) {
       const s = this.seats[this.lastSeat];
       // Out past the stool, a little to one side so Kirky's head isn't in the way of his cards.
@@ -813,19 +1285,20 @@ export class CasinoRoom {
       v.lerp(v2.set(lerp(TABLE.x, s.stand.x, 0.3), FELT_Y, lerp(TABLE.z, s.stand.z, 0.3) + 0.25), sat);
     }
     cam.lookAt(v);
-    cam.rotateZ(Math.sin(this.time * 0.7 + 1) * 0.035 * this.tipsy);
+    cam.rotateZ(Math.sin(this.time * 0.7 + 1) * 0.05 * this.drunk);
     cam.aspect = window.innerWidth / window.innerHeight;
     cam.fov = lerp(62, 56, sat);
 
     // A cut-in takes the camera over completely: the barman's performance, or you drinking.
-    const shot = this.barShop.shot() || this.drinkShot() || this.dealerShot();
+    const shot = this.barShop.shot() || this.drinkShot() || this.sickShot() || this.woozyShot() || this.winShot() || this.rouletteShot() || this.dealerShot();
     this.cine.on = !!shot;
     if (shot) {
       cam.position.copy(shot.pos);
       if (shot.shake) cam.position.add(v2.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shot.shake * 2));
       cam.lookAt(shot.look);
+      if (shot.roll) cam.rotateZ(shot.roll);
       cam.fov = shot.fov;
-      Object.assign(this.cine, { lines: shot.lines, flash: shot.flash, title: shot.title });
+      Object.assign(this.cine, { lines: shot.lines, flash: shot.flash, title: shot.title, blur: !!shot.blur });
     }
     cam.updateProjectionMatrix();
 

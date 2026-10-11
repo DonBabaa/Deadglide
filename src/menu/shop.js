@@ -59,6 +59,7 @@ function styleRow(slot) {
     if (mine) mine.classList.add('owned');
     options.append(have
       ? mine
+      : option.casino ? button(`${swatch}${option.name} \u00b7 slots prize`, null)   // (can't be bought: see the casino)
       : button(`${swatch}${option.name} ${gold(slot.price)}`, slot.price, () => bought(buy(slot, option))));
   }
   r.append(el('div', 'shop-name', slot.name), options);

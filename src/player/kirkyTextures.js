@@ -104,6 +104,35 @@ export function deckTexture(kind) {
         g.fill();
       }
     }
+  } else if (kind === 'cards') {
+    // Four aces fanned down the deck, on green baize.
+    g.fillStyle = '#0d4129';
+    g.fillRect(0, 0, w, h);
+    [['\u2660', '#16161a'], ['\u2665', '#c8201b'], ['\u2666', '#c8201b'], ['\u2663', '#16161a']].forEach(([suit, color], i) => {
+      g.save();
+      g.translate(64, 36 + i * 60);
+      g.rotate((i - 1.5) * 0.14);
+      g.fillStyle = '#f6f2e6';
+      g.fillRect(-36, -26, 72, 52);
+      g.fillStyle = color;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '34px Anton, Impact, sans-serif';
+      g.fillText('A', -18, 2);
+      g.font = '36px serif';
+      g.fillText(suit, 14, 3);
+      g.restore();
+    });
+  } else if (kind === 'sevens') {
+    // 7 7 7 in red and gold on black.
+    g.fillStyle = '#d9b24a';
+    g.fillRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#141416';
+    g.fillRect(12, 12, w - 24, h - 24);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '86px Anton, Impact, sans-serif';
+    for (let i = 0; i < 3; i++) { g.fillStyle = '#d9b24a'; g.fillText('7', 67, 52 + i * 78); g.fillStyle = '#c8201b'; g.fillText('7', 63, 48 + i * 78); }
   } else if (kind === 'skull') {
     g.fillStyle = '#e6e0cf';
     g.beginPath(); g.ellipse(64, 108, 46, 50, 0, 0, Math.PI * 2); g.fill();   // the dome

@@ -2,7 +2,8 @@
 // What you own and what you're wearing is saved with the rest of your profile.
 //
 // SLOTS lists everything on sale. Each slot has options; the first is the free
-// default. To add one, add it here and make SkaterModel.applyLook() (or, for
+// default. Options marked `casino: true` can't be bought: they are prizes from
+// the casino's slot machines (see casino/slots.js). To add one, add it here and make SkaterModel.applyLook() (or, for
 // tracers, main.js) understand its value.
 import { profile, pay, saveProfile } from './profile.js';
 import { WEAPONS } from '../player/weapons.js';
@@ -14,6 +15,8 @@ export const SLOTS = [
     { id: 'green', name: 'Forest', color: '#2f5a3a' },
     { id: 'bone', name: 'Bone', color: '#d6cfbd' },
     { id: 'purple', name: 'Purple', color: '#55307a' },
+    { id: 'lame', name: 'Gold lam\u00e9', color: '#c9a23a', casino: true },
+    { id: 'velvet', name: 'High-roller velvet', color: '#6a0f2c', casino: true },
   ] },
   { id: 'beanie', name: 'Beanie', price: 100, options: [
     { id: 'charcoal', name: 'Charcoal', color: '#24262c' },
@@ -22,12 +25,15 @@ export const SLOTS = [
     { id: 'green', name: 'Green', color: '#2e5d43' },
     { id: 'blue', name: 'Blue', color: '#2f4f8a' },
     { id: 'none', name: 'No beanie' },
+    { id: 'gold', name: 'Gold', color: '#d9b24a', casino: true },
   ] },
   { id: 'deck', name: 'Deck graphic', price: 200, options: [
     { id: 'wood', name: 'Plain wood' },
     { id: 'flames', name: 'Flames' },
     { id: 'skull', name: 'Skull' },
     { id: 'checker', name: 'Checker' },
+    { id: 'cards', name: 'Four aces', casino: true },
+    { id: 'sevens', name: 'Lucky sevens', casino: true },
   ] },
   { id: 'wheels', name: 'Wheels', price: 75, options: [
     { id: 'bone', name: 'Bone', color: '#e9e4d4' },
@@ -35,18 +41,21 @@ export const SLOTS = [
     { id: 'green', name: 'Green', color: '#3fbf6a' },
     { id: 'blue', name: 'Blue', color: '#3f7fd6' },
     { id: 'black', name: 'Black', color: '#18181b' },
+    { id: 'gold', name: 'Gold', color: '#d9b24a', casino: true },
   ] },
   { id: 'tracer', name: 'Bullet tracer', price: 250, options: [
     { id: 'amber', name: 'Amber', color: '#ffd9a0' },
     { id: 'green', name: 'Green', color: '#7dffb0' },
     { id: 'blue', name: 'Blue', color: '#7fc8ff' },
     { id: 'purple', name: 'Purple', color: '#d0a6ff' },
+    { id: 'jackpot', name: 'Jackpot gold', color: '#ffd23a', casino: true },
   ] },
   { id: 'smoke', name: 'In his mouth', price: 150, options: [
     { id: 'cigarette', name: 'Cigarette' },
     { id: 'lollipop', name: 'Lollipop' },
     { id: 'toothpick', name: 'Toothpick' },
     { id: 'nothing', name: 'Nothing' },
+    { id: 'cigar', name: 'Cigar', casino: true },
   ] },
 ];
 
@@ -68,6 +77,16 @@ export function wear(slot, option) {
 }
 // Buying something puts it on.
 export const buy = (slot, option) => !owns(slot, option) && pay(slot.price, () => { C.owned.push(key(slot, option)); C.look[slot.id] = option.id; });
+
+// Casino prizes you haven't won yet: [slot, option] pairs.
+export const casinoPrizes = () => SLOTS.flatMap((slot) => slot.options.filter((o) => o.casino && !owns(slot, o)).map((o) => [slot, o]));
+// Win one: it's yours, and he puts it straight on.
+export function award(slot, option) {
+  if (owns(slot, option)) return;
+  C.owned.push(key(slot, option));
+  C.look[slot.id] = option.id;
+  saveProfile();
+}
 
 export const ownsGold = (gunId) => C.gold.includes(gunId);
 export const goldOn = (gunId) => ownsGold(gunId) && !C.goldOff.includes(gunId);

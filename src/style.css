@@ -546,3 +546,47 @@ body.casino-cine #casino > *:not(#casino-cine) { opacity: 0; pointer-events: non
 #casino-title { position: absolute; left: 0; right: 0; bottom: 17vh; text-align: center; font-family: var(--display); font-size: min(9vw, 110px); line-height: 1; letter-spacing: 6px; text-transform: uppercase; color: var(--bone); text-shadow: 5px 5px 0 var(--blood), 10px 10px 0 var(--ink); transform: skewX(-9deg); opacity: 0; }
 #casino-title.show { animation: casinotitle 0.35s cubic-bezier(0.2, 1.5, 0.4, 1) forwards; }
 @keyframes casinotitle { from { opacity: 0; transform: skewX(-9deg) scale(2.4); } to { opacity: 1; transform: skewX(-9deg) scale(1); } }
+
+/* ---- Tipsy: the picture itself goes soft and starts to swim ---- */
+body.casino-woozy #game { filter: blur(3px) saturate(1.6) brightness(1.1); animation: woozy 0.9s ease-in-out infinite alternate; }
+body.casino-tipsy #game { filter: blur(0.8px) saturate(1.25); animation: woozy 3.2s ease-in-out infinite alternate; }
+@keyframes woozy { from { transform: scale(1.06) rotate(-1.2deg) translateX(-0.6%); } to { transform: scale(1.06) rotate(1.2deg) translateX(0.6%); } }
+
+/* ---- Casino: the slot machine ---- */
+#casino-slots { position: absolute; right: 24px; bottom: 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 22px 14px; background: rgba(12, 12, 14, 0.82); border: 3px solid #d9b24a; box-shadow: 6px 6px 0 var(--ink); }
+#casino-reels { display: flex; gap: 10px; padding: 10px; background: #0a0a0c; border: 3px solid #d9b24a; }
+#casino-reels span { display: flex; align-items: center; justify-content: center; width: 86px; height: 96px; font-size: 52px; background: linear-gradient(#d8d2c0, #f6f2e6 45%, #f6f2e6 55%, #d8d2c0); color: #16161a; text-shadow: none; filter: blur(1.5px); }
+#casino-reels span.stopped { filter: none; animation: reelstop 0.18s ease-out; }
+#casino-reels span.seven { font-family: var(--display); font-size: 74px; color: var(--blood); }
+#casino-reels span.bar { font-family: var(--display); font-size: 34px; letter-spacing: 2px; color: #f6f2e6; background: #16161a; }
+@keyframes reelstop { from { transform: translateY(-14px); } to { transform: none; } }
+#casino-slot-result { min-height: 24px; font-family: var(--display); font-size: 21px; letter-spacing: 1.5px; text-transform: uppercase; color: #ffd76a; text-align: center; }
+#casino #casino-spin { padding: 12px 34px; font-size: 26px; color: var(--ink); background: #ffd23a; border-color: var(--ink); box-shadow: 5px 5px 0 var(--bone); }
+#casino-paytable { max-width: 330px; font-size: 13px; font-weight: 600; letter-spacing: 1px; line-height: 1.5; text-align: center; opacity: 0.75; }
+
+/* ---- Casino: roulette ---- */
+#casino-roulette { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 10px; padding: 14px 18px 12px; background: rgba(12, 12, 14, 0.85); border: 3px solid #d9b24a; box-shadow: 6px 6px 0 var(--ink); }
+#casino-roulette-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 28px; }
+#casino-roulette-result { font-family: var(--display); font-size: 21px; letter-spacing: 1.5px; text-transform: uppercase; color: #ffd76a; }
+#casino-roulette-history { display: flex; gap: 4px; }
+#casino-roulette-history b { min-width: 26px; padding: 3px 0; font-family: var(--display); font-size: 15px; font-weight: 400; text-align: center; text-shadow: none; opacity: 0.75; }
+#casino-roulette-history b:first-child { opacity: 1; outline: 2px solid #ffd76a; }
+#casino-roulette .red { background: #b3201b; }
+#casino-roulette .black { background: #16161a; }
+#casino-roulette .green { background: #1f7a45; }
+#casino-roulette .out { background: #0d4129; }
+#casino-board { display: grid; grid-template-columns: repeat(14, 44px); grid-template-rows: repeat(5, 38px); gap: 2px; }
+#casino #casino-board button { position: relative; padding: 0; font-size: 17px; letter-spacing: 0.5px; border: 2px solid rgba(233, 228, 212, 0.55); box-shadow: none; transform: none; }
+#casino #casino-board button:hover:not(:disabled) { transform: none; box-shadow: none; border-color: #ffd76a; filter: brightness(1.35); }
+#casino #casino-board button:disabled { opacity: 0.75; }
+#casino #casino-board button.hit { border-color: #ffd76a; box-shadow: 0 0 0 3px #ffd76a, 0 0 18px #ffd76a; opacity: 1; z-index: 1; }
+#casino-board button i { display: none; position: absolute; right: -5px; top: -7px; min-width: 22px; padding: 2px 4px; font: 700 11px var(--text); letter-spacing: 0; color: var(--ink); background: #ffd23a; border: 2px solid var(--ink); border-radius: 12px; z-index: 2; }
+#casino-board button.bet i { display: block; }
+#casino-roulette-controls { display: flex; align-items: center; gap: 14px; }
+#casino-roulette-chips { display: flex; gap: 8px; }
+#casino #casino-roulette-controls button { padding: 7px 14px; font-size: 18px; box-shadow: 3px 3px 0 var(--ink); }
+#casino #casino-roulette-chips button.on { color: var(--ink); background: #ffd23a; border-color: var(--ink); }
+#casino-roulette-total { flex: 1; white-space: nowrap; font-family: var(--display); font-size: 20px; letter-spacing: 1px; text-align: right; }
+#casino-roulette-total small { font-size: 13px; opacity: 0.6; }
+#casino #casino-roulette-controls #casino-roulette-spin { padding: 9px 26px; font-size: 22px; color: var(--ink); background: #ffd23a; border-color: var(--ink); box-shadow: 4px 4px 0 var(--bone); }
+#casino-roulette-help { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-align: center; opacity: 0.7; }

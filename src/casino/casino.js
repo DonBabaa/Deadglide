@@ -14,13 +14,15 @@
 import { config } from '../config.js';
 import { CasinoRoom } from './room.js';
 import { DRINKS } from './bar.js';
+import { spin, SPIN_COST, SYMBOLS } from './slots.js';
+import { SPOTS, spinWheel, settle, colour } from './roulette.js';
 import { Blackjack, handTotal, canSplit, currentHand } from './blackjack.js';
 import { Net } from './net.js';
 import { profile, pay, bank, houseTook } from '../systems/profile.js';
 import { currentLook } from '../systems/cosmetics.js';
 import { getName } from '../ui/playerName.js';
 import { setMusicStyle } from '../fx/music.js';
-import { playCard, playChip, playCashIn, playCoin, playLose, playPowerup, playLaugh } from '../fx/audio.js';
+import { playCard, playChip, playCashIn, playCoin, playLose, playPowerup, playLaugh, playReel, playReelStop, playLever, playJackpot, playWheel } from '../fx/audio.js';
 
 const $ = (id) => document.getElementById(id);
 const COIN = '<i class="coin"></i>';
@@ -223,6 +225,8 @@ export function createCasino({ onLeave }) {
   }
 
   function standUp() {
+    if (room.roulette) { if (!rolling) { room.stand(); refresh(); } return; }      // away from the roulette table
+    if (room.slot >= 0) { if (!spinning) { room.stand(); refresh(); } return; }   // away from a slot machine
     if (room.bar >= 0) { room.stand(); refresh(); return; }   // off a bar stool
     if (seat < 0 || staked > 0) return;   // not with a bet on the table
     request(myId, 'stand');
@@ -236,6 +240,154 @@ export function createCasino({ onLeave }) {
     refresh();
   }
 
+  // ---- The slot machines -----------------------------------------------------------------
+  let spinning = null;   // the spin in progress: { result, time, stopped }
+  const reelEls = [...document.querySelectorAll('#casino-reels span')], names = Object.keys(SYMBOLS);
+  const shown = [];   // (the same three symbols go on the machine's own screen)
+  const showReel = (el, name) => { el.textContent = SYMBOLS[name]; el.className = name; shown[reelEls.indexOf(el)] = SYMBOLS[name]; if (shown.length === 3) room.showReels(shown); };
+  reelEls.forEach((el, i) => showReel(el, ['seven', 'skull', 'seven'][i]));
+
+  function pullLever() {
+    if (room.slot < 0 || spinning || room.win > 0 || profile.gold < SPIN_COST) return;
+    pay(SPIN_COST, () => {});
+    spinning = { result: spin(), time: 0, stopped: 0, tick: 0 };   // (decided now; the reels catch up)
+    room.pull();
+    playLever();
+    $('casino-slot-result').textContent = '';
+    refresh();
+  }
+
+  // The reels blur, then stop one at a time, left to right, the last one late.
+  function runSlots(dt) {
+    if (!spinning) return;
+    const s = spinning, STOPS = [0.9, 1.5, 2.35];
+    s.time += dt;
+    if ((s.tick += dt) > 0.07) { s.tick = 0; playReel(); }
+    reelEls.forEach((el, i) => {
+      if (i < s.stopped) return;
+      if (s.time >= STOPS[i]) { showReel(el, s.result.reels[i]); el.classList.add('stopped'); s.stopped = i + 1; playReelStop(); }
+      else showReel(el, names[Math.floor(Math.random() * names.length)]);
+    });
+    if (s.stopped < 3) return;
+    // All three are down: pay out.
+    const { result } = s;
+    spinning = null;
+    bank(result.gold);
+    houseTook(SPIN_COST - result.gold);
+    $('casino-slot-result').textContent = result.gold ? `${result.text}  +${result.gold}` : result.text || 'Nothing. Again?';
+    if (result.prize) room.kirky.applyLook(currentLook());   // he puts it straight on
+    if (result.big) { room.bigWin(result.prize ? result.prize.option.name : `+${result.gold} gold`); playJackpot(); }
+    else if (result.gold > SPIN_COST) playCashIn();
+    else if (result.gold) playCoin(0.4);
+    else playLose();
+    refresh();
+  }
+
+  function refreshSlots() {
+    const playing = room.slot >= 0;
+    $('casino-slots').classList.toggle('hidden', !playing);
+    if (!playing) return;
+    $('casino-spin').disabled = !!spinning || room.win > 0 || profile.gold < SPIN_COST;
+    if (profile.gold < SPIN_COST && !spinning) $('casino-slot-result').textContent = `You need ${SPIN_COST} gold to spin`;
+  }
+  $('casino-spin').innerHTML = `Spin ${COIN}${SPIN_COST} <kbd>Space</kbd>`;
+  $('casino-spin').addEventListener('click', pullLever);
+
+  // ---- Roulette ---------------------------------------------------------------------------
+  // You play your own wheel (it isn't shared with the others in the room). Click the board to bet,
+  // spin, and the gold is settled when the number is called.
+  const CHIPS = [5, 25, 100];
+  let bets = {}, chip = CHIPS[0], rolling = null;   // rolling: the spin in progress { number, total, back, paid }
+  const lastNumbers = [], spotEls = {};
+  const wagered = () => Object.values(bets).reduce((a, b) => a + b, 0);
+
+  function placeBet(id, take) {
+    if (!room.roulette || rolling) return;
+    if (take) delete bets[id];
+    else {
+      const amount = Math.min(chip, config.casino.maxBet - wagered(), profile.gold - wagered());   // (the table limit, and what you've got)
+      if (amount <= 0) return;
+      bets[id] = (bets[id] || 0) + amount;
+    }
+    $('casino-roulette-result').textContent = 'Place your bets';
+    playChip();
+    refresh();
+  }
+  for (const s of SPOTS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = s.kind;
+    b.style.gridColumn = `${s.x + 1} / span ${s.w}`;
+    b.style.gridRow = `${s.y + 1} / span ${s.h}`;
+    b.innerHTML = `${s.label}<i></i>`;
+    b.addEventListener('click', () => placeBet(s.id, false));
+    b.addEventListener('contextmenu', (e) => { e.preventDefault(); placeBet(s.id, true); });
+    $('casino-board').append(b);
+    spotEls[s.id] = b;
+  }
+  for (const value of CHIPS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `${COIN}${value}`;
+    b.addEventListener('click', () => { chip = value; refresh(); });
+    $('casino-roulette-chips').append(b);
+  }
+  $('casino-roulette-clear').addEventListener('click', () => { if (!rolling) { bets = {}; refresh(); } });
+
+  function spinRoulette() {
+    const total = wagered();
+    if (!room.roulette || rolling || !total || !pay(total, () => {})) return;
+    const number = spinWheel(), back = settle(bets, number);   // (decided now; the ball catches up)
+    rolling = { number, total, back, paid: false };
+    room.spinRoulette(number, `${number} ${colour(number)}`, back > total ? `+${back - total} gold` : '', back === 0);
+    playWheel();
+    for (const el of Object.values(spotEls)) el.classList.remove('hit');
+    $('casino-roulette-result').textContent = 'No more bets';
+    refresh();
+  }
+  $('casino-roulette-spin').addEventListener('click', spinRoulette);
+
+  function runRoulette() {
+    if (!rolling) return;
+    const { number, total, back } = rolling;
+    if (!rolling.paid && room.called) {   // the number's called: settle up
+      rolling.paid = true;
+      bank(back);
+      houseTook(total - back);
+      lastNumbers.unshift(number);
+      lastNumbers.length = Math.min(lastNumbers.length, 10);
+      spotEls[`n${number}`].classList.add('hit');
+      $('casino-roulette-result').textContent = `${number} ${colour(number)}: ${back > total ? `you win ${back - total}` : back === total ? 'you break even' : back ? `you get ${back} back` : 'the house wins'}`;
+      $('casino-roulette-history').innerHTML = lastNumbers.map((n) => `<b class="${colour(n)}">${n}</b>`).join('');
+      if (back >= total * 6) playJackpot();
+      else if (back > total) playCashIn();
+      else if (back) playCoin(0.4);
+      else playLose();
+      refresh();
+    }
+    if (room.rtime < 0) {   // and it's over: the same bets stay down if you can cover them
+      rolling = null;
+      if (wagered() > profile.gold) bets = {};
+      refresh();
+    }
+  }
+
+  function refreshRoulette() {
+    $('casino-roulette').classList.toggle('hidden', !room.roulette);
+    room.showBets(bets);
+    if (!room.roulette) return;
+    for (const s of SPOTS) {
+      const el = spotEls[s.id], amount = bets[s.id] || 0;
+      el.lastChild.textContent = amount || '';
+      el.classList.toggle('bet', !!amount);
+      el.disabled = !!rolling;
+    }
+    [...$('casino-roulette-chips').children].forEach((b, i) => b.classList.toggle('on', CHIPS[i] === chip));
+    $('casino-roulette-total').innerHTML = `Bet ${COIN}${wagered()} <small>/ ${config.casino.maxBet}</small>`;
+    $('casino-roulette-spin').disabled = !!rolling || !wagered();
+    $('casino-roulette-clear').disabled = !!rolling || !wagered();
+  }
+
   // Make the screen match the game.
   function refresh() {
     const s = view.state, mine = mySeat(), seated = seat >= 0, friends = role !== 'alone';
@@ -244,9 +396,11 @@ export function createCasino({ onLeave }) {
     $('casino-gold').innerHTML = `${COIN}${profile.gold.toLocaleString()}`;
     $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, profile.houseTake).toLocaleString()}`;
     $('casino-table').classList.toggle('hidden', !seated);
-    $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0);
-    $('casino-stand').textContent = seated ? 'Leave table' : 'Get up';
+    $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.slot < 0 && !room.roulette);
+    $('casino-stand').textContent = seated ? 'Leave table' : room.slot >= 0 || room.roulette ? 'Walk away' : 'Get up';
     refreshBar();
+    refreshSlots();
+    refreshRoulette();
     $('casino-stand').disabled = staked > 0;
 
     // Playing with friends: the code to give out, and who's here.
@@ -284,10 +438,10 @@ export function createCasino({ onLeave }) {
     const atBar = room.bar >= 0;
     $('casino-bar').classList.toggle('hidden', !atBar);
     if (!atBar) return;
-    const busy = room.barShop.busy || room.drinking > 0;
+    const busy = room.barShop.busy || room.drinking > 0 || room.cutOff > 0;
     for (const b of document.querySelectorAll('#casino-drinks button')) b.disabled = busy || profile.gold < Number(b.dataset.price);
     $('casino-drink').classList.toggle('hidden', !room.canDrink);
-    $('casino-bar-status').textContent = room.barShop.busy ? 'Coming right up...' : room.canDrink ? '' : room.drinking > 0 ? '' : "What'll it be?";
+    $('casino-bar-status').textContent = room.cutOff > 0 ? `You've had enough. Come back in ${Math.ceil(room.cutOff)}` : room.barShop.busy ? 'Coming right up...' : room.canDrink ? '' : room.drinking > 0 ? '' : "What'll it be?";
   }
   $('casino-drinks').replaceChildren(...DRINKS.map((drink) => {
     const b = document.createElement('button');
@@ -361,7 +515,9 @@ export function createCasino({ onLeave }) {
 
   window.addEventListener('keydown', (e) => {
     if (!active) return;
-    if (e.code === 'Escape') { seat >= 0 || room.bar >= 0 ? standUp() : leave(); return; }
+    if (e.code === 'Escape') { seat >= 0 || room.bar >= 0 || room.slot >= 0 || room.roulette ? standUp() : leave(); return; }
+    if (room.roulette && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); spinRoulette(); return; }
+    if (room.slot >= 0 && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); pullLever(); return; }
     if (seat < 0) return;
     if (view.state.phase === 'betting' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); deal(); }
     else if (e.code === 'KeyH') play('hit');
@@ -374,7 +530,7 @@ export function createCasino({ onLeave }) {
     if (staked > 0) return;   // finish the hand first
     if (role !== 'alone') goAlone('');
     active = false;
-    document.body.classList.remove('in-casino', 'casino-cine');
+    document.body.classList.remove('in-casino', 'casino-cine', 'casino-woozy', 'casino-tipsy');
     $('casino').classList.add('hidden');
     onLeave();
   }
@@ -417,17 +573,24 @@ export function createCasino({ onLeave }) {
       }
 
       // Walking about: offer the free stool you're standing next to, at the table or at the bar.
-      const walking = seat < 0 && room.bar < 0;
+      runSlots(dt);
+      runRoulette();
+      const walking = seat < 0 && room.bar < 0 && room.slot < 0 && !room.roulette;
       const near = walking ? room.nearSeat(view.state.seats.map(Boolean)) : -1;
       const barTaken = [];
       for (const p of others) if (p.seat < 0 && p.bar >= 0) barTaken[p.bar] = true;
       const nearBar = walking && near < 0 ? room.nearBar(barTaken) : -1;
-      $('casino-prompt').classList.toggle('hidden', near < 0 && nearBar < 0);
-      $('casino-prompt-text').textContent = near >= 0 ? 'Take a seat at the table' : 'Sit at the bar';
+      const nearSlot = walking && near < 0 && nearBar < 0 ? room.nearSlot() : -1;
+      const nearRoulette = walking && near < 0 && nearBar < 0 && nearSlot < 0 && room.nearRoulette();
+      $('casino-prompt').classList.toggle('hidden', near < 0 && nearBar < 0 && nearSlot < 0 && !nearRoulette);
+      $('casino-prompt-text').textContent = near >= 0 ? 'Take a seat at the table' : nearBar >= 0 ? 'Sit at the bar' : nearSlot >= 0 ? 'Play the slots' : 'Play roulette';
       if (input.trickPressed) {
         input.trickPressed = false;
         if (near >= 0) request(myId, 'sit', near);
         else if (nearBar >= 0) { room.sitBar(nearBar); refresh(); }
+        else if (nearSlot >= 0) { room.playSlot(nearSlot); refresh(); }
+        else if (nearRoulette) { room.playRoulette(); refresh(); }
+        else if (room.slot >= 0) pullLever();   // E at a machine: pull
         else if (room.canDrink) room.drink();   // E at the bar: drink up
       }
       if (room.bar >= 0) refreshBar();
@@ -435,6 +598,8 @@ export function createCasino({ onLeave }) {
       // A cut-in is being filmed: clear the buttons away and dress the screen for it.
       const cine = room.cine;
       document.body.classList.toggle('casino-cine', cine.on);
+      document.body.classList.toggle('casino-woozy', cine.on && cine.blur);          // seeing double
+      document.body.classList.toggle('casino-tipsy', !cine.on && room.drunk > 0);    // and, afterwards, not quite straight
       if (cine.on) {
         $('casino-lines').style.opacity = cine.lines;
         $('casino-flash').style.opacity = cine.flash;

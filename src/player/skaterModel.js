@@ -43,7 +43,7 @@ export class SkaterModel {
     const denim = std(0xffffff, 0.9, { map: denimTexture() });
     const beanie = std(0xffffff, 0.95, { map: ribTexture('#24262c') });
     const shoeCanvas = std(0xffffff, 0.9, { map: canvasTexture() });
-    this.mats = { hoodie, hoodieRib, beanie, wood, urethane, gunmetal };   // the ones cosmetics repaint (see applyLook)
+    this.mats = { hoodie, hoodieRib, beanie, wood, urethane, gunmetal, skin };   // the ones cosmetics repaint (see applyLook)
 
     this.root = new THREE.Group();   // position + board orientation
     this.tilt = new THREE.Group();   // carve lean
@@ -169,6 +169,10 @@ export class SkaterModel {
       ],
       toothpick: [part(new THREE.CylinderGeometry(0.003, 0.0045, 0.12, 5).rotateX(Math.PI / 2), wood, 0, 0, 0.06)],
       nothing: [],
+      cigar: [   // (a casino prize)
+        part(new THREE.CylinderGeometry(0.019, 0.017, 0.125, 10).rotateX(Math.PI / 2), std(0x4a2e18, 0.8), 0, 0, 0.068),
+        part(new THREE.CylinderGeometry(0.0195, 0.0195, 0.018, 10).rotateX(Math.PI / 2), std(0xd9b24a, 0.35), 0, 0, 0.04),
+      ],
     };
     cig.add(...Object.values(this.mouth).flat());
     this.smoking = true;   // false when it isn't a cigarette: no ember, no smoke trail
@@ -378,7 +382,7 @@ export class SkaterModel {
     }
     M.urethane.color.set(look.wheels);
     for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke;
-    this.smoking = this.ember.visible = look.smoke === 'cigarette';
+    this.smoking = this.ember.visible = look.smoke === 'cigarette' || look.smoke === 'cigar';
     this.look = { ...look };
     this.paintGun();   // (the gun may have gone gold)
   }

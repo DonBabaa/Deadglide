@@ -91,11 +91,19 @@ export class Bar {
 
   reset() {
     this.show = null;
+    this.scolding = 0;
+    this.alarmed = 0;
     this.barman.position.z = this.at.homeZ;
     for (const thing of [this.shaker, this.bottle, this.stream, this.cork, this.sparkle]) thing.visible = false;
   }
 
   get busy() { return this.show !== null; }
+
+  // The customer at depth z is about to be sick: react, for `seconds`.
+  alarm(z, seconds) { this.alarmed = this.alarmLength = seconds; this.alarmZ = z; }
+
+  // Come and disapprove of the customer at depth z, for a moment.
+  scold(z) { this.scolding = 1.5; this.scoldZ = z; }
 
   // The camera's part in the performance: where it is, what it looks at and how far it's zoomed,
   // cut by cut, plus the effects on top (lines: speed lines, flash: a white pop, title: big text).
@@ -178,8 +186,22 @@ export class Bar {
     // At rest: at his post, swaying a little, polishing the air with his towel arm.
     let rightArm = 0.12, leftArm = -0.75 + Math.sin(this.time * 3) * 0.12, bow = 0, turn = Math.sin(this.time * 0.5) * 0.25;
     if (!show) {
-      b.position.z = lerp(b.position.z, homeZ, 1 - Math.exp(-2 * dt));
       b.position.y = 0;
+      if (this.alarmed > 0) {
+        // Someone is about to be sick on his bar. He recoils, shoves a bucket at them, then can't watch.
+        const e = this.alarmLength - (this.alarmed -= dt);
+        b.position.z = lerp(b.position.z, this.alarmZ, 1 - Math.exp(-12 * dt));
+        if (e < 1.0) { rightArm = leftArm = -2.3 + Math.sin(this.time * 30) * 0.12; bow = -0.25; b.position.y = Math.abs(Math.sin(this.time * 18)) * 0.03; }
+        else if (e < 2.8) { rightArm = leftArm = -1.15; bow = 0.3 * (1 - span(e, 1.2, 1.7)); }
+        else { turn = 1.5 * span(e, 2.8, 3.0); rightArm = -2.5; leftArm = -0.4; }   // turned away, an arm over his eye sockets
+      } else if (this.scolding > 0) {
+        // A customer has had enough: he comes over, shakes his skull and wags a finger.
+        this.scolding -= dt;
+        b.position.z = lerp(b.position.z, this.scoldZ, 1 - Math.exp(-9 * dt));
+        turn = Math.sin(this.time * 13) * 0.35;
+        leftArm = -1.9 + Math.sin(this.time * 16) * 0.22;
+        rightArm = 0.3;
+      } else b.position.z = lerp(b.position.z, homeZ, 1 - Math.exp(-2 * dt));
     } else {
       const t = (show.t += dt * (show.t > 2.35 && show.t < 2.95 ? 0.35 : 1)), { drink, glass } = show,   // (the toss hangs in the air)
       tool = drink.tool === 'shaker' ? this.shaker : this.bottle;

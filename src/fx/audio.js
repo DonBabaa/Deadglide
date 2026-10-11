@@ -491,6 +491,42 @@ export const playClink = () => ready() && (tone('sine', 3100, 3000, 0.35, 0.09),
 export const playCork = () => ready() && (tone('sine', 420, 140, 0.09, 0.4), hiss('highpass', 2500, 6000, 0.25, 0.14, 0.03));
 export const playGlassDown = () => ready() && (tone('sine', 520, 300, 0.07, 0.14), tone('triangle', 1700, 1500, 0.05, 0.04));
 export const playGulp = () => ready() && (tone('sine', 150, 260, 0.09, 0.2), tone('sine', 280, 170, 0.1, 0.16, 0.1));
+// Tipsy: a hiccup, and the slow sinking wobble as the room starts to move.
+export const playHic = () => ready() && (tone('sine', 420, 900, 0.07, 0.2), tone('triangle', 900, 520, 0.09, 0.12, 0.07));
+export function playWoozy() {
+  if (!ready()) return;
+  duckMusic(0.35, 4.6);
+  [0, 0.5, 1.0, 1.5, 2.0].forEach((at, i) => tone('sine', 520 - i * 50, 300 - i * 30, 0.55, 0.1, at));   // a slide whistle running out of puff
+  hiss('lowpass', 900, 200, 2.4, 0.06, 0.9);
+}
+// One too many: a stomach turning over, the heave itself, and it landing in the bucket.
+export const playGurgle = () => ready() && [0, 0.09, 0.2, 0.33].forEach((at, i) => tone('sine', 90 + i * 22, 150 - i * 12, 0.11, 0.3, at));
+export function playRetch() {
+  if (!ready()) return;
+  duckMusic(0.2, 3.2);
+  tone('sawtooth', 260, 70, 0.9, 0.22);
+  tone('sine', 150, 55, 1.1, 0.4);
+  blast(1500, 180, 0.9, 0.3);
+  hiss('bandpass', 900, 300, 1.0, 0.2);
+}
+export const playSplash = () => ready() && (hiss('lowpass', 1800, 300, 0.14, 0.2), tone('sine', 240 + Math.random() * 120, 110, 0.1, 0.12));
+// Slot machines: the lever, the reels ticking round, each one clunking to a stop, and a big win.
+export const playLever = () => ready() && (tone('square', 220, 110, 0.12, 0.1), hiss('lowpass', 1200, 300, 0.2, 0.12, 0.05));
+export const playReel = () => ready() && spaced('reel', 0.05) && tone('square', 1400 + Math.random() * 500, 1200, 0.02, 0.03);
+export const playReelStop = () => ready() && (tone('sine', 300, 120, 0.1, 0.3), tone('triangle', 1100, 900, 0.05, 0.08));
+export function playJackpot() {
+  if (!ready()) return;
+  duckMusic(0.25, 3.4);
+  [72, 76, 79, 84, 79, 84, 88, 91].forEach((note, i) => { tone('square', midi(note), midi(note), 0.14, 0.07, i * 0.1); tone('sine', midi(note + 12), midi(note + 12), 0.2, 0.06, i * 0.1); });   // a rising fanfare
+  for (let i = 0; i < 26; i++) tone('sine', 1700 + Math.random() * 1500, 1500, 0.07, 0.05, 0.9 + i * 0.07);   // coins pouring out
+}
+// Roulette: the ball running round the rim, ticking over the frets slower and slower, then clattering into a pocket.
+export function playWheel(seconds = 4.2) {
+  if (!ready()) return;
+  hiss('bandpass', 2600, 900, seconds, 0.05);
+  for (let t = 0.1, gap = 0.05; t < seconds; t += gap, gap *= 1.09) tone('triangle', 2200, 1800, 0.02, 0.045, t);
+  [0, 0.13, 0.22].forEach((delay, i) => tone('sine', 900 - i * 130, 480, 0.05, 0.11, seconds + delay));
+}
 // One coin landing on the pile. progress 0..1 through the count: they ring higher as it goes.
 export function playCoin(progress = 0) {
   if (!ready()) return;
