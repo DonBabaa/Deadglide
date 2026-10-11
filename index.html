@@ -98,7 +98,22 @@
         <p class="tagline">Skate the cemetery. Outlast the night.</p>
         <div class="menu-label">Your name</div>
         <input id="menu-name" type="text" maxlength="16" placeholder="Enter a nickname" autocomplete="off" spellcheck="false">
-        <div class="menu-label">Choose a level</div>
+        <button id="menu-start" class="level" type="button">
+          <span class="level-name">Play</span>
+          <span class="level-desc" id="menu-start-desc">Start a run</span>
+        </button>
+        <div id="menu-best"></div>
+        <div class="menu-row">
+          <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
+          <button id="menu-casino-open" type="button">Casino</button>
+          <button id="menu-cinema-open" class="hidden" type="button">Cinematics</button>
+        </div>
+        <div class="menu-label">Leaderboard</div>
+        <ol id="menu-board" class="board"></ol>
+      </div>
+      <div id="menu-levels" class="hidden">
+        <h2>Play</h2>
+        <p class="tagline">Every run starts in the cemetery. Finish a level and you can come back to it from here.</p>
         <button id="level-1" class="level" type="button">
           <span class="level-name">Level 1</span>
           <span class="level-desc">The Cemetery &middot; endless waves</span>
@@ -107,17 +122,25 @@
           <span class="level-name">Level 2</span>
           <span class="level-desc">The Catacombs &middot; in the dark</span>
         </button>
+        <button id="level-4" class="level" type="button">
+          <span class="level-name">The House</span>
+          <span class="level-desc">The casino &middot; the last boss &middot; arrive as from the Catacombs</span>
+        </button>
+        <button id="level-5" class="level" type="button">
+          <span class="level-name">The Long Way Down</span>
+          <span class="level-desc">Out the doors and down the hill</span>
+        </button>
         <button id="level-3" class="level" type="button">
           <span class="level-name">Free Ride</span>
           <span class="level-desc">The Moon &middot; ride with friends &middot; no damage</span>
         </button>
-        <div id="menu-best"></div>
-        <div class="menu-row">
-          <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
-          <button id="menu-casino-open" type="button">Casino</button>
-        </div>
-        <div class="menu-label">Leaderboard</div>
-        <ol id="menu-board" class="board"></ol>
+        <button id="levels-back" type="button">Back</button>
+      </div>
+      <div id="menu-cinema" class="hidden">
+        <h2>Cinematics</h2>
+        <p class="tagline">Every scene in the game, on its own. (Here because the address has ?editor in it.)</p>
+        <div id="cinema-list"></div>
+        <button id="cinema-back" type="button">Back</button>
       </div>
       <div id="menu-shop" class="hidden">
         <h2>Shop</h2>
@@ -161,6 +184,9 @@
       </div>
       <div id="menu-foot">Controls and sound are on the pause screen (Esc)</div>
     </div>
+
+    <!-- A line of story, during a cut-in (hud.caption). -->
+    <div id="caption"></div>
 
     <!-- The emote wheel (hold T): see ui/emoteWheel.js. -->
     <div id="emotes" class="hidden"><span id="emotes-name">Emote</span></div>
@@ -255,10 +281,27 @@
       <button id="levelup-reroll" class="hidden" type="button">Reroll (R)</button>
     </div>
 
+    <div id="cinema" class="hidden">
+      <b id="cinema-name"></b>
+      <span id="cinema-time">0.0 / 0.0</span>
+      <input id="cinema-seek" type="range" min="0" max="1" step="0.01" value="0">
+      <button id="cinema-pause" type="button">Pause</button>
+      <button id="cinema-restart" type="button">Restart</button>
+      <button id="cinema-speed" type="button">Speed 1x</button>
+      <button id="cinema-wait" type="button">Wait on lines: on</button>
+      <button id="cinema-next" type="button">Next line</button>
+      <button id="cinema-prev" type="button">&lsaquo; Scene</button>
+      <button id="cinema-after" type="button">Scene &rsaquo;</button>
+      <button id="cinema-close" type="button">List</button>
+    </div>
     <div id="overlay">
       <div id="overlay-title">DeadSlide</div>
       <div id="overlay-hint">Click to skate</div>
       <button id="respawn-button" type="button">Back to spawn <kbd data-key="KeyR">R</kbd></button>
+      <div id="deeper" class="hidden">
+        <button id="go-deeper" type="button">Go deeper</button>
+        <button id="end-run" type="button">End the run here</button>
+      </div>
       <div id="tally" class="hidden">
         <div id="tally-stack"></div>
         <div id="tally-text">
@@ -295,6 +338,7 @@
         <label>Volume <input id="sfx-volume" type="range" min="0" max="100" step="1" /></label>
         <span class="setting-name">Mouse sensitivity</span>
         <label><span id="sens-value"></span> <input id="sens" type="range" min="20" max="300" step="5" /></label>
+        <button id="story-toggle" type="button">Story scenes: on</button>
       </div>
     </div>
 

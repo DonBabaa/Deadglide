@@ -4,6 +4,8 @@
 import { CHUNK, generateChunk, chunkHeight, chunkBase } from './worldgen.js';
 import { world } from './level.js';
 import { moonConfine } from './moon.js';
+import { houseConfine } from './house.js';
+import { descentConfine } from './descent.js';
 import { cataPlace, cataConfine, cataAirFloor, route, CATA, EDGE, loopNear, pipePoint, pipeCoord, pipeAround } from './catacombs.js';
 
 // World seed: random each run, or fixed with ?seed=1234 in the URL.
@@ -67,6 +69,8 @@ export const hasPipe = () => world.level === 2;
 // arm's length off its walls, roof and floor), wherever in it the player has got to.
 export function fitCamera(pos) {
   if (world.level === 3) return moonConfine(pos);   // the Moon: inside the crater wall
+  if (world.level === 4) return houseConfine(pos);  // the House: inside its walls
+  if (world.level === 5) return descentConfine(pos);   // the hill: between its banks
   if (world.level !== 2) return;
   const r = route(pos.z, SEED), off = pos.x - r.x, side = off < 0 ? -1 : 1, d = Math.abs(off) - r.w, R = CATA.ceiling / 2, GAP = 1.3;
   let h = Math.max(0.6, Math.min(2 * R - GAP, pos.y - r.floor));

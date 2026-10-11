@@ -1,7 +1,8 @@
 // Cosmetics: how Kirky looks. Bought with gold in the shop, no effect on play.
 // What you own and what you're wearing is saved with the rest of your profile.
 //
-// SLOTS lists everything on sale. Each slot has options; the first is the free
+// SLOTS lists everything on sale. (`ending: true`: not for sale either: it is what you get for finishing the game.)
+// Each slot has options; the first is the free
 // default. Options marked `casino: true` can't be bought: they are prizes from
 // the casino's slot machines (see casino/slots.js). To add one, add it here and make SkaterModel.applyLook() (or, for
 // tracers, main.js) understand its value.
@@ -77,6 +78,7 @@ export const SLOTS = [
     { id: 'bone', name: 'Finger bone' },
     { id: 'nothing', name: 'Nothing' },
     { id: 'cigar', name: 'Cigar', casino: true },
+    { id: 'goldbroken', name: 'Gold broken cigarette', ending: true },   // (the prize for finishing the game)
   ] },
   // Costumes (player/costumes.js). They can't be bought: each is found on the Moon, in Free Ride, and shows
   // as "???" until you have. Each comes in two pieces, the body and the head, to wear together or apart.

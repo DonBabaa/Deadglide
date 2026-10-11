@@ -196,8 +196,18 @@ export const hud = {
     document.body.classList.toggle('escaping', on);
     el.classList.toggle('hidden', !on);
     if (!on) return;
+    el.querySelector('small').textContent = 'Overtime';
     el.querySelector('span').textContent = this.clock(seconds);
     el.classList.toggle('late', seconds > 40);   // by now they're coming thick and fast
+  },
+  // The Long Way Down: your time so far, and how far behind you the collapse is (null: hide it).
+  run(time, gap) {
+    const el = $('escape'), on = time !== null;
+    el.classList.toggle('hidden', !on);
+    if (!on) return;
+    el.querySelector('small').textContent = `The collapse  ·  ${Math.max(0, Math.round(gap))} m behind`;
+    el.querySelector('span').textContent = time;
+    el.classList.toggle('late', gap < 45);
   },
   // Cutscene overlays. flash: the whole screen in one colour (lightning, a blink to black,
   // a white-out); pass null to let it fade away. dread: darkness and red closing in from the edges.
@@ -210,6 +220,13 @@ export const hud = {
   dread(amount) { $('dread').style.opacity = amount; },
   // Speed lines round the edge of the screen (0 = none), for cut-ins.
   lines(amount) { $('lines').style.opacity = amount; },
+
+  // A line of story across the bottom of the screen (null: take it away). hint: small print under it.
+  caption(text, hint = '') {
+    const el = $('caption');
+    if (text && el.dataset.text !== text) { el.dataset.text = text; el.innerHTML = ''; el.append(text); if (hint) el.append(Object.assign(document.createElement('small'), { textContent: hint })); }
+    el.classList.toggle('on', !!text);
+  },
 
   // His name slams onto the middle of the screen when he arrives.
   bossIntro(name, label = 'Final boss') {
@@ -226,6 +243,18 @@ export const hud = {
     hurtEl.classList.add('on');
   },
   hideBossIntro() { $('boss-intro').classList.add('hidden'); },
+  // The name of where you have just got to, across the screen for a couple of seconds (play carries on under it).
+  place(name, label, stay = false) {
+    const el = $('boss-intro');
+    el.querySelector('small').textContent = label;
+    el.querySelector('span').textContent = name;
+    el.classList.remove('hidden');
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    clearTimeout(this.placeTimer);
+    if (!stay) this.placeTimer = setTimeout(() => el.classList.add('hidden'), 2600);   // (stay: until hideBossIntro)
+  },
 
   // Gold carried this run (lost if you die), or null to hide it.
   gold(amount) {

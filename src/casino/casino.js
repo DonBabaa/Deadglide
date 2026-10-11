@@ -115,7 +115,7 @@ export function createCasino({ onLeave }) {
       playChip();
     } else if (e.type === 'result' && e.seat === seat) {
       bank(e.payout);
-      houseTook(staked - e.payout);
+      houseTook(staked - e.payout, staked);
       const net2 = e.payout - staked;
       banner({ blackjack: 'Blackjack!', win: 'You win', push: 'Push', lose: e.split ? 'You lose' : handTotal(me.cards).total > 21 ? 'Bust' : 'Dealer wins' }[e.result], net2);
       if (e.result === 'blackjack') { playPowerup(); playCashIn(); }
@@ -294,7 +294,7 @@ export function createCasino({ onLeave }) {
     const { result } = s;
     spinning = null;
     bank(result.gold);
-    houseTook(SPIN_COST - result.gold);
+    houseTook(SPIN_COST - result.gold, SPIN_COST);
     $('casino-slot-result').textContent = result.gold ? `${result.text}  +${result.gold}` : result.text || 'Nothing. Again?';
     if (result.prize) room.kirky.applyLook(currentLook());   // he puts it straight on
     if (result.big) { room.bigWin(result.prize ? result.prize.option.name : `+${result.gold} gold`); playJackpot(); }
@@ -426,7 +426,7 @@ export function createCasino({ onLeave }) {
       $('casino-roulette-result').textContent = `${number} ${colour(number)}${!playing ? '' : `: ${back > total ? `you win ${back - total}` : back === total ? 'you break even' : back ? `you get ${back} back` : 'the house wins'}`}`;
       if (playing) {
         bank(back);
-        houseTook(total - back);
+        houseTook(total - back, total);
         if (back >= total * 6) playJackpot();
         else if (back > total) playCashIn();
         else if (back) playCoin(0.4);

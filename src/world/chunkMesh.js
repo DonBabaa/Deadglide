@@ -1,13 +1,15 @@
 // Turns one chunk of generated world data into something you can see.
 // Materials and repeated shapes (headstones, trees) are made once and shared;
 // everything else is built per chunk and thrown away when the chunk unloads.
+import { descentTint } from './descent.js';
 import * as THREE from 'three';
 import { CATA, route, floorAt, pipePoint } from './catacombs.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CHUNK, chunkBase, chunkHeight, chunkPaved } from './worldgen.js';
 import { seededRandom } from './random.js';
 import { MOON, moonHeight, daylight, lavaAt } from './moon.js';
-import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture, regolithTexture, plateTexture } from './textures.js';
+import { houseHeight, pocketAt } from './house.js';
+import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture, regolithTexture, plateTexture, marbleTexture } from './textures.js';
 
 const CONCRETE = new THREE.Color(0x9c9b96), GRASS = new THREE.Color(0x35452a);
 const REGOLITH = new THREE.Color(0x9b9a9c), shade = new THREE.Color();   // the Moon's dust
@@ -55,6 +57,7 @@ export function createChunkBuilder() {
   const mat = {
     ground: new THREE.MeshStandardMaterial({ map: groundTexture(), vertexColors: true, roughness: 0.95 }),
     dust: new THREE.MeshStandardMaterial({ map: regolith, vertexColors: true, roughness: 1 }),   // the Moon's ground
+    marble: new THREE.MeshStandardMaterial({ map: marbleTexture(), vertexColors: true, roughness: 0.35 }),   // the House's floor
     ramp: new THREE.MeshStandardMaterial({ map: rampTexture(), roughness: 0.8, side: THREE.DoubleSide }),
     tomb: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95, side: THREE.DoubleSide }),
     wall: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), roughness: 0.95 }),
@@ -78,6 +81,9 @@ export function createChunkBuilder() {
   const headstones = headstoneGeometries().map(shared);
   const trees = [0, 1, 2, 3].map(() => shared(treeGeometry(rand)));
   const moundGeo = shared(new THREE.SphereGeometry(1, 10, 6));
+  // The House: card tables in green baize, counters in dark wood, and every rail brass.
+  const casino = { ...mat, ramp: new THREE.MeshStandardMaterial({ color: 0x0f5a35, roughness: 0.95, side: THREE.DoubleSide }), tomb: new THREE.MeshStandardMaterial({ color: 0x3a2116, roughness: 0.5, side: THREE.DoubleSide }),
+    steel: new THREE.MeshStandardMaterial({ color: 0xc9a44a, roughness: 0.35, metalness: 0.5, emissive: 0x2a1c04 }) };
   // ---- The Moon's props: what is drawn on top of the plain shapes you ride. ----
   const lunar = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
   lunar.ramp.map = lunar.tomb.map = plates;   // the Base is plated
@@ -459,7 +465,7 @@ export function createChunkBuilder() {
       else if (p.type === 'lamp') group.add(buildLamp(p, mat));
       else if (p.type === 'brazier') group.add(buildBrazier(p, mat));
       else {
-        group.add(buildProp(p, c.level === 2 ? under : c.level === 3 ? (p.kind === 'slab' ? { ...lunar, ramp: lunar.slab, tomb: lunar.slab } : lunar) : mat, c));
+        group.add(buildProp(p, c.level === 4 ? casino : c.level === 2 ? under : c.level === 3 ? (p.kind === 'slab' ? { ...lunar, ramp: lunar.slab, tomb: lunar.slab } : lunar) : mat, c));
         const extras = p.kind && lunarExtras(p);
         if (extras) group.add(extras);
       }
@@ -517,7 +523,7 @@ export function createChunkBuilder() {
       }
     }
     if (tubes.length) {
-      const rails = new THREE.Mesh(mergeGeometries(tubes), mat.steel);
+      const rails = new THREE.Mesh(mergeGeometries(tubes), c.level === 4 ? casino.steel : mat.steel);
       rails.castShadow = true;
       group.add(rails);
     }
@@ -541,10 +547,13 @@ function buildGround(c, mat) {
       const x = c.x0 + i, z = c.z0 + j;
       // (In the Catacombs the rock above the lip isn't part of this mesh: the walls are built separately, below.)
       // and the ground stops at the foot of them (it dips out of sight under the curve).
-      positions.push(x, c.level === 3 ? moonHeight(x, z, true) : c.level === 2 && !chunkPaved(c, x, z) ? floorAt(z) - 0.6 : chunkBase(c, x, z), z);
-      uvs.push(x / (c.level === 3 ? 14 : 6), z / (c.level === 3 ? 14 : 6));
+      positions.push(x, c.level === 4 ? houseHeight(x, z, true) : c.level === 3 ? moonHeight(x, z, true) : c.level === 2 && !chunkPaved(c, x, z) ? floorAt(z) - 0.6 : chunkBase(c, x, z), z);
+      uvs.push(x / (c.level === 3 ? 14 : c.level === 4 ? 8 : 6), z / (c.level === 3 ? 14 : c.level === 4 ? 8 : 6));
       // (The Moon is all one dust, mottled a little so the ground reads as you move over it.)
-      const col = c.level === 3 ? shade.copy(REGOLITH).multiplyScalar((0.82 + 0.3 * Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453 % 1)) * (0.42 + 0.58 * daylight(x, z)))   // (and darker on the night side)
+      const pocket = c.level === 4 ? pocketAt(x, z) : null;   // (the House: marble, and the wheel's pockets painted into the pit)
+      const col = c.level === 4 ? shade.set(pocket === 'red' ? 0xd0392c : pocket === 'black' ? 0x55525a : pocket === 'green' ? 0x2fae5c : 0xffffff)
+        : c.level === 3 ? shade.copy(REGOLITH).multiplyScalar((0.82 + 0.3 * Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453 % 1)) * (0.42 + 0.58 * daylight(x, z)))   // (and darker on the night side)
+        : c.level === 5 ? shade.set(descentTint(x, z))   // (the Long Way Down paints its own ground: road markings, gravel, the drain)
         : c.level === 2 ? (chunkPaved(c, x, z) ? FLAGSTONE : ROCK) : chunkPaved(c, x, z) ? CONCRETE : GRASS;
       colors.push(col.r, col.g, col.b);
     }
@@ -561,7 +570,7 @@ function buildGround(c, mat) {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, c.level === 3 ? mat.dust : mat.ground);
+  const ground = new THREE.Mesh(geo, c.level === 4 ? mat.marble : c.level === 3 ? mat.dust : mat.ground);
   ground.receiveShadow = true;
   return ground;
 }

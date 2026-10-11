@@ -85,6 +85,89 @@ You have a headlamp that points where you aim; braziers and candles are the only
 Level 2 is still marked as work in progress: it runs on the same timed waves as level 1, is not locked behind level 1,
 and the level 1 portal does not lead to it.
 
+## The way through, and the House
+The levels are a chain: the Cemetery's portal leads to the Catacombs, and the Catacombs' to the House. Going on through a portal
+banks your gold and carries everything else with you: guns, upgrades, power-ups, XP level and score. Each level can still be
+started on its own from the menu.
+
+**The House** (level 4) is the casino as an arena, and the last boss. There are no waves: Babitus Goyitus is waiting at the far end.
+- **The room:** a marble floor, the roulette wheel sunk into the middle as a bowl with a brass rail round it, card tables to ride
+  over, the bar down one side with a rail along it, and walls that curve up as a quarter pipe.
+- **The wheel decides:** every few seconds the wheel is spun, the great chandelier turns the colour it landed on, and a moment
+  later that is his attack. Red: a fan of playing cards thrown flat at you. Black: chips raining down round where you are heading.
+  Zero (green, one spin in ten): cards in every direction and every slot machine pays out monsters.
+- **Slot machines** in the corners pay out a pack of monsters every 10 seconds. **The barman** puts a drink on the bar every 28
+  seconds: ride past for 30 health and 8 seconds of double fire rate.
+- **Half health:** he speeds up, the wheel spins faster and the fans and showers get half as big again.
+- He wears all his gold: chains, rings and a crown. You roll in through the front doors (they stay hanging open behind you), and the fight starts a moment later.
+- **Starting there cold** (from the menu, or after dying there): you are dealt two extra guns, a power-up and eight upgrade picks.
+- **Cut-ins:** "The House" when you arrive, "All in" at half health, "Bust" when he dies. Then the doors open.
+- When he is dead the doors open, and they lead to the Long Way Down.
+
+**The Long Way Down** (level 5) is the run out: three kilometres straight down the hill with the House coming down behind you.
+There is nothing to fight. It can also be started from the menu.
+- **The course:** three kilometres straight down, with low banks either side (nothing tall: an unseen limit at the top of them
+  keeps you on the course). Four stretches: the city street down from the casino (tarmac with road markings, kerb ramps up to
+  the pavements); the cemetery, through its gates (a gravel path); the storm drain (a 6 m deep half pipe with walkways and a low
+  wall either side); the open hillside (a dirt track); then the last ramp.
+- **What you ride past** (scenery only, none of it solid): in the city, two rows of buildings with lit windows, neon shop signs,
+  street lamps, parked cars, palms and strings of lights across the street; in the cemetery, rows of crosses and slabs up both
+  slopes, mausoleums, bare trees, an iron fence, candles and a chapel; along the drain, concrete ribs with green lamps, pipes,
+  outfalls, and tanks, chimneys and floodlights beyond; on the hillside, pines, boulders, marker posts and a line of pylons. A
+  skyline and the lights of the town below ring the whole horizon.
+- **The casino** stands on the crest of the hill behind the start, with open sky behind it.
+- **If the collapse catches you** a short scene plays ("Buried"): the wall over his shoulder, his face, then it going over him.
+- **The collapse:** a wall of dust that starts slowly and keeps speeding up (22 m/s, gaining 0.8 a second, up to 62), and is never
+  more than 110 m behind you however fast you go. If it reaches you, you are buried and the run starts again from the doors.
+- **The opening scene** ("Run"): Kirky outside the casino, seen from outside for the only time (a front in the manner of Monte
+  Carlo: two domed towers, three tall arched windows, a clock). The towers go, then the rest, the dust comes over where it stood,
+  the three brothers rise out of it, and Kirky sets off. Plays when you come through the doors or start the level from the menu.
+- **The ghosts:** all three brothers, each in his own colour: Hamzitus (green) on your left, Rubistus (blue) on your right,
+  Babitus (gold) up ahead. Every 5 or 6 seconds one glows red for a second and throws at where you are about to be: Hamzitus a
+  ball of filth, Rubistus two bones, Babitus a fan of three cards. A red ring on the ground shows where each will land. 15 damage
+  if one lands on you while you are rolling on the ground; steer round it, or be in the air or on a rail.
+- **The clock** starts when you leave the doors and stops when you leave the last ramp. Your best time is kept, and the menu shows
+  the shared board of fastest times.
+- **The Moon** hangs dead ahead the whole way down and gets bigger as you go.
+- **The end of the hill:** over the last 350 m the banks fall away and the course becomes a tongue of ground with nothing either
+  side (ride off it and the run is over), lit along both edges, ending in a 47 m ramp. Leaving its lip stops the clock and plays
+  the closing scene ("Launch"): Kirky off the lip in slow motion, the Moon ahead, his face, and then away toward it.
+
+**More story beats.** Each boss's arrival ends on one line about him (Hamzitus buries the ones who cannot pay, Rubistus wears
+them, the Spider Queen was there first, Babitus's initials are on every chip; at half health, "He puts everything on the table.
+Most of it was yours"). After "Bust", gold chips pour out of where Babitus stood, the floor opens and takes them, and Kirky
+watches ("Nothing left to collect"). Leaving the House has its own scene: there is no portal there, the way out is the doors he burst in through, up the curve of the wall and out into the night. Dying to Babitus plays "The house wins".
+On the hill a title card names each stretch as you reach it (The Cemetery, Storm Drain 7, The Hillside, The Edge), and at the
+Edge the three ghosts drop back and fade.
+
+**The cinematics editor.** With ?editor in the address the menu has a Cinematics button: a list of every scene (20), each
+playable on its own. A bar across the top shows the time and has a slider to drag through it, Pause, Restart, Speed (1x, 0.5x,
+0.25x, 2x), Wait on lines on/off, Next line, previous and next scene, and back to the list. Nothing done there counts.
+
+**Story scenes can be switched off** on the pause screen ("Story scenes: off"): they are then skipped as they start. The ending and the reward still play. A boss's arrival line moves on by itself after 2.5 seconds if you do not press anything. Dying on the hill, to the ghosts as well as the dust, plays "Buried". In the House the doorway glows green once Babitus is dead.
+
+**Runs and the menu.** The main menu has one Play button. Behind it: the Cemetery (always), each other level once you have
+finished it, and Free Ride. Every player starts with only the Cemetery. At the end of a level that leads to another, two buttons:
+"Go deeper" (on to the next level, carrying everything) or "End the run here" (the score can be posted, then back to the menu).
+Gold is banked either way. (Adding ?all to the address lists every level, for testing.)
+
+**The ending.** After "Launch" the game moves to the Moon and plays the last scene, "The last cigarette":
+the Earth on its own; from high up, something falls out of the sky and hits the plain; Kirky from behind, looking up at it; his
+face; his last cigarette, snapped in the fall; he lights it anyway and takes a long drag; the camera goes slowly round him (anyone
+else up there, one for each Moon costume you have found, sits on the big ramp behind him in the distance, unremarked); then all of it from behind under the
+Earth, the last two lines, the title and the credits (which include your time down the hill). About 45 seconds. Then "The End".
+- **Credits:** "A game by Babitus & Clauditus."
+- **The reward's reveal:** the first time you finish, before "The End", everything goes dark and the gold broken cigarette drops in out of a burst of light, turning, with sparks and its name.
+- **Afterwards**, in Free Ride, the stub of the last cigarette lies on the Moon near where you arrive.
+- **The main menu moves to the Moon** once you have finished: Kirky leans on a supply crate out on the plain with the lander behind him, his board beside him as ever, a sniper rifle in his hand that he fires now and then, and every so often a saucer crosses the sky in the distance.
+- **What you get** (not in Creative mode): the gold broken cigarette (Shop, Style, "In his mouth": shown as "???" until then), put
+  straight in his mouth; the title on the main menu turns gold; and the first time back at the menu the title screen plays its
+  own cut-in (the cigarette up close, Kirky from the ground with "The house lost", then back).
+
+**The story** is told in short scenes with a caption under them. Each line stays up until you press Enter, Space or the mouse button; Tab skips the whole scene. They are: the start of level 1 (who Kirky is up
+against), the first boss's death (he was carrying a casino chip marked B.G.), arriving in level 2 (what the Catacombs are), and
+the way up to the House, in two scenes: in the Catacombs, the second chip and a ladder up toward a round of street light; then out of a manhole in the city, the DeadSlide Casino lit up at the top of the hill, the skate up to it, and straight through its front doors.
+
 ## Free Ride: the Moon
 The third entry in the menu is not a level but a place to skate: one fixed arena on the Moon, 500 m across, for up to four
 friends at once. There is no clock, no waves and no damage. You chase the biggest **line** and the best shot.

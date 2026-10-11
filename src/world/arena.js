@@ -8,6 +8,7 @@ import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
 import { glowTexture, regolithTexture, strataTexture, lavaTexture } from './textures.js';
 import { CATA, floorAt } from './catacombs.js';
+import { buildHouseScene } from './houseScene.js';
 import { MOON, WALL_AT, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE } from './moon.js';
 
 const HORIZON = 0x1c2535;
@@ -44,7 +45,7 @@ export function buildArena(scene) {
   const headlamp = new THREE.SpotLight(0xfff0d6, 0, 120, 0.62, 0.55, 1.5);
   const glow = new THREE.PointLight(0xa8b8e0, 0, 30, 1.6);
   scene.add(roof, headlamp, headlamp.target, glow);
-  let level = 1, view = VIEW, moonFar = null;
+  let level = 1, view = VIEW, moonFar = null, house = null;
 
   const lampLights = Array.from({ length: LAMP_LIGHTS }, () => {
     const light = new THREE.PointLight(0xffc488, 0, 70, 2);
@@ -113,32 +114,42 @@ export function buildArena(scene) {
       for (const entry of loaded.values()) { scene.remove(entry.group); builder.dispose(entry.group); }
       loaded.clear();
       centre = null;
-      const under = n === 2, lunar = n === 3;
+      const under = n === 2, lunar = n === 3, casino = n === 4;
       view = lunar ? 3 : VIEW;   // (no mist on the Moon to hide the edge of what's loaded: load more of it)
-      const dark = under ? 0x060508 : lunar ? 0x000000 : HORIZON;
+      const dark = under ? 0x060508 : lunar ? 0x000000 : casino ? 0x241a12 : HORIZON;
       scene.fog.color.set(dark);
-      scene.fog.density = under ? 0.017 : lunar ? 0.0012 : 0.0085;
+      scene.fog.density = under ? 0.017 : lunar ? 0.0012 : casino ? 0.002 : 0.0085;
       scene.background.set(dark);
-      fill.intensity = under ? 0.22 : lunar ? 0.3 : 0.75;
-      moon.intensity = under ? 0 : lunar ? 3.4 : 1.9;       // (on the Moon this light is the Sun)
-      moon.color.set(lunar ? 0xfff6e8 : 0xc3d4ff);
-      sky.visible = !under;
+      fill.intensity = under ? 0.22 : lunar ? 0.3 : casino ? 0.85 : 0.75;
+      fill.color.set(casino ? 0xffe9c4 : 0x7f95c4);
+      fill.groundColor.set(casino ? 0x5a4630 : 0x20241c);
+      moon.intensity = under ? 0 : lunar ? 3.4 : casino ? 0.9 : 1.9;       // (on the Moon this light is the Sun; in the House, the chandeliers)
+      moon.color.set(lunar ? 0xfff6e8 : casino ? 0xffe2b0 : 0xc3d4ff);
+      sky.visible = !under && !casino;
       sky.userData.dome.material.uniforms.horizon.value.set(lunar ? 0x000000 : HORIZON);
       sky.userData.dome.material.uniforms.top.value.set(lunar ? 0x000000 : 0x04060c);
-      for (const o of sky.userData.moon) o.visible = !lunar;   // (you're standing on it)
+      for (const o of sky.userData.moon) o.visible = !lunar && n !== 5;   // (...and the Long Way Down has its own, dead ahead)   // (you're standing on it)
       sky.userData.earth.visible = lunar;
       far.visible = n === 1;
-      mist.group.visible = !lunar;
+      mist.group.visible = !lunar && !casino;
       roof.visible = under;
       headlamp.intensity = under ? 2400 : 0;
       glow.intensity = under ? 90 : 0;
       // The whole arena, coarsely, under the detailed ground near you: so the far side is always there to see.
       if (lunar && !moonFar) { moonFar = buildMoonFar(); scene.add(moonFar); }
       if (moonFar) moonFar.visible = lunar;
+      // The House: its walls, ceiling, chandeliers and furniture.
+      if (casino && !house) { house = buildHouseScene(); scene.add(house); }
+      if (house) house.visible = casino;
     },
+    // The House: what the great chandelier is showing ('red', 'black', 'green' or null), and its floating drink.
+    houseSignal(name) { house?.userData.signal(name); },
+    houseDrink(on) { if (house) house.userData.drink.visible = on; },
+    houseExit(on) { house?.userData.exit(on); },
     // Build everything around the start point up front.
     prime(pos) {
       stream(pos, Infinity);
+      sky.position.copy(pos);   // (a scene may play here before the first update)
       assignLampLights(pos);
     },
     // aim: the point the player is aiming at (the Catacombs' headlamp points there).
@@ -168,6 +179,7 @@ export function buildArena(scene) {
         }
         if (moonFar) for (const v of moonFar.userData.vents) v.material.opacity = 0.55 + 0.35 * Math.sin(performance.now() / 180 + v.position.x);   // vents pulse
       }
+      if (level === 4 && house) house.userData.update(dt, performance.now() / 1000);
       if (level !== 1) {
         glow.position.copy(playerPos).y += 2.4;
         headlamp.position.copy(playerPos).y += 1.7;

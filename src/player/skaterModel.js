@@ -229,6 +229,13 @@ export class SkaterModel {
         part(new THREE.CylinderGeometry(0.006, 0.006, 0.11, 6).rotateX(Math.PI / 2), std(0xd8d2bf, 0.6), 0, 0, 0.06),
         part(new THREE.SphereGeometry(0.011, 6, 5), std(0xd8d2bf, 0.6), 0, 0, 0.118), part(new THREE.SphereGeometry(0.011, 6, 5), std(0xd8d2bf, 0.6), 0, 0, 0.004),
       ],
+      // His last one, snapped in the middle and smoked anyway: the far half hangs. (broken: in the ending.
+      // goldbroken: the same in gold, the prize for finishing the game.)
+      ...Object.fromEntries([['broken', paper, filter], ['goldbroken', std(0xffc233, 0.3), std(0xb8860b, 0.3)]].map(([kind, stick, butt]) => [kind, [
+        part(new THREE.CylinderGeometry(0.011, 0.011, 0.045, 8).rotateX(Math.PI / 2), stick, 0, 0, 0.0525),
+        part(new THREE.CylinderGeometry(0.011, 0.011, 0.055, 8).rotateX(Math.PI / 2 + 0.75), stick, 0, -0.0187, 0.095),
+        part(new THREE.CylinderGeometry(0.0115, 0.0115, 0.04, 8).rotateX(Math.PI / 2), butt, 0, 0, 0.01),
+      ]])),
       cigar: [   // (a casino prize)
         part(new THREE.CylinderGeometry(0.019, 0.017, 0.125, 10).rotateX(Math.PI / 2), std(0x4a2e18, 0.8), 0, 0, 0.068),
         part(new THREE.CylinderGeometry(0.0195, 0.0195, 0.018, 10).rotateX(Math.PI / 2), std(0xd9b24a, 0.35), 0, 0, 0.04),
@@ -404,7 +411,7 @@ export class SkaterModel {
   updateSmoke(dt) {
     this.time += dt;
     this.ember.material.color.setScalar(1).multiply(EMBER).multiplyScalar(0.75 + 0.45 * Math.sin(this.time * 2.2) ** 2 + 5 * this.inhale);   // slow glow, flaring on a drag
-    this.ember.scale.setScalar(1 + 0.8 * this.inhale);
+    this.ember.scale.setScalar((this.emberSize ?? 1) * (1 + 0.8 * this.inhale));
     this.puffTimer -= dt;
     if (this.puffTimer <= 0 && this.root.visible && this.inhale <= 0 && this.smoking) {
       this.puffTimer = 0.11;
@@ -457,7 +464,10 @@ export class SkaterModel {
     }
     M.urethane.color.set(look.wheels);
     for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke && !masked;
-    this.smoking = this.ember.visible = !masked && (look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe');
+    const snapped = look.smoke === 'broken' || look.smoke === 'goldbroken';
+    this.smoking = this.ember.visible = !masked && (look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe' || snapped);
+    this.ember.position.set(0, snapped ? -0.0375 : 0, snapped ? 0.117 : 0.132);   // (at the end of whatever it is)
+    this.emberSize = look.smoke === 'goldbroken' ? 0.55 : 1;   // (a small one on the gold cigarette: the gold is the point)
     this.look = { ...look };
     this.paintGun();   // (the gun may have gone gold)
   }

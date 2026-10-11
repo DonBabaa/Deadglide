@@ -43,7 +43,10 @@ export const GUNS = [
 
 // cosmetics: see systems/cosmetics.js (owned: things bought, look: what's worn in each slot, gold / goldOff: gold gun skins owned / switched off)
 // houseTake: gold the casino has won off you, less what you've won off it (it can go negative)
-const fresh = () => ({ gold: 0, houseTake: 0, upgrades: {}, unlocks: {}, guns: [], starts: [], startGun: null, cosmetics: { owned: [], look: {}, gold: [], goldOff: [] } });
+// wagered: all the gold you have ever put down in the casino, win or lose (it dresses Babitus for the last fight)
+// reached: the furthest locked level you have got to (see LEVELS in world/level.js)
+// cleared: the levels you have finished (their numbers): each can be started from the menu from then on. 5 in it: you have finished the game.
+const fresh = () => ({ gold: 0, houseTake: 0, wagered: 0, reached: 0, cleared: [], upgrades: {}, unlocks: {}, guns: [], starts: [], startGun: null, cosmetics: { owned: [], look: {}, gold: [], goldOff: [] } });
 export const profile = fresh();
 
 try {
@@ -51,6 +54,9 @@ try {
   if (saved && typeof saved === 'object') {
     profile.gold = Math.max(0, Math.floor(Number(saved.gold) || 0));
     profile.houseTake = Math.floor(Number(saved.houseTake) || 0);
+    profile.wagered = Math.max(0, Math.floor(Number(saved.wagered) || 0));
+    profile.reached = Math.max(0, Math.min(6, Math.floor(Number(saved.reached) || 0)));
+    profile.cleared = Array.isArray(saved.cleared) ? saved.cleared.filter((n) => Number.isInteger(n) && n > 0 && n < 10) : [];
     for (const u of PERMANENT) profile.upgrades[u.id] = Math.max(0, Math.min(u.max, Math.floor(Number(saved.upgrades?.[u.id]) || 0)));
     for (const u of UNLOCKS) profile.unlocks[u.id] = !!saved.unlocks?.[u.id];
     profile.guns = GUNS.map((g) => g.id).filter((id) => saved.guns?.includes(id));
@@ -75,11 +81,27 @@ export const hasUnlock = (id) => !!profile.unlocks[id];
 // Can this gun turn up in chests?
 export const gunUnlocked = (id) => { const g = GUNS.find((gun) => gun.id === id); return !g || g.unlock === 0 || profile.guns.includes(id); };
 
-// The casino won `amount` off you this hand (negative: you won it off the casino).
-export function houseTook(amount) {
+// The casino won `amount` off you this hand (negative: you won it off the casino). `bet`: what you had put down.
+export function houseTook(amount, bet = 0) {
   profile.houseTake += Math.floor(amount);
+  profile.wagered += Math.max(0, Math.floor(bet));
   save();
 }
+
+// You have got as far as level `n` (6: finished the game).
+export function reach(n) {
+  if (n <= profile.reached) return;
+  profile.reached = n;
+  save();
+}
+
+// You have finished level `n`.
+export function clear(n) {
+  if (profile.cleared.includes(n)) return;
+  profile.cleared.push(n);
+  save();
+}
+export const finished = () => profile.cleared.includes(5);
 
 export function bank(amount) {
   profile.gold += Math.max(0, Math.floor(amount));

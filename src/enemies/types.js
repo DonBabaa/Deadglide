@@ -44,5 +44,12 @@ export const ENEMY_TYPES = {
     title: 'Rubistus Goyitus', boss: true, scale: 3.4, speed: 5, hp: 1, hpScale: 1.3, radius: 0.62, height: 2.2, damage: 30, score: 1500, xp: 80, sway: 0.08, stride: 0.5,
     shed: { every: 0.1, type: 'rattler', count: 5, shrink: 0.3 }, bones: true, blob: 0xd8d2bf, splat: 0x24201a, cutIn: 'skulls',
   },
+  // The last boss, in the House (level 4). He doesn't throw filth: the roulette wheel decides what he does (see horde.js).
+  boss3: {
+    title: 'Babitus Goyitus', boss: true, house: true, scale: 3.2, speed: 6, hp: 1, hpScale: 1.6, radius: 0.55, height: 2.0, damage: 30, score: 3000, xp: 0, sway: 0.05, stride: 0.5,
+    blob: 0xf3efe4, splat: 0x1a1a1a, cutIn: 'house',
+  },
   boss: { title: 'Hamzitus Goyitus', boss: true, scale: 5.5, speed: 4.5, hp: 1, radius: 0.72, height: 1.95, damage: 30, score: 1000, xp: 60, sway: 0.1, stride: 0.5 },
 };
+// (Babitus again, wearing more of your gold each time: see `babitus` in enemyModels.js.)
+for (const more of ['b', 'c', 'd']) ENEMY_TYPES[`boss3${more}`] = ENEMY_TYPES.boss3;

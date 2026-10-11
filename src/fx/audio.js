@@ -349,6 +349,29 @@ export function playBossBurst() {
 // One of the smaller bursts as he comes apart.
 export const playBossPop = () => ready() && (blast(1600 + Math.random() * 800, 160, 0.22, 0.3), tone('sine', 150, 50, 0.2, 0.3));
 // Lightning close by: the crack, then the roll.
+// The casino coming down: a long way off at first, then all of it.
+export function playRumble() {
+  if (!ready()) return;
+  tone('sine', 48, 30, 4.2, 0.6);
+  hiss('lowpass', 300, 60, 4.5, 0.35);
+  blast(900, 50, 2.5, 0.4, 0.6);
+  hiss('lowpass', 500, 80, 3, 0.3, 1.8);
+  tone('sine', 62, 26, 2.4, 0.4, 2.0);
+}
+// Off the last ramp: the air going past, and then not much.
+export function playWhoosh() {
+  if (!ready()) return;
+  hiss('bandpass', 300, 2400, 0.9, 0.35);
+  hiss('highpass', 2000, 6000, 1.2, 0.15, 0.2);
+  tone('sine', 90, 220, 1.1, 0.3);
+}
+// A lighter: the wheel, and the flame catching.
+export function playLighter() {
+  if (!ready()) return;
+  hiss('highpass', 5000, 3000, 0.03, 0.4);
+  tone('square', 900, 600, 0.02, 0.1);
+  hiss('bandpass', 800, 400, 0.5, 0.12, 0.06);
+}
 export function playThunder() {
   if (!ready()) return;
   hiss('highpass', 3400, 1400, 0.07, 0.5);

@@ -8,6 +8,7 @@ import { input } from './input.js';
 import { buildArena } from './world/arena.js';
 import { SEED, setLevel } from './world/terrain.js';
 import { LEVELS } from './world/level.js';
+import { HOUSE, houseSpot } from './world/house.js';
 import { MOON, ventAt, lavaAt, LAVA_LAKE } from './world/moon.js';
 import { Lines } from './systems/lines.js';
 import { createRide } from './freeride/ride.js';
@@ -29,7 +30,7 @@ import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
 import { HotBox } from './systems/hotbox.js';
 import { Gold } from './systems/gold.js';
-import { profile, applyPermanent, hasUnlock, gunUnlocked, bank } from './systems/profile.js';
+import { profile, applyPermanent, hasUnlock, gunUnlocked, bank, reach, clear, finished } from './systems/profile.js';
 import { shop } from './menu/shop.js';
 import { currentLook } from './systems/cosmetics.js';
 import { Portal } from './systems/portal.js';
@@ -45,8 +46,12 @@ import { menu } from './menu/menu.js';
 import { leaderboard } from './ui/leaderboard.js';
 import { getName } from './ui/playerName.js';
 import { goldTally } from './ui/goldTally.js';
+import { DESCENT, descentHeight } from './world/descent.js';
+import { load, store } from './systems/storage.js';
 import { createCutscenes } from './cutscenes.js';
 import { createCasino } from './casino/casino.js';
+import { createDescent } from './systems/descent.js';
+import { runTime as hillTime } from './ui/leaderboard.js';
 import { createEmoter } from './player/emotes.js';
 import { createEmoteWheel } from './ui/emoteWheel.js';
 import { setMusicStyle } from './fx/music.js';
@@ -130,6 +135,7 @@ ride.onHit = (by, head) => {
   playHurt();
 };
 // The Moon's secrets (freeride/eggs.js: spoilers). Winning a costume gives you both its pieces, and puts them on.
+const descent = createDescent({ scene, skater });   // the Long Way Down: the collapse, the ghosts and the clock
 const eggs = createEggs({
   scene, skater,
   ghosts: () => ride.ghosts,
@@ -181,14 +187,16 @@ function weaponChanged() {
   playSwitch();
 }
 let freeUpgrades = 0;   // upgrade picks that didn't come from levelling up
+let drinkWait = 0;      // the House: seconds until the barman puts another drink out (0: there is one waiting)
 
 // Start the run again from scratch (keeping the same Creative loadout, if any).
-function restart() {
+// carry: arriving from the level before: your guns, upgrades, power-ups, XP and score come with you.
+function restart(carry = false) {
+  offer(0);
   skater.respawn();
   chase.snap(skater);
   arena.prime(skater.pos);
   horde.reset();
-  xp.reset();
   gold.reset();
   loot.reset();
   hotbox.reset();
@@ -198,12 +206,15 @@ function restart() {
   hud.escape(null);
   hud.portalMarker(null);
   won = false;
-  powerups.reset();
-  score.reset();
-  weapon.reset();
   shield = 0;
-  freeUpgrades = 0;
-  resetStats();
+  if (!carry) {
+    xp.reset();
+    powerups.reset();
+    score.reset();
+    weapon.reset();
+    freeUpgrades = 0;
+    resetStats();
+  }
   powerInfo.classList.add('hidden');
   if (drag) endDrag(false);
   cutscenes.cancel();
@@ -212,21 +223,21 @@ function restart() {
   model.root.scale.setScalar(1);
   leaderboard.hideEnd();
   levelUp.hide();
-  pendingLevels = 0;
+  if (!carry) pendingLevels = 0;
   choosing = false;
   trickBuff = 0;
   invulnerable = 0;
   dead = false;
 
   // Creative mode: hand over the chosen guns and upgrades.
-  if (creative) {
+  if (creative && !carry) {
     for (const id of creative.weapons) weapon.give(id);
     for (const u of UPGRADES) for (let n = 0; n < (creative.upgrades[u.id] || 0); n++) takeUpgrade(u, run);
     for (const id in creative.powers) for (let n = 0; n < creative.powers[id]; n++) powerups.grant(id);
   }
   // A normal run: everything bought in the shop comes with you.
-  secondChance = !creative && hasUnlock('secondChance');
-  if (!creative) {
+  if (!carry) secondChance = !creative && hasUnlock('secondChance');
+  if (!creative && !carry) {
     applyPermanent(stats);
     if (profile.startGun) weapon.give(profile.startGun);
     if (hasUnlock('headStart')) powerups.grant(powerups.random());
@@ -241,6 +252,17 @@ function restart() {
   targets.setVisible(!!LEVELS[level].freeRide);
   eggs.reset();
   eggs.setVisible(!!LEVELS[level].freeRide);
+  leftBehind.visible = !!LEVELS[level].freeRide && finished();
+  descent.reset();
+  descent.setVisible(!!LEVELS[level].descent);
+  document.body.classList.toggle('descent', !!LEVELS[level].descent);
+  hud.run(null);
+  // The Long Way Down: nothing to fight and nothing to find. Just the hill, and what is coming down it.
+  if (LEVELS[level].descent) {
+    config.horde.enabled = false;
+    hotbox.wait = Infinity;
+    setMusicStyle('rock');
+  }
   overLava = false;
   if (LEVELS[level].freeRide) {
     resetStats();
@@ -251,6 +273,25 @@ function restart() {
     config.horde.enabled = false;
     hotbox.wait = Infinity;
     setMusicStyle('moon');
+  }
+  // The House, come to cold (from the menu, or after dying there): there are no waves to level up on, so you are
+  // dealt a hand first: two more guns, a power-up, and eight upgrades of your choosing.
+  if (LEVELS[level].finale) {
+    hotbox.wait = Infinity;   // (no HotBox zones in here)
+    drinkWait = 12;
+    arena.houseSignal(null);
+    arena.houseDrink(false);
+    arena.houseExit(false);
+    horde.bossVariant = 'd';   // (Babitus in all his gold: chains, rings and the crown)
+    skater.vel.set(0, 0, -14);   // (in through the doors, rolling)
+    chase.snap(skater);
+  }
+  if (LEVELS[level].finale && !carry && !creative) {
+    const guns = Object.keys(WEAPONS).filter((id) => gunUnlocked(id) && !weapon.has(id)).sort(() => Math.random() - 0.5).slice(0, 2);
+    for (const id of guns) weapon.give(id);
+    const power = powerups.random();
+    if (power) powerups.grant(power);
+    pendingLevels = freeUpgrades = config.house.dealt;
   }
   hp = maxHp();
   model.setWeapon(weapon.def);
@@ -294,8 +335,18 @@ function hurt(amount) {
   if (hp <= 0) die();
 }
 
-// The run is over.
+// The run is over. (Killed by Babitus: first, the house wins.)
+let losing = false;
 function die() {
+  if (LEVELS[level].descent && !losing && !preview) {   // (on the hill: knocked down, and then the hill arrives)
+    losing = true;
+    descent.state.wall = Math.max(descent.state.wall, 48 - skater.pos.z - 34);
+    return cutscenes.buried(descent, () => { buried(); losing = false; });
+  }
+  if (LEVELS[level].finale && horde.boss && !losing && !preview) {
+    losing = true;
+    return cutscenes.houseWins(horde.boss, () => { die(); losing = false; });
+  }
   dead = true;
   paused = true;
   document.exitPointerLock?.();
@@ -305,6 +356,188 @@ function die() {
 Survived ${hud.clock(horde.time)}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 ${gold.carried >= 1 ? `${Math.floor(gold.carried).toLocaleString()} gold lost  ·  ` : ''}Click to try again`);
   offerPost(false);
+}
+
+// The Long Way Down: the collapse caught you. (Click, and the run starts again from the doors.)
+function buried(fell = false) {
+  dead = true;
+  paused = true;
+  document.exitPointerLock?.();
+  playHurt();
+  hud.showOverlay(fell ? 'Gone' : 'Buried', `${fell ? 'Off the side of the hill' : 'The hill caught you'} ${Math.round(fell ? 48 - skater.pos.z : descent.state.wall)} m down, after ${hillTime(descent.state.time)}
+Click to run again`);
+}
+
+// ...or you left the last ramp ahead of it.
+function runComplete(time, record) {
+  won = true;
+  paused = true;
+  document.exitPointerLock?.();
+  playPortal();
+  if (!creative) leaderboard.postRun(time);
+  hud.showOverlay('Out', `Down the hill in ${hillTime(time)}  ·  ${record ? 'your fastest yet' : `your best is ${hillTime(descent.best)}`}
+Click to return to the menu`);
+}
+
+// What Kirky left on the Moon: once you have finished the game, the stub of the last cigarette is still lying where
+// he smoked it, near where you arrive in Free Ride.
+const leftBehind = new THREE.Group();
+{
+  const paper = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.9 }), filter = new THREE.MeshStandardMaterial({ color: 0xc98a4b, roughness: 0.9 });
+  const piece = (length, material, x, turn) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, length, 8).rotateZ(Math.PI / 2), material); m.position.set(x, 0.035, turn * 0.04); m.rotation.y = turn; leftBehind.add(m); };
+  piece(0.13, filter, -0.1, 0);
+  piece(0.1, paper, 0.02, 0);
+  piece(0.12, paper, 0.14, 0.7);
+  const ash = new THREE.Mesh(new THREE.CircleGeometry(0.16, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2a2a2c }));
+  ash.position.set(0.2, 0.012, 0.1);
+  leftBehind.add(ash);
+  leftBehind.position.set(48.6, 0, 49.4);
+  leftBehind.visible = false;
+  scene.add(leftBehind);
+}
+
+// The ending. You have left the last ramp: the Moon, the last cigarette (cutscenes.lastCigarette), and what you get.
+let titleCut = false;   // the title screen owes you its cut-in (you have just finished the game)
+function finale(time, record) {
+  if (!creative) leaderboard.postRun(time);
+  setWorld(3);
+  restart();
+  last = performance.now();
+  const outfit = slot('outfit'), found = outfit.options.filter((o) => o.secret && owns(outfit, o));
+  cutscenes.lastCigarette({ look: currentLook(), costumes: found.map((o) => o.id), time: hillTime(time) }, () => {
+    const prize = slot('smoke').options.find((o) => o.ending), first = !creative && !owns(slot('smoke'), prize);
+    if (!creative) { clear(5); award(slot('smoke'), prize); applyLook(); titleCut = true; }
+    if (first) cutscenes.reward(theEnd); else theEnd();
+  });
+  function theEnd() {
+    const first = false;
+    won = true;
+    paused = true;
+    document.exitPointerLock?.();
+    playPortal();
+    hud.showOverlay('The End', `Down the hill in ${hillTime(time)}  ·  ${record ? 'your fastest yet' : `your best is ${hillTime(descent.best)}`}
+${first ? 'Yours to keep: the gold broken cigarette (Shop, Style)\n' : ''}Click to return to the menu`);
+  }
+}
+
+// The switch on the pause screen: story scenes on (they play) or off (they are skipped; the ending still plays).
+{
+  const button = document.getElementById('story-toggle'), show = () => { button.textContent = `Story scenes: ${load('story') === 'off' ? 'off' : 'on'}`; };
+  button.addEventListener('click', (e) => { e.stopPropagation(); store('story', load('story') === 'off' ? 'on' : 'off'); show(); });
+  show();
+}
+
+// ---- The cinematics editor (?editor in the address) ---------------------------------------------
+// Every scene in the game, playable on its own from a list on the menu, with a bar across the top to pause it,
+// drag it back and forth, slow it down and step through its lines. Each entry sets the game up the way the scene
+// needs it (the level, a boss, a body) and then either plays it or does whatever makes the game play it.
+//   run()      set up, and start it
+//   replace()  for scenes that need Babitus in the room: runs in place of his arrival scene, once he is there
+let moonMenu = false;   // (the editor: show the menu as it is after the ending, whether or not you have finished)
+let preview = null;   // { item, started, idle, speed, wait, paused, replace } while one is being looked at
+const at = (n) => { setWorld(n); restart(); };
+const onHill = (s, speed = 0) => {   // stand Kirky `s` metres down the Long Way Down
+  skater.pos.set(48, descentHeight(48, 48 - s) + (speed ? 1 : 0), 48 - s);
+  skater.prevPos.copy(skater.pos);
+  skater.vel.set(0, speed * 0.7, -speed);
+  chase.snap(skater);
+};
+const ending = (all) => () => {
+  at(3);
+  const outfit = slot('outfit'), found = outfit.options.filter((o) => o.secret && (all || owns(outfit, o)));
+  cutscenes.lastCigarette({ look: currentLook(), costumes: found.map((o) => o.id), time: '0:52.40' });
+};
+const CINEMATICS = [
+  { name: 'Cemetery: the opening', where: 'Level 1', run: () => { at(1); cutscenes.intro(); } },
+  { name: 'Hamzitus arrives', where: 'Level 1', run: () => { at(1); horde.spawnBoss(skater); } },
+  { name: 'Hamzitus dies, the portal, the chip', where: 'Level 1', run: () => { at(1); horde.spawnBoss(skater); }, replace: () => horde.damage(horde.boss, 1e9, 0, 0) },
+  { name: 'Through the portal', where: 'Level 1', run: () => { at(1); portal.open(skater.pos.x, skater.pos.y, skater.pos.z - 12); cutscenes.exit(); } },
+  { name: 'Catacombs: the opening', where: 'Level 2', run: () => { at(2); cutscenes.under(); } },
+  { name: 'The Spider Queen arrives', where: 'Level 2', run: () => { at(2); horde.spawnMini(skater); } },
+  { name: 'Rubistus arrives', where: 'Level 2', run: () => { at(2); horde.spawnBoss(skater); } },
+  { name: 'Rubistus dies, the manhole, the city, the doors', where: 'Level 2, then the hill', run: () => enterHouse(false) },
+  { name: 'Babitus arrives', where: 'The House', run: () => at(4) },
+  { name: 'All in', where: 'The House', run: () => at(4), replace: () => cutscenes.allIn(horde.boss) },
+  { name: 'Bust, and the takings', where: 'The House', run: () => at(4), replace: () => horde.damage(horde.boss, 1e9, 0, 0) },
+  { name: 'Out through the doors', where: 'The House', run: () => at(4), replace: () => { const d = houseSpot([HOUSE.doors.x, HOUSE.doors.z]); portal.open(d.x, 0, d.z, true); cutscenes.leaveHouse(); } },
+  { name: 'The house wins', where: 'The House', run: () => at(4), replace: () => cutscenes.houseWins(horde.boss) },
+  { name: 'Run: the casino comes down', where: 'The Long Way Down', run: () => { at(5); cutscenes.collapse(descent, () => descent.reset()); } },
+  { name: 'Buried', where: 'The Long Way Down', run: () => { at(5); onHill(700); descent.state.wall = 690; cutscenes.buried(descent); } },
+  { name: 'Launch', where: 'The Long Way Down', run: () => { at(5); onHill(DESCENT.ramp[1] - 0.5, 45); cutscenes.launch(descent); } },
+  { name: 'The last cigarette', where: 'The Moon, with the costumes you own', run: ending(false) },
+  { name: 'The last cigarette (everyone)', where: 'The Moon, with every costume', run: ending(true) },
+  { name: 'The reward: the gold cigarette', where: 'After the ending', run: () => { at(3); cutscenes.reward(); } },
+  { name: 'Costume found', where: 'The Moon', run: () => { at(3); cutscenes.found({ name: 'A costume', wear() {} }); } },
+  { name: 'The main menu, after the ending', where: 'The Moon (stays until you pick the one below)', run: () => { moonMenu = true; stopPreview(false); } },
+  { name: 'The main menu, before the ending', where: 'The cemetery', run: () => { moonMenu = false; stopPreview(false); } },
+  { name: 'The title screen, after the ending', where: 'The Moon menu', run: () => { moonMenu = true; stopPreview(false); menuScene.celebrate(); } },
+];
+const cine = (id) => document.getElementById(id);
+function playCinematic(i) {
+  const item = CINEMATICS[(i + CINEMATICS.length) % CINEMATICS.length], keep = preview || { speed: 1, wait: true };
+  cutscenes.cancel();
+  preview = { item, started: false, idle: 0, speed: keep.speed, wait: keep.wait, paused: false, replace: item.replace || null };
+  creative = { weapons: [], upgrades: {}, powers: {}, monsters: true, noDamage: true };   // (nothing here counts, and nothing can hurt)
+  inMenu = false;
+  menu.hide();
+  menuScene.setVisible(false);
+  model.setVisible(true);
+  hud.hideOverlay();
+  paused = false;
+  last = performance.now();
+  cine('cinema-name').textContent = `${item.name}  \u00b7  ${item.where}`;
+  cine('cinema-pause').textContent = 'Pause';
+  cine('cinema').classList.remove('hidden');
+  if (unlockAudio()) startMusic();
+  item.run();
+}
+function stopPreview(toList = true) {
+  if (!preview) return;
+  preview = null;
+  creative = null;
+  cine('cinema').classList.add('hidden');
+  cutscenes.cancel();
+  showMenu();
+  if (toList) menu.showCinema();
+}
+// Every frame while a scene is being looked at: swap Babitus's arrival for the scene that was asked for, keep the
+// bar up to date, and go back to the list when it is over.
+function watchPreview(dt) {
+  const info = cutscenes.info;
+  if (preview.replace) {
+    if (info) { const swap = preview.replace; preview.replace = null; cutscenes.cancel(); swap(); }
+    return;
+  }
+  if (info) {
+    preview.started = true;
+    preview.idle = 0;
+    if (info.waiting && !preview.wait) cutscenes.next();
+    cine('cinema-time').textContent = `${info.time.toFixed(1)} / ${info.duration.toFixed(1)} s${info.waiting ? '  (waiting)' : ''}`;
+    const bar = cine('cinema-seek');
+    bar.max = info.duration;
+    if (document.activeElement !== bar) bar.value = info.time;
+  } else if (preview.started && (preview.idle += dt) > 0.7) stopPreview();
+}
+{
+  const list = cine('cinema-list');
+  CINEMATICS.forEach((item, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `${item.name}<small>${item.where}</small>`;
+    b.addEventListener('click', () => playCinematic(i));
+    list.append(b);
+  });
+  const now = () => CINEMATICS.indexOf(preview.item);
+  cine('cinema-seek').addEventListener('input', (e) => cutscenes.seek(Number(e.target.value)));
+  cine('cinema-seek').addEventListener('change', (e) => e.target.blur());
+  cine('cinema-pause').addEventListener('click', (e) => { preview.paused = !preview.paused; e.target.textContent = preview.paused ? 'Play' : 'Pause'; });
+  cine('cinema-restart').addEventListener('click', () => playCinematic(now()));
+  cine('cinema-speed').addEventListener('click', (e) => { preview.speed = { 1: 0.5, 0.5: 0.25, 0.25: 2, 2: 1 }[preview.speed]; e.target.textContent = `Speed ${preview.speed}x`; });
+  cine('cinema-wait').addEventListener('click', (e) => { preview.wait = !preview.wait; e.target.textContent = `Wait on lines: ${preview.wait ? 'on' : 'off'}`; });
+  cine('cinema-next').addEventListener('click', () => cutscenes.next());
+  cine('cinema-prev').addEventListener('click', () => playCinematic(now() - 1));
+  cine('cinema-after').addEventListener('click', () => playCinematic(now() + 1));
+  cine('cinema-close').addEventListener('click', () => stopPreview());
 }
 
 // The end screen offers to put a real run's score on the shared leaderboard (not Creative runs).
@@ -325,11 +558,36 @@ function levelComplete() {
   const earned = creative ? 0 : Math.floor(gold.carried), before = profile.gold;   // out through the portal: the gold is yours
   bank(earned);
   if (!creative) goldTally.show(earned, before);   // (it counts up on the end screen)
-  hud.showOverlay('Level 1 complete', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
+  const next = creative ? 0 : LEVELS[level].next;   // (Creative runs are one level at a time)
+  if (next && LEVELS[next].locked) reach(next);
+  if (!creative) clear(level);   // (it can be started from the menu from now on)
+  offer(next);
+  hud.showOverlay(`${LEVELS[level].name} complete`, `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Out in ${hud.clock(runTime)}  ·  XP level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
-Click to return to the menu`);
-  offerPost(true);
+${next ? `Next: ${LEVELS[next].name}. Everything you are carrying comes with you. Your gold is banked either way.` : 'Click to return to the menu'}`);
+  if (!next) offerPost(true);   // (the score goes up when the run ends, not between levels)
 }
+
+// The end of a level that leads to another: two buttons, go deeper or end the run here. (next: the level it leads to, or 0.)
+let deeper = 0;
+function offer(next) {
+  deeper = next || 0;
+  document.getElementById('deeper').classList.toggle('hidden', !deeper);
+  if (deeper) document.getElementById('go-deeper').textContent = `Go deeper: ${LEVELS[deeper].name}`;
+}
+document.getElementById('go-deeper').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const next = deeper;
+  offer(0);
+  if (unlockAudio()) startMusic();
+  goOn(next);
+});
+document.getElementById('end-run').addEventListener('click', (e) => {
+  e.stopPropagation();
+  offer(0);
+  document.getElementById('overlay-hint').textContent += '\nClick to return to the menu';
+  offerPost(true);   // (the run is over: the score can go on the board)
+});
 
 // Level up: stop the game and offer three upgrades.
 function offerUpgrade() {
@@ -363,13 +621,15 @@ function lockPointer() {
 
 function showMenu() {
   inMenu = true;
-  document.body.classList.remove('free-ride');
+  offer(0);
+  document.body.classList.remove('free-ride', 'descent');
   hud.line(null);
   ride.leave();
   hud.ride(null);
   targets.setVisible(false);
   eggs.setVisible(false);
-  if (level !== 1) { setWorld(1); arena.prime(menuScene.origin); }
+  // The menu has its own place: the cemetery, or, once you have finished the game, the Moon.
+  { const home = finished() || moonMenu ? 3 : 1, moved = level !== home; if (moved) setWorld(home); if (moved || menuScene.moon !== (home === 3)) { menuScene.setPlace(home === 3); arena.prime(menuScene.origin); } }
   paused = true;
   document.exitPointerLock?.();
   hud.hideOverlay();
@@ -400,11 +660,14 @@ function showMenu() {
   hud.scope(false);
   model.setVisible(false);
   menuScene.setVisible(true);
+  if (titleCut) { titleCut = false; menuScene.celebrate(); }   // (you have just finished the game: the title screen's own cut-in)
   gold.reset();
   gold.update(0, skater);
   hud.gold(null);
   shop.close();
   menu.show(score.best);
+  document.getElementById('menu').classList.toggle('finished', finished());
+  document.querySelector('#menu-home .tagline').textContent = finished() || moonMenu ? 'The house lost. Skate anyway.' : 'Skate the cemetery. Outlast the night.';
   leaderboard.showMenu();
 }
 
@@ -425,7 +688,8 @@ document.getElementById('menu-casino-open').addEventListener('click', () => {
 // From the menu's Start button. `loadout` is the Creative setup, or null.
 menu.onStart((loadout, chosen = 1, session = null) => {
   creative = loadout;
-  setWorld(chosen);
+  const story = LEVELS[chosen].finale && !loadout;   // (the House opens with how you got there)
+  if (!story) setWorld(chosen);
   ride.leave();
   if (session?.host) ride.host();   // (Free Ride with friends)
   else if (session?.join) ride.join(session.join);
@@ -434,7 +698,12 @@ menu.onStart((loadout, chosen = 1, session = null) => {
   menu.hide();
   menuScene.setVisible(false);
   model.setVisible(true);
-  restart();
+  if (story) enterHouse(false);
+  else restart();
+  // The story so far, for where you are starting (not in Creative mode).
+  if (!loadout && chosen === 1) cutscenes.intro();
+  else if (!loadout && chosen === 2) cutscenes.under();
+  else if (!loadout && LEVELS[chosen].descent) cutscenes.collapse(descent, () => descent.reset());
   paused = false;
   last = performance.now();
   if (unlockAudio()) startMusic();
@@ -444,8 +713,44 @@ menu.onStart((loadout, chosen = 1, session = null) => {
 document.getElementById('menu').addEventListener('click', () => { if (unlockAudio()) startMusic(); });
 
 // ---- Pause -------------------------------------------------------------------
+// On through the portal to the next level, as you are.
+function goOn(next) {
+  hud.hideOverlay();
+  goldTally.hide();
+  if (LEVELS[next].finale) { enterHouse(true); lockPointer(); return; }
+  setWorld(next);
+  restart(true);
+  if (next === 2) cutscenes.under();
+  else if (LEVELS[next].descent) cutscenes.collapse(descent, () => descent.reset());
+  paused = false;
+  last = performance.now();
+  lockPointer();
+}
+
+// Into the House. It begins back in the Catacombs, with the story of how you get there (cutscenes.prologue, then
+// cutscenes.street out on the hill); when he has gone through the casino's doors, the House is built and you roll in.
+// carry: you have come from level 2 with what you were carrying (otherwise it is a fresh start: see restart).
+function enterHouse(carry) {
+  setWorld(2);
+  restart(carry);
+  paused = false;
+  last = performance.now();
+  cutscenes.prologue(() => {
+    // Up the ladder: the city, a third of the way down the hill, with the casino at the top of it.
+    setWorld(5);
+    restart(carry);
+    onHill(430);
+    arena.prime(skater.pos);
+    cutscenes.street(descent, (v) => arena.prime(v), () => {
+      setWorld(4);
+      restart(carry);
+      last = performance.now();
+    });
+  });
+}
+
 function resume() {
-  if (won) return showMenu();
+  if (won) return deeper ? undefined : showMenu();   // (with the two buttons up, a click anywhere else does nothing)
   if (dead) restart();
   paused = false;
   hud.hideOverlay();
@@ -463,7 +768,8 @@ document.getElementById('to-menu').addEventListener('click', (e) => {
   e.stopPropagation();   // not a "click to resume"
   showMenu();
 });
-canvas.addEventListener('click', () => { if (!paused) lockPointer(); });
+canvas.addEventListener('click', () => { if (!paused && !preview) lockPointer(); });
+canvas.addEventListener('mousedown', () => { if (!paused && cutscenes.active) cutscenes.next(); });   // (a click also moves the story on)
 // Esc releases the pointer (browser behaviour); treat that as pause.
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && !paused && !panel.open) pause();
@@ -482,6 +788,11 @@ window.addEventListener('keydown', (e) => {
     syncAudioControls();
   } else if (e.code === 'Backspace' && !(e.target instanceof HTMLInputElement)) {
     restart();
+  } else if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && cutscenes.active) {
+    cutscenes.next();   // (a line of story stays up until you have read it)
+  } else if (e.code === 'Tab' && cutscenes.active) {
+    e.preventDefault();
+    cutscenes.skip();   // (only the story scenes can be skipped)
   } else if (e.code === 'KeyR' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     backToSpawn();
   }
@@ -600,6 +911,11 @@ function handleEvents() {
     else if (e.type === 'wraiths') hud.popup('They can fly now', 'alert');
     else if (e.type === 'boss') cutscenes.boss();   // (his name, his roar and the music change are all in there)
     else if (e.type === 'bossThrow') playBossThrow();
+    // The House: the wheel has been spun. The chandelier shows what is coming.
+    else if (e.type === 'wheel') { arena.houseSignal(e.colour); hud.popup(e.colour === 'red' ? 'Red  \u00b7  cards' : e.colour === 'black' ? 'Black  \u00b7  chips' : 'Zero  \u00b7  the house wins', 'alert'); playSwitch(); }
+    else if (e.type === 'wheelDone') arena.houseSignal(null);
+    else if (e.type === 'payout') playChest();
+    else if (e.type === 'bossHalf') { if (horde.boss) cutscenes.allIn(horde.boss); }
     else if (e.type === 'throw') playBones(0.2);   // a bone-thrower lets fly
     else if (e.type === 'clatter') playBones(0.15);   // ...and it lands
     else if (e.type === 'miniboss') cutscenes.queen();   // the Spider Queen arrives
@@ -609,10 +925,16 @@ function handleEvents() {
     else if (e.type === 'splat') playSplat();
     else if (e.type === 'bossDead') {
       const name = e.name;
-      portal.open(e.x, e.y, e.z);
+      portal.open(e.x, e.y, e.z, !!e.house);   // (in the House the way out is its doors, not a portal)
       xp.pullAll();
       playBossDeath();
-      cutscenes.portal(() => hud.popup(`${name} is dead. The portal is open`, 'loot'));
+      if (e.house) { arena.houseSignal(null); arena.houseDrink(false); arena.houseExit(true); cutscenes.bust(() => hud.popup('The house is bust. Get to the doors', 'loot')); }
+      else {
+        const body = horde.corpse, said = () => hud.popup(`${name} is dead. The portal is open`, 'loot');
+        const from = body && level === 1 && (!creative || preview) ? { x: body.x, y: body.y + body.T.height * body.scale * 0.5, z: body.z } : null;
+        // (Level 1: the first chip. That is how Kirky learns where all this leads.)
+        cutscenes.portal(from ? () => cutscenes.chipDrop(from, [`${name.split(' ')[0]} was carrying something.`, 'A gold chip, stamped B.G. Somebody is paying these things.'], said) : said);
+      }
     }
     else if (e.type === 'kill') {
       playKill();
@@ -640,7 +962,7 @@ function handleEvents() {
 const DRAG = { moveIn: 0.5, inhaleEnd: 1.5, exhaleEnd: 2.6, end: 3.2, fov: 34 };   // seconds into the cutscene
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const face = new THREE.Vector3(), close = new THREE.Vector3(), facing = new THREE.Vector3(), lookAt = new THREE.Matrix4(), closeQuat = new THREE.Quaternion();
-const cutscenes = createCutscenes({ camera, model, skater, horde, portal, renderPos });   // the boss, the portal and the exit
+const cutscenes = createCutscenes({ camera, model, skater, horde, portal, renderPos, skipStory: () => !preview && load('story') === 'off' });   // the boss, the portal and the exit
 let drag = null;   // the cutscene in progress: { time, position, quaternion, fov } (where the camera was)
 
 function startDrag() {
@@ -758,12 +1080,13 @@ function frame(now) {
     renderer.render(scene, camera);
     return;
   }
+  if (preview) watchPreview(dt);
   // Riding with friends carries on whatever you're doing (paused, in a cutscene): the others are still moving.
   ride.update(dt);
   hud.ride(ride.active || ride.status ? ride : null);
 
   if (!paused && drag) updateDrag(dt);
-  else if (!paused && cutscenes.active) cutscenes.update(dt);
+  else if (!paused && cutscenes.active) cutscenes.update(preview ? (preview.paused ? 0 : dt * preview.speed) : dt);
   else if (!paused) {
     accumulator += dt;
     while (accumulator >= STEP) {
@@ -871,8 +1194,8 @@ function frame(now) {
     const exit = portal.update(dt, skater);
     if (portal.active) hud.portalMarker(...onScreen(portal.position, 3), Math.hypot(portal.position.x - skater.pos.x, portal.position.z - skater.pos.z));
     else hud.portalMarker(null);
-    if (exit && !dead) cutscenes.exit(levelComplete);
-    hud.escape(horde.finished && !won ? horde.overtime : null);
+    if (exit && !dead) { if (LEVELS[level].finale) cutscenes.leaveHouse(levelComplete); else cutscenes.exit(levelComplete); }
+    if (!LEVELS[level].descent) hud.escape(horde.finished && !won ? horde.overtime : null);
 
     score.update(dt, skater.speed);
     hud.score(score);
@@ -881,6 +1204,30 @@ function frame(now) {
     // Chests: ride over one to open it.
     stats.frenzy = Math.max(0, stats.frenzy - dt);
     shield = Math.max(0, shield - dt);
+    // The Long Way Down: the collapse behind you, the ghosts either side, and the clock.
+    if (LEVELS[level].descent && !dead && !won) {
+      const d = descent.update(dt);
+      hud.run(hillTime(descent.state.time), d.gap);
+      if (d.tell) { hud.popup(d.tell < 0 ? '◀  Incoming' : d.tell === 1 ? 'Incoming  ▶' : '▲  Incoming  ▲', 'alert'); playSwitch(); }
+      if (d.thrown) playBossThrow();
+      if (d.zone) hud.place(d.zone, 'The Long Way Down');
+      if (d.hit) { hurt(d.hit); hud.popup('Hit', 'sloppy'); }
+      if (d.caught) { if (d.fell) buried(true); else cutscenes.buried(descent, () => buried()); }   // (it catches him: see it happen, then the end screen)
+      else if (d.finished) cutscenes.launch(descent, () => finale(d.finished, d.record));   // (off the last ramp, toward the Moon)
+    }
+    // The House: every so often the barman puts a drink out. Ride past the bar to take it.
+    if (LEVELS[level].finale && horde.boss) {
+      const bar = houseSpot([HOUSE.bar.x + 2, HOUSE.bar.z]);
+      if (drinkWait > 0 && (drinkWait -= dt) <= 0) { arena.houseDrink(true); hud.popup('A drink is on the bar', 'pending'); }
+      if (drinkWait <= 0 && Math.hypot(skater.pos.x - bar.x, skater.pos.z - bar.z) < 5) {
+        drinkWait = config.house.drinkEvery;
+        arena.houseDrink(false);
+        run.heal(config.house.drinkHeal);
+        stats.frenzy = config.house.drinkFrenzy;
+        hud.popup('On the house', 'loot');
+        playHeal();
+      }
+    }
     const { item, healed } = loot.update(dt, skater, items);
     if (healed) {
       hud.flashHeal();
@@ -936,4 +1283,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, gold, lines, ride, targets, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

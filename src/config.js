@@ -84,6 +84,40 @@ export const config = {
     maxBoost: 20,         // most speed one landing can give
   },
 
+  // The Long Way Down (level 5): the hill coming down behind you.
+  descent: {
+    wallStart: -70,       // where the collapse starts, in metres down the course (behind the doors)
+    wallSpeed: 22,        // how fast it comes at first (m/s)...
+    wallGain: 0.8,        // ...gaining this much every second...
+    wallMax: 62,          // ...up to this
+    wallLeash: 110,       // it is never further behind you than this
+    wallKill: 3,          // closer than this and it has you
+    throwEvery: 5.5,        // seconds between the ghosts' throws
+    throwTell: 0.9,       // how long one glows before he lets go
+    throwFlight: 0.8,     // how long what he threw is in the air
+    throwDamage: 15,      // if it lands on you while you are rolling on the ground (in the air or on a rail it misses)
+  },
+
+  // The House (the last fight, in the casino).
+  house: {
+    dealt: 8,             // upgrades you are dealt if you start there cold
+    wheelEvery: 3.4,      // seconds between spins of the wheel (each spin is one of his attacks)...
+    wheelFast: 2.3,       // ...once he is down to half health
+    wheelTell: 1.1,       // how long the chandelier shows the colour before it happens
+    cards: 7,             // red: a fan of this many cards, thrown flat at you (half as many again once he is hurt)
+    cardSpeed: 34,
+    cardDamage: 14,
+    chips: 10,            // black: this many chips rain down round you
+    chipDamage: 16,
+    chipSplash: 8,
+    addsEvery: 10,        // the slot machines pay out a pack of monsters this often...
+    addsPack: 3,
+    addsMax: 12,          // ...unless there are already this many about
+    drinkEvery: 28,       // seconds between drinks on the bar
+    drinkHeal: 30,
+    drinkFrenzy: 8,       // seconds of double fire rate with it
+  },
+
   grind: {
     catchRadius: 0.8,     // how close (sideways) you must come down to a rail to lock on
     catchHeight: 0.5,

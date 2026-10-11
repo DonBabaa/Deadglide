@@ -37,7 +37,9 @@ export class Portal {
     this.group.visible = false;
   }
 
-  open(x, y, z) {
+  // plain: no gate and no beam (the way out is something already standing there: the House's doors).
+  open(x, y, z, plain = false) {
+    this.gate.visible = this.beam.visible = !plain;
     this.position.set(x, y, z);
     this.active = true;
     this.age = 0;

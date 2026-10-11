@@ -6,10 +6,12 @@ import { UPGRADES, describe } from '../systems/upgrades.js';
 import { POWERUPS } from '../player/powerups.js';
 import { getName, setName, cleanName } from '../ui/playerName.js';
 import { LEVELS } from '../world/level.js';
+import { profile } from '../systems/profile.js';
 import { leaderboard } from '../ui/leaderboard.js';
 
 const $ = (id) => document.getElementById(id);
-const root = $('menu'), home = $('menu-home'), launch = $('menu-launch');
+const root = $('menu'), home = $('menu-home'), launch = $('menu-launch'), levels = $('menu-levels');
+const ALL = new URLSearchParams(location.search).has('all');   // (?all in the address: every level on the list, for testing)
 const toggle = $('creative-toggle'), loadoutBox = $('loadout');
 
 // What Creative mode will start you with.
@@ -79,9 +81,10 @@ nameInput.addEventListener('input', () => {
   setName(nameInput.value);
   nameInput.classList.remove('missing');
 });
-nameInput.addEventListener('keydown', (e) => { if (e.code === 'Enter') $('level-1').click(); });
+nameInput.addEventListener('keydown', (e) => { if (e.code === 'Enter') $('menu-start').click(); });
 
-for (const n of [1, 2, 3]) $(`level-${n}`).addEventListener('click', () => {
+// Play: the list of where you can start. The cemetery, always; anywhere else once you have finished it; and Free Ride.
+$('menu-start').addEventListener('click', () => {
   if (!getName()) {   // no name yet: point at the box instead of going on
     nameInput.classList.remove('missing');
     void nameInput.offsetWidth;
@@ -89,19 +92,31 @@ for (const n of [1, 2, 3]) $(`level-${n}`).addEventListener('click', () => {
     nameInput.focus();
     return;
   }
+  home.classList.add('hidden');
+  levels.classList.remove('hidden');
+});
+$('levels-back').addEventListener('click', () => { levels.classList.add('hidden'); home.classList.remove('hidden'); });
+// The editor's list of scenes (only with ?editor in the address: see the cinematics in main.js).
+$('menu-cinema-open').classList.toggle('hidden', !new URLSearchParams(location.search).has('editor'));
+$('menu-cinema-open').addEventListener('click', () => { home.classList.add('hidden'); $('menu-cinema').classList.remove('hidden'); });
+$('cinema-back').addEventListener('click', () => { $('menu-cinema').classList.add('hidden'); home.classList.remove('hidden'); });
+
+for (const n of [1, 2, 3, 4, 5]) $(`level-${n}`).addEventListener('click', () => {
   level = n;
   toggle.classList.toggle('hidden', !!LEVELS[n].freeRide);   // (Free Ride has no loadout to choose)
   if (LEVELS[n].freeRide) setCreative(false);
   $('ride-box').classList.toggle('hidden', !LEVELS[n].freeRide);
   $('ride-note').textContent = '';
-  $('line-board-box').classList.toggle('hidden', !LEVELS[n].freeRide);   // Free Ride opens on its board of best lines
+  $('line-board-box').classList.toggle('hidden', !LEVELS[n].freeRide && !LEVELS[n].descent);   // Free Ride opens on its board of best lines, the Long Way Down on its fastest times
+  $('line-board-box').querySelector('.menu-label').textContent = LEVELS[n].descent ? 'Fastest down the hill' : 'Best lines';
   if (LEVELS[n].freeRide) leaderboard.showLines();
+  if (LEVELS[n].descent) leaderboard.showRuns();
   launch.querySelector('h2').textContent = LEVELS[n].name;
   launch.querySelector('.tagline').textContent = LEVELS[n].tagline;
-  home.classList.add('hidden');
+  levels.classList.add('hidden');
   launch.classList.remove('hidden');
 });
-$('menu-back').addEventListener('click', () => { launch.classList.add('hidden'); home.classList.remove('hidden'); });
+$('menu-back').addEventListener('click', () => { launch.classList.add('hidden'); levels.classList.remove('hidden'); });
 toggle.addEventListener('click', () => setCreative(!creative));
 // Free Ride with friends: host a session, or join one with its code. (Start, as ever, is riding alone.)
 $('ride-host').addEventListener('click', () => onStart?.(null, level, { host: true }));
@@ -120,6 +135,11 @@ $('menu-play').addEventListener('click', () => {
 export const menu = {
   onStart(callback) { onStart = callback; },
   show(best) {
+    for (const n in LEVELS) $(`level-${n}`).classList.toggle('hidden', !(ALL || +n === 1 || LEVELS[n].freeRide || profile.cleared.includes(+n)));
+    const done = [1, 2, 4, 5].filter((n) => profile.cleared.includes(n)).length;
+    $('menu-start-desc').textContent = done ? `Start a run \u00b7 or go back to a level you have finished (${done} of 4)` : 'Start a run \u00b7 the cemetery';
+    levels.classList.add('hidden');
+    $('menu-cinema').classList.add('hidden');
     nameInput.value = getName();
     nameInput.classList.remove('missing');
     $('menu-best').textContent = best > 0 ? `Best score ${best.toLocaleString()}` : '';
@@ -129,6 +149,8 @@ export const menu = {
     root.classList.remove('hidden');
     document.body.classList.add('in-menu');
   },
+  // Open on the editor's list of scenes (coming back from one).
+  showCinema() { home.classList.add('hidden'); $('menu-cinema').classList.remove('hidden'); },
   hide() {
     root.classList.add('hidden');
     document.body.classList.remove('in-menu');

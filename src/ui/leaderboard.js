@@ -22,12 +22,15 @@ async function call(body, board = '') {
 // Fill a list element with rows. `mine` is highlighted.
 // how(row): the text in the third column.
 const runHow = (r) => (r.won ? `Escaped ${clock(r.time)}` : `Wave ${r.wave}`), lineHow = (r) => `${r.wave} trick${r.wave === 1 ? '' : 's'}`;
-function draw(list, rows, count, mine = '', how = runHow) {
+// A time down the hill, from the score it is stored as (see netlify/functions/leaderboard.mjs).
+const RUN_BASE = 1_000_000;
+export const runTime = (seconds) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
+function draw(list, rows, count, mine = '', how = runHow, points = (r) => r.score.toLocaleString()) {
   list.replaceChildren(...rows.slice(0, count).map((r, i) => {
     const li = document.createElement('li');
     if (mine && r.name.toLowerCase() === mine.toLowerCase()) li.className = 'mine';
     const cell = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
-    li.append(cell('rank', i + 1), cell('who', r.name), cell('how', how(r)), cell('pts', r.score.toLocaleString()));
+    li.append(cell('rank', i + 1), cell('who', r.name), cell('how', how(r)), cell('pts', points(r)));
     return li;
   }));
   if (!rows.length) {
@@ -87,6 +90,17 @@ export const leaderboard = {
     const list = $('line-board');
     try { draw(list, (await call(null, 'line')).top, 8, getName(), lineHow); }
     catch (err) { list.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty', textContent: err.message })); }
+  },
+  // The Long Way Down's board: the fastest times. Shown when you pick it on the menu.
+  async showRuns() {
+    const list = $('line-board');
+    try { draw(list, (await call(null, 'run')).top, 8, getName(), () => '', (r) => runTime((RUN_BASE - r.score) / 100)); }
+    catch (err) { list.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty', textContent: err.message })); }
+  },
+  // Post a time down the hill, in seconds (it only counts if it beats the one this name already has).
+  postRun(seconds) {
+    const name = getName(), score = RUN_BASE - Math.round(seconds * 100);
+    if (name && score > 0) call({ board: 'run', name, score, wave: 0, time: Math.round(seconds), won: true }).catch(() => {});
   },
   // Post a line (it only counts if it beats the one this name already has). Quietly: there is nobody to tell if it fails.
   postLine(total, count) {

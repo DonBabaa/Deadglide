@@ -106,6 +106,8 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 
 #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.7); backdrop-filter: blur(3px); cursor: pointer; }
 #overlay.hidden { display: none; }
+#overlay { overflow-y: auto; justify-content: safe center; padding: 18px 0; }   /* (taller than the window: it scrolls, from its top) */
+#audio-controls { flex-wrap: wrap; justify-content: center; }
 #controls { margin-top: 34px; display: grid; grid-template-columns: auto auto; gap: 7px 46px; font-size: 13px; opacity: 0.85; cursor: default; }
 #controls b { display: inline-block; min-width: 96px; font-weight: 600; color: #ffd08a; }
 #audio-controls { margin-top: 28px; display: flex; align-items: center; gap: 22px; padding: 12px 20px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; background: rgba(0, 0, 0, 0.35); cursor: default; font-size: 13px; letter-spacing: 1px; }
@@ -122,7 +124,23 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 body.in-menu #hud { display: none; }
 #menu { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 0 0 7vw; background: linear-gradient(90deg, rgba(6, 8, 12, 0.88) 0%, rgba(6, 8, 12, 0.55) 34%, rgba(6, 8, 12, 0) 62%); }
 #menu.hidden, #menu .hidden { display: none; }
-#menu-home, #menu-launch { width: min(440px, 44vw); }
+#menu { transition: opacity 0.4s; }
+body.title-cut #menu { opacity: 0; pointer-events: none; }   /* (the title screen's cut-in, after finishing the game) */
+#menu.finished h1 { color: #ffc233; }
+body.cut-wait #caption small { color: #ffc233; opacity: 1; animation: cut-wait 0.9s ease-in-out infinite; }
+@keyframes cut-wait { 50% { opacity: 0.35; } }
+#menu-home, #menu-launch, #menu-levels { width: min(440px, 44vw); }
+#levels-back { margin-top: 18px; }
+#menu-cinema { width: min(560px, 50vw); max-height: 100vh; overflow-y: auto; padding: 24px 0; }
+#cinema-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px; }
+#cinema-list button { text-align: left; padding: 9px 12px; font-size: 14px; }
+#cinema-list small { display: block; opacity: 0.6; font-size: 11px; }
+#cinema { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: rgba(8, 9, 12, 0.88); font: 13px var(--text); color: #e8e4d8; }
+#cinema.hidden { display: none; }
+#cinema b { color: #ffc233; margin-right: 6px; }
+#cinema input { flex: 1 1 160px; }
+#cinema button { padding: 4px 10px; font-size: 12px; }
+#cinema-time { font-variant-numeric: tabular-nums; min-width: 92px; }
 #menu h1 { margin: 0; font-size: 62px; font-weight: 200; letter-spacing: 12px; text-transform: uppercase; }
 #menu h2 { margin: 0; font-size: 44px; font-weight: 200; letter-spacing: 8px; text-transform: uppercase; }
 #menu .tagline { margin: 8px 0 34px; font-size: 14px; letter-spacing: 2px; opacity: 0.7; }
@@ -649,6 +667,18 @@ body.free-ride #seed { display: none; }
 
 /* Free Ride: back to spawn (a button on the pause screen, and the key under the line panel). */
 #respawn-button { display: none; margin-top: 18px; }
+#deeper { display: flex; gap: 16px; justify-content: center; margin-top: 22px; }
+#deeper.hidden { display: none; }
+#deeper button { padding: 14px 26px; font-size: 20px; }
+#go-deeper { border-color: var(--amber); color: var(--amber); }
 body.free-ride #respawn-button { display: inline-block; }
 #respawn-button kbd { margin-left: 8px; font-family: var(--text); font-size: 14px; font-weight: 700; opacity: 0.6; }
 #line-keys { margin-top: 6px; font-family: var(--text); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; opacity: 0.55; text-transform: none; }
+
+/* A line of story during a cut-in. */
+#caption { position: fixed; left: 50%; bottom: 13%; transform: translateX(-50%); max-width: 80%; z-index: 30; padding: 8px 22px; font-family: var(--display); font-size: 30px; letter-spacing: 2px; text-transform: uppercase; text-align: center; color: var(--bone); background: rgba(12, 12, 14, 0.78); border: 3px solid var(--bone); box-shadow: 5px 5px 0 var(--ink); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
+#caption.on { opacity: 1; }
+#caption small { display: block; margin-top: 2px; font-family: var(--text); font-size: 12px; font-weight: 700; letter-spacing: 2px; opacity: 0.6; }
+
+/* The Long Way Down: only your health, your speed and the clock. */
+body.descent #score, body.descent #xp, body.descent #stats, body.descent #gold, body.descent #powers { display: none; }

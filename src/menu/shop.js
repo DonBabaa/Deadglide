@@ -60,6 +60,7 @@ function styleRow(slot) {
     options.append(have
       ? mine
       : option.secret ? button('???', null)   // (a costume: found, not bought)
+      : option.ending ? button('??? \u00b7 finish the game', null)
       : option.casino ? button(`${swatch}${option.name} \u00b7 slots prize`, null)   // (can't be bought: see the casino)
       : button(`${swatch}${option.name} ${gold(slot.price)}`, slot.price, () => bought(buy(slot, option))));
   }

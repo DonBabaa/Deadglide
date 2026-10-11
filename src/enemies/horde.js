@@ -17,6 +17,7 @@ import { config } from '../config.js';
 import { heightAt, groundAt, placeAt, confineX, airFloorAt, onPipe, pipeS, pipeRound, hasPipe, lapNear } from '../world/terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { world } from '../world/level.js';
+import { HOUSE, houseSpot } from '../world/house.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
@@ -118,6 +119,16 @@ export class Horde {
     this.boneMesh.frustumCulled = false;
     this.boneMesh.castShadow = true;
     this.blobs.forEach((_, i) => this.boneMesh.setMatrixAt(i, HIDDEN));
+    // What Babitus throws: playing cards, and casino chips.
+    this.cardMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.05, 1.6), new THREE.MeshStandardMaterial({ color: 0xf7f3ea, roughness: 0.5, emissive: 0x3a3832 }), this.blobs.length);
+    this.chipMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.75, 0.75, 0.2, 14), new THREE.MeshStandardMaterial({ color: 0xffc233, roughness: 0.35, emissive: 0x4a3200 }), this.blobs.length);
+    for (const mesh of [this.cardMesh, this.chipMesh]) {
+      mesh.frustumCulled = false;
+      mesh.castShadow = true;
+      this.blobs.forEach((_, i) => mesh.setMatrixAt(i, HIDDEN));
+      scene.add(mesh);
+    }
+    this.bossVariant = '';      // which Babitus turns up ('', 'b', 'c' or 'd': how much gold he is wearing; main.js sets it)
     // Webs left on the floor by the Spider Queen.
     this.webs = Array.from({ length: 24 }, () => ({ life: 0, x: 0, y: 0, z: 0, r: 1, turn: 0 }));
     this.webMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: webTexture(), transparent: true, depthWrite: false, toneMapped: false }), this.webs.length);
@@ -203,18 +214,21 @@ export class Horde {
 
   // The final boss claws his way up ahead of you.
   spawnBoss(player) {
-    const name = world.level === 2 ? 'boss2' : 'boss';   // each level has its own
+    const house = world.level === 4;
+    const name = house ? `boss3${this.bossVariant}` : world.level === 2 ? 'boss2' : 'boss';   // each level has its own
     const T = ENEMY_TYPES[name], heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.bossHp * (T.hpScale || 1);
     // What he throws, in his colours.
     this.bossTint = new THREE.Color(T.blob ?? 0x5a3418);
     this.blobs.forEach((_, i) => this.blobMesh.setColorAt(i, this.bossTint));
     this.blobMesh.instanceColor.needsUpdate = true;
     this.splatMesh.material.color.set(T.splat ?? 0x35170b);
-    const [x, z] = placeAt(player.pos.x, player.pos.z, heading, 55);
+    const spot = houseSpot([HOUSE.boss.x, HOUSE.boss.z]);
+    const [x, z] = house ? [spot.x, spot.z] : placeAt(player.pos.x, player.pos.z, heading, 55);   // (in the House he is waiting at the far end)
     this.boss = {
       name, T, x, y: heightAt(x, z), z, elite: false, scale: T.scale,
       hp, maxHp: hp, speed: T.speed, shedAt: T.shed ? 1 - T.shed.every : -1,
-      yaw: heading + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: 0, throwTimer: 2,
+      yaw: house ? Math.atan2(player.pos.x - x, player.pos.z - z) : heading + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: 0, throwTimer: 2,
+      wheel: 3, call: null, adds: 6,
     };
     this.enemies.push(this.boss);
     this.bossSpawned = true;
@@ -224,6 +238,10 @@ export class Horde {
   direct(dt, player) {
     const H = config.horde;
     this.time += dt;
+    if (world.level === 4) {   // the House: no waves. He is there when you arrive, and when he is dead it is over.
+      if (!this.bossSpawned && this.time > 0.5 && player.grounded) this.spawnBoss(player);   // (once you have landed)
+      return;
+    }
     if (this.finished) {
       // Overtime: the spawn rate doubles and doubles again, they get tougher, and they come up closer to you.
       this.overtime += dt;
@@ -326,7 +344,7 @@ export class Horde {
       const dist = Math.hypot(dx, dz) || 1;
 
       // You can't lose the boss: leave him behind and he digs his way up ahead of you.
-      if ((e.T.boss || e.T.miniboss) && dist > H.despawnDistance) {
+      if ((e.T.boss || e.T.miniboss) && !e.T.house && dist > H.despawnDistance) {
         const heading = Math.atan2(player.vel.x, player.vel.z);
         [e.x, e.z] = placeAt(px, pz, heading, 55);
         e.y = heightAt(e.x, e.z);
@@ -335,7 +353,7 @@ export class Horde {
         continue;
       }
       // Left far behind: recycled (the director spawns a fresh one near you).
-      if (dist > H.despawnDistance) {
+      if (dist > H.despawnDistance && world.level !== 4) {
         this.enemies[i] = this.enemies[this.enemies.length - 1];
         this.enemies.pop();
         continue;
@@ -351,7 +369,8 @@ export class Horde {
       }
 
       // The boss hurls a volley whenever you're in range, faster once he's badly hurt.
-      if (e.T.boss && (e.throwTimer -= dt) <= 0 && dist < H.bossRange) {
+      if (e.T.house) this.houseBoss(e, player, dt);
+      else if (e.T.boss && (e.throwTimer -= dt) <= 0 && dist < H.bossRange) {
         e.throwTimer = H.bossThrowEvery * (e.hp < e.maxHp * 0.4 ? 0.6 : 1);
         this.throwVolley(e, player, dist);
       }
@@ -553,6 +572,72 @@ export class Horde {
     return damage;
   }
 
+  // ---- The House --------------------------------------------------------------------
+  // Babitus doesn't choose what he does: the wheel does. Every few seconds it is spun; the great chandelier shows
+  // the colour it lands on (the 'wheel' event), and a moment later that is what happens:
+  //   red     a fan of playing cards, thrown flat and fast at you
+  //   black   casino chips raining down round where you are heading
+  //   green   the house wins: a ring of cards in every direction, and every slot machine pays out monsters
+  // Meanwhile the slot machines in the corners spit out a pack of monsters every so often.
+  houseBoss(e, player, dt) {
+    const C = config.house, hurt = e.hp < e.maxHp * 0.5;
+    e.roar = Math.max(0, (e.roar || 0) - dt * 1.3);   // (his arms come down again after each throw)
+    if (hurt && !e.half) { e.half = true; e.speed *= 1.3; this.events.push({ type: 'bossHalf', name: e.T.title }); }
+    if (e.call) {
+      if ((e.call.wait -= dt) > 0) return;
+      const colour = e.call.colour;
+      e.call = null;
+      e.roar = 0.5;
+      if (colour === 'red') this.dealCards(e, player, Math.round(C.cards * (hurt ? 1.5 : 1)), 0.5);
+      else if (colour === 'black') this.rainChips(player, Math.round(C.chips * (hurt ? 1.5 : 1)));
+      else { this.dealCards(e, player, 16, Math.PI); for (let k = 0; k < HOUSE.slots.length; k++) this.payOut(k); }
+      this.events.push({ type: 'wheelDone', colour });
+      return;
+    }
+    if ((e.wheel -= dt) <= 0) {
+      e.wheel = hurt ? C.wheelFast : C.wheelEvery;
+      const r = Math.random(), colour = r < 0.1 ? 'green' : r < 0.55 ? 'red' : 'black';
+      e.call = { colour, wait: C.wheelTell };
+      this.events.push({ type: 'wheel', colour });
+    }
+    if ((e.adds -= dt) <= 0) {
+      e.adds = C.addsEvery * (hurt ? 0.7 : 1);
+      if (this.enemies.length < C.addsMax) this.payOut(Math.floor(Math.random() * HOUSE.slots.length));
+    }
+  }
+
+  // n cards from his hand, spread `spread` radians either side of you (Math.PI: all the way round).
+  dealCards(e, player, n, spread) {
+    const C = config.house, aim = Math.atan2(player.pos.x + player.vel.x * 0.5 - e.x, player.pos.z + player.vel.z * 0.5 - e.z);
+    for (let k = 0; k < n; k++) {
+      const i = this.nextBlob++ % this.blobs.length, b = this.blobs[i], a = aim + (n > 1 ? (k / (n - 1) - 0.5) * 2 * spread : 0);
+      Object.assign(b, { kind: 'card', flat: true, size: 1, hit: C.cardDamage, splash: 0, reach: 0, life: 150 / C.cardSpeed, spin: a });
+      b.pos.set(e.x, e.y + e.T.height * e.scale * 0.6, e.z);
+      b.vel.set(Math.sin(a) * C.cardSpeed, 0, Math.cos(a) * C.cardSpeed);
+      b.sink = (b.pos.y - (player.pos.y + 1)) / (Math.hypot(player.pos.x - e.x, player.pos.z - e.z) / C.cardSpeed || 1);   // they come down to your height by the time they reach you, then fly level
+      b.level = player.pos.y + 1;
+    }
+    this.events.push({ type: 'bossThrow' });
+  }
+
+  // n chips, dropped from the ceiling to land round where you are about to be, a few at a time.
+  rainChips(player, n) {
+    const C = config.house;
+    for (let k = 0; k < n; k++) {
+      const i = this.nextBlob++ % this.blobs.length, b = this.blobs[i], a = Math.random() * Math.PI * 2, r = k ? Math.sqrt(Math.random()) * 11 : 0, lead = 0.6 + k * 0.09;
+      Object.assign(b, { kind: 'chip', flat: false, size: 1, hit: C.chipDamage, splash: C.chipSplash, reach: 2.4, life: 6, spin: Math.random() * 6 });
+      b.pos.set(player.pos.x + player.vel.x * lead + Math.cos(a) * r, player.pos.y + 16 + k * 2.2, player.pos.z + player.vel.z * lead + Math.sin(a) * r);
+      b.vel.set(0, -4, 0);
+    }
+  }
+
+  // A slot machine pays out: a pack of monsters from one corner of the room.
+  payOut(k) {
+    const C = config.house, [sx, sz] = HOUSE.slots[k], spot = houseSpot([sx * 0.8, sz * 0.8]);
+    for (let i = 0; i < C.addsPack; i++) this.spawnAt(Math.random() < 0.5 ? 'rattler' : 'shambler', spot.x + (Math.random() - 0.5) * 6, spot.z + (Math.random() - 0.5) * 6, 0);
+    this.events.push({ type: 'payout' });
+  }
+
   // ---- What the boss throws ---------------------------------------------------------
 
   // Three lobbed blobs: one at where you're heading, one short and one long, spread sideways.
@@ -560,7 +645,7 @@ export class Horde {
     const flight = Math.max(0.9, Math.min(2.6, dist / 26)), speed = player.speed || 1;
     for (let k = -1; k <= 1; k++) {
       const i = this.nextBlob++ % this.blobs.length, b = this.blobs[i];
-      b.size = 1; b.hit = b.splash = b.reach = undefined;   // (his own: full size, the boss's damage)
+      b.size = 1; b.hit = b.splash = b.reach = undefined; b.flat = false;   // (his own: full size, the boss's damage)
       b.kind = e.T.bones ? 'bone' : undefined;
       this.blobMesh.setColorAt(i, this.bossTint);
       b.life = flight + 1.5;
@@ -581,7 +666,8 @@ export class Horde {
     for (const b of this.blobs) {
       if (b.life <= 0) continue;
       b.life -= dt;
-      b.vel.y -= BLOB_GRAVITY * dt;
+      if (!b.flat) b.vel.y -= BLOB_GRAVITY * dt;
+      else b.vel.y = b.pos.y > b.level ? -b.sink : 0;   // (a thrown card: down to your height, then level)
       b.pos.addScaledVector(b.vel, dt);
       const direct = b.pos.distanceTo(v.copy(player.pos).setY(player.pos.y + 0.9)) < 1.7;
       const ground = airFloorAt(b.pos.x, b.pos.z);
@@ -594,7 +680,7 @@ export class Horde {
       const near = Math.hypot(player.pos.x - b.pos.x, player.pos.z - b.pos.z) < (b.reach ?? H.bossSplashRadius) && Math.abs(player.pos.y - ground) < 2.5;
       if (direct) damage = Math.max(damage, b.hit ?? H.bossBlobDamage);
       else if (near) damage = Math.max(damage, b.splash ?? H.bossSplashDamage);
-      this.events.push({ type: b.kind === 'bone' ? 'clatter' : 'splat' });
+      this.events.push({ type: b.kind && b.kind !== 'web' ? 'clatter' : 'splat' });
       for (let k = 0; k < 8; k++) {
         const g = this.gibs[this.nextGib++ % this.gibs.length];
         g.life = 0.4 + Math.random() * 0.4;
@@ -741,7 +827,8 @@ export class Horde {
       [x, z] = placeAt(p.x, p.z, a, H.escapeDistance);
       if (heightAt(x, z) - groundAt(x, z) < 0.4) break;   // not on top of a tomb or a ramp
     }
-    this.events.push({ type: 'bossDead', name: boss.T.title, x, y: heightAt(x, z), z });
+    if (boss.T.house) { const doors = houseSpot([HOUSE.doors.x, HOUSE.doors.z]); x = doors.x; z = doors.z; }   // (the way out is the way you came in)
+    this.events.push({ type: 'bossDead', name: boss.T.title, x, y: heightAt(x, z), z, house: !!boss.T.house });
   }
 
   // Chunks blown off a monster's body. power: how hard they fly.
@@ -856,13 +943,20 @@ export class Horde {
     this.gibMesh.instanceMatrix.needsUpdate = true;
 
     this.blobs.forEach((b, i) => {
-      if (b.life <= 0) { this.blobMesh.setMatrixAt(i, HIDDEN); this.boneMesh.setMatrixAt(i, HIDDEN); return; }
-      const bone = b.kind === 'bone';
-      e3.set(this.time * (bone ? 11 : 5) + b.spin, b.spin, this.time * (bone ? 7 : 3));
-      m.compose(b.pos, q.setFromEuler(e3), bone ? sc.setScalar(b.size || 1) : sc.set(1, 0.8, 1.25).multiplyScalar(b.size || 1));   // a tumbling bone, or a wobbling gobbet
-      this.blobMesh.setMatrixAt(i, bone ? HIDDEN : m);
-      this.boneMesh.setMatrixAt(i, bone ? m : HIDDEN);
+      const bone = b.kind === 'bone', card = b.kind === 'card', chip = b.kind === 'chip', live = b.life > 0;
+      if (live) {
+        if (card) e3.set(0, b.spin + this.time * 14, 0.15);                 // a card, spinning flat like a thrown blade
+        else if (chip) e3.set(this.time * 9 + b.spin, b.spin, 0);            // a chip, tumbling end over end
+        else e3.set(this.time * (bone ? 11 : 5) + b.spin, b.spin, this.time * (bone ? 7 : 3));
+        m.compose(b.pos, q.setFromEuler(e3), bone || card || chip ? sc.setScalar(b.size || 1) : sc.set(1, 0.8, 1.25).multiplyScalar(b.size || 1));   // ...a tumbling bone, or a wobbling gobbet
+      }
+      this.blobMesh.setMatrixAt(i, live && !b.kind || (live && b.kind === 'web') ? m : HIDDEN);
+      this.boneMesh.setMatrixAt(i, live && bone ? m : HIDDEN);
+      this.cardMesh.setMatrixAt(i, live && card ? m : HIDDEN);
+      this.chipMesh.setMatrixAt(i, live && chip ? m : HIDDEN);
     });
+    this.cardMesh.instanceMatrix.needsUpdate = true;
+    this.chipMesh.instanceMatrix.needsUpdate = true;
     this.blobMesh.instanceMatrix.needsUpdate = true;
     this.boneMesh.instanceMatrix.needsUpdate = true;
     this.webs.forEach((w, i) => {

@@ -206,3 +206,43 @@ export function glowTexture() {
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
+
+// The House: a marble floor in black and white squares (one tile of the texture is 2 x 2 squares).
+export function marbleTexture() {
+  return canvas(512, (g, s) => {
+    const h = s / 2;
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+      g.fillStyle = (i + j) % 2 ? '#1b1a1c' : '#ece6d8';
+      g.fillRect(i * h, j * h, h, h);
+    }
+    for (let i = 0; i < 26; i++) {   // veins
+      g.strokeStyle = `rgba(${Math.random() < 0.5 ? '120,110,100' : '250,245,235'}, 0.16)`;
+      g.lineWidth = 1 + Math.random() * 2;
+      g.beginPath();
+      let x = Math.random() * s, y = Math.random() * s;
+      g.moveTo(x, y);
+      for (let k = 0; k < 6; k++) { x += (Math.random() - 0.5) * 120; y += (Math.random() - 0.5) * 120; g.lineTo(x, y); }
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(201, 164, 74, 0.55)'; g.lineWidth = 3;
+    g.strokeRect(0, 0, h, h); g.strokeRect(h, h, h, h); g.strokeRect(h, 0, h, h); g.strokeRect(0, h, h, h);
+    grain(g, s, 10);
+  });
+}
+
+// The House's walls and ceiling: a cream panel in a gold frame.
+export function panelTexture() {
+  return canvas(512, (g, s) => {
+    g.fillStyle = '#e9dfc6';
+    g.fillRect(0, 0, s, s);
+    g.fillStyle = '#f3ecd9';
+    g.fillRect(48, 48, s - 96, s - 96);
+    g.strokeStyle = '#c9a44a'; g.lineWidth = 10;
+    g.strokeRect(40, 40, s - 80, s - 80);
+    g.lineWidth = 3;
+    g.strokeRect(70, 70, s - 140, s - 140);
+    g.fillStyle = '#c9a44a';
+    for (const [x, y] of [[40, 40], [s - 40, 40], [40, s - 40], [s - 40, s - 40]]) { g.beginPath(); g.arc(x, y, 14, 0, Math.PI * 2); g.fill(); }
+    grain(g, s, 8);
+  });
+}
