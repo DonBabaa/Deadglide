@@ -2,6 +2,8 @@
 // generated world: heightAt(x, z), normalAt(x, z) and the rails near a point.
 // Physics samples this directly; chunkMesh.js builds matching meshes.
 import { CHUNK, generateChunk, chunkHeight, chunkBase, chunkPaved } from './worldgen.js';
+import { world } from './level.js';
+import { cataPlace, cataConfine, cataAirFloor, floorAt, route, CATA, EDGE } from './catacombs.js';
 
 // World seed: random each run, or fixed with ?seed=1234 in the URL.
 const fromUrl = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('seed')) : 0;
@@ -24,6 +26,54 @@ export function getChunk(cx, cz) {
   }
   return (last = c);
 }
+// Switch level: the world is rebuilt from scratch (arena.js does the same for what's on screen).
+export function setLevel(level) {
+  world.level = level;
+  chunks.clear();
+  last = null;
+}
+// A spot `dist` metres from (px, pz) in direction `angle`, for putting monsters, zones and portals.
+// In the Catacombs there is only along the tunnel: ahead or behind, somewhere across its width.
+export const placeAt = (px, pz, angle, dist) => (world.level === 2 ? cataPlace(px, pz, angle, dist, SEED) : [px + Math.sin(angle) * dist, pz + Math.cos(angle) * dist]);
+// Keep something that flies inside the walls.
+export const confineX = (x, z) => (world.level === 2 ? cataConfine(x, z, SEED) : x);
+
+// The nearest x that is inside the tunnel's walls (the Catacombs), for something up in the air.
+export const insideWalls = (x, z) => (world.level === 2 ? cataConfine(x, z, SEED, EDGE - 0.5) : x);
+// The tunnel's pipe at this z ({ x: its middle, w: half the floor's width, floor }), or null where there isn't one.
+// (The same object every call: read it before asking again.)
+export const pipeAt = (z) => (world.level === 2 ? route(z, SEED) : null);
+// What is under something that's in the air (in the Catacombs, the pipe's wall counts right up to where it's upright).
+export const airFloorAt = (x, z) => (world.level === 2 ? cataAirFloor(x, z, SEED) : heightAt(x, z));
+// Is this point inside something solid? (What stops bullets, and where the crosshair's line of sight ends.)
+// In the Catacombs the pipe's walls and roof are solid, but the space inside them is not: heightAt alone
+// would call everything out past the lip rock, right where you are when you ride a wall.
+export function blockedAt(x, y, z) {
+  if (world.level !== 2) return y <= heightAt(x, z);
+  const r = route(z, SEED), d = Math.abs(x - r.x) - r.w, R = CATA.ceiling / 2, h = y - r.floor;
+  if (h >= 2 * R) return true;
+  if (d > EDGE - 0.1) return h <= 0 || Math.hypot(d, h - R) >= R;
+  return y <= heightAt(x, z);
+}
+// How high the roof is (the Catacombs have one; the Cemetery is open sky).
+export const ceilingAt = (z) => (world.level === 2 ? floorAt(z) + CATA.ceiling : Infinity);
+// Keep the camera (a THREE.Vector3) out of solid rock: in the Catacombs, inside the pipe (a good
+// arm's length off its walls, roof and floor), wherever in it the player has got to.
+export function fitCamera(pos) {
+  if (world.level !== 2) return;
+  const r = route(pos.z, SEED), off = pos.x - r.x, side = off < 0 ? -1 : 1, d = Math.abs(off) - r.w, R = CATA.ceiling / 2, GAP = 1.3;
+  let h = Math.max(0.6, Math.min(2 * R - GAP, pos.y - r.floor));
+  if (d > 0) {   // out by a wall: no further from the middle of its curve than the curve itself
+    const rho = Math.hypot(d, h - R);
+    if (rho > R - GAP) {
+      const k = (R - GAP) / rho;
+      pos.x = r.x + side * (r.w + d * k);
+      h = R + (h - R) * k;
+    }
+  }
+  pos.y = r.floor + h;
+}
+
 export const chunkAt = (x, z) => getChunk(Math.floor(x / CHUNK), Math.floor(z / CHUNK));
 
 export const heightAt = (x, z) => chunkHeight(chunkAt(x, z), x, z);

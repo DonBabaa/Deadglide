@@ -3,7 +3,7 @@
 // ground or anything solid. The weapons themselves are described in weapons.js.
 import * as THREE from 'three';
 import { config } from '../config.js';
-import { heightAt } from '../world/terrain.js';
+import { blockedAt } from '../world/terrain.js';
 import { stats } from './stats.js';
 import { WEAPONS } from './weapons.js';
 
@@ -176,7 +176,7 @@ export class Weapon {
     return true;
   }
 
-  blocked(p) { return p.y <= heightAt(p.x, p.z); }
+  blocked(p) { return blockedAt(p.x, p.y, p.z); }
 
   updateBullets(dt, horde) {
     this.bullets.forEach((b, i) => {

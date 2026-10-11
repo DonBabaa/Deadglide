@@ -13,6 +13,8 @@
 import { seededRandom } from './random.js';
 import * as F from './features.js';
 import { hillHeight } from './noise.js';
+import { world } from './level.js';
+import { cataHeight, cataFloor, fillCatacombs } from './catacombs.js';
 
 export const CHUNK = 96;        // metres per chunk
 export const SLOT = CHUNK / 3;  // metres per feature slot
@@ -170,7 +172,7 @@ const FEATURES = {
 
 // The ground itself (hills, bowls and mounds), without props.
 export function chunkBase(c, x, z) {
-  let h = hillHeight(x, z, c.seed);
+  let h = c.level === 2 ? cataHeight(x, z, c.seed) : hillHeight(x, z, c.seed);
   for (const b of c.bowls) h += F.bowlHeight(b, x, z);
   for (const m of c.mounds) h += F.moundHeight(m, x, z);
   return h;
@@ -212,6 +214,7 @@ export function chunkHeight(c, x, z) {
 
 // Is this spot concrete (true) or grass (false)? Lanes run between the slots.
 export function chunkPaved(c, x, z) {
+  if (c.level === 2) return cataFloor(x, z, c.seed);   // (the Catacombs: flagstones on the floor, bare rock up the walls)
   const lx = x - c.x0, lz = z - c.z0;
   const ex = lx % SLOT, ez = lz % SLOT;
   if (ex < PATH || ex > SLOT - PATH || ez < PATH || ez > SLOT - PATH) return true;
@@ -229,10 +232,30 @@ function chunkSeed(cx, cz, seed) {
 export function generateChunk(cx, cz, seed) {
   const rand = seededRandom(chunkSeed(cx, cz, seed));
   const c = {
-    cx, cz, seed, x0: cx * CHUNK, z0: cz * CHUNK,
+    cx, cz, seed, level: world.level, x0: cx * CHUNK, z0: cz * CHUNK,
     props: [], rails: [], railSpecs: [], bowls: [], mounds: [], plots: [],
     dirt: [], flames: [], lamps: [], paved: new Uint8Array(9),
   };
+  if (c.level === 2) fillCatacombs(c, rand);
+  else fillCemetery(c, rand, seed);
+
+  // Stand everything on the ground: rigid props at the height under their centre,
+  // candles and dirt mounds wherever they are.
+  for (const p of c.props) p.y0 = chunkBase(c, p.x, p.z);
+  for (let k = 0; k < c.flames.length; k += 3) c.flames[k + 1] += chunkBase(c, c.flames[k], c.flames[k + 2]);
+  for (const d of c.dirt) d.push(chunkBase(c, d[0], d[1]));
+
+  buildGrid(c);
+  // Rails sit a set height above whatever is under each end.
+  for (const [x1, z1, x2, z2, h1, h2] of c.railSpecs) {
+    c.rails.push(F.rail(x1, chunkHeight(c, x1, z1) + h1, z1, x2, chunkHeight(c, x2, z2) + h2, z2));
+  }
+  return c;
+}
+
+// Level 1: a 3x3 grid of features picked by the chunk's district, and a couple of street lamps.
+function fillCemetery(c, rand, seed) {
+  const { cx, cz } = c;
   const home = cx === 0 && cz === 0;   // the spawn chunk is always a skatepark
   c.district = home ? 'park' : weighted(rand, { park: 3, graveyard: 3, mixed: 4 });
   const landmark = !home && rand() < 0.1 ? Math.floor(rand() * 9) : -1;   // the odd chapel
@@ -252,12 +275,6 @@ export function generateChunk(cx, cz, seed) {
     }
   }
 
-  // Stand everything on the ground: rigid props at the height under their centre,
-  // candles and dirt mounds wherever they are.
-  for (const p of c.props) p.y0 = chunkBase(c, p.x, p.z);
-  for (let k = 0; k < c.flames.length; k += 3) c.flames[k + 1] += chunkBase(c, c.flames[k], c.flames[k + 2]);
-  for (const d of c.dirt) d.push(chunkBase(c, d[0], d[1]));
-
   // A couple of street lamps where the lanes cross.
   for (let n = 0; n < 2; n++) {
     const x = c.x0 + pick(rand, [1, 2]) * SLOT + 3.2, z = c.z0 + pick(rand, [1, 2]) * SLOT + 3.2;
@@ -267,11 +284,4 @@ export function generateChunk(cx, cz, seed) {
     c.lamps.push({ x, z, y: post.y0 });
     c.props.push(post);
   }
-
-  buildGrid(c);
-  // Rails sit a set height above whatever is under each end.
-  for (const [x1, z1, x2, z2, h1, h2] of c.railSpecs) {
-    c.rails.push(F.rail(x1, chunkHeight(c, x1, z1) + h1, z1, x2, chunkHeight(c, x2, z2) + h2, z2));
-  }
-  return c;
 }

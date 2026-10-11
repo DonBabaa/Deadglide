@@ -5,6 +5,7 @@ import { WEAPONS } from '../player/weapons.js';
 import { UPGRADES, describe } from '../systems/upgrades.js';
 import { POWERUPS } from '../player/powerups.js';
 import { getName, setName, cleanName } from '../ui/playerName.js';
+import { LEVELS } from '../world/level.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch');
@@ -12,7 +13,7 @@ const toggle = $('creative-toggle'), loadoutBox = $('loadout');
 
 // What Creative mode will start you with.
 const loadout = { weapons: new Set(), upgrades: {}, powers: {}, monsters: true, noDamage: false };
-let creative = false, onStart = null;
+let creative = false, onStart = null, level = 1;
 
 function chip(label, isOn, flip) {
   const b = document.createElement('button');
@@ -79,7 +80,7 @@ nameInput.addEventListener('input', () => {
 });
 nameInput.addEventListener('keydown', (e) => { if (e.code === 'Enter') $('level-1').click(); });
 
-$('level-1').addEventListener('click', () => {
+for (const n of [1, 2]) $(`level-${n}`).addEventListener('click', () => {
   if (!getName()) {   // no name yet: point at the box instead of going on
     nameInput.classList.remove('missing');
     void nameInput.offsetWidth;
@@ -87,6 +88,9 @@ $('level-1').addEventListener('click', () => {
     nameInput.focus();
     return;
   }
+  level = n;
+  launch.querySelector('h2').textContent = LEVELS[n].name;
+  launch.querySelector('.tagline').textContent = LEVELS[n].tagline;
   home.classList.add('hidden');
   launch.classList.remove('hidden');
 });
@@ -94,7 +98,7 @@ $('menu-back').addEventListener('click', () => { launch.classList.add('hidden');
 toggle.addEventListener('click', () => setCreative(!creative));
 $('menu-play').addEventListener('click', () => {
   // A copy, so later menu changes don't alter a run in progress. null = a normal run.
-  onStart?.(creative ? { weapons: [...loadout.weapons], upgrades: { ...loadout.upgrades }, powers: { ...loadout.powers }, monsters: loadout.monsters, noDamage: loadout.noDamage } : null);
+  onStart?.(creative ? { weapons: [...loadout.weapons], upgrades: { ...loadout.upgrades }, powers: { ...loadout.powers }, monsters: loadout.monsters, noDamage: loadout.noDamage } : null, level);
 });
 
 export const menu = {

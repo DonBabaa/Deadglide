@@ -14,7 +14,8 @@
 // leave through it or they get you.
 import * as THREE from 'three';
 import { config } from '../config.js';
-import { heightAt, groundAt } from '../world/terrain.js';
+import { heightAt, groundAt, placeAt, confineX } from '../world/terrain.js';
+import { world } from '../world/level.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
@@ -28,6 +29,7 @@ const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
 const BLOB_GRAVITY = 20;
+const tint = new THREE.Color();
 const BROWN = new THREE.Color(0x5a3416);
 const cellKey = (x, z) => Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663;
 
@@ -123,7 +125,11 @@ export class Horde {
   // A spot `dist` away at `angle`, as long as it isn't inside a building.
   spawn(name, player, angle, dist, elite = false) {
     if (this.enemies.length >= MAX) return;
-    const x = player.pos.x + Math.sin(angle) * dist, z = player.pos.z + Math.cos(angle) * dist;
+    const [x, z] = placeAt(player.pos.x, player.pos.z, angle, dist);
+    this.spawnAt(name, x, z, angle + Math.PI, elite);
+  }
+  spawnAt(name, x, z, yaw = 0, elite = false) {
+    if (this.enemies.length >= MAX) return;
     const y = heightAt(x, z);
     if (y - groundAt(x, z) > 2.5) return;
     const T = ENEMY_TYPES[name], tough = 1 + config.horde.hpGrowth * (this.wave - 1);
@@ -132,17 +138,23 @@ export class Horde {
       scale: elite ? 1.9 : 0.92 + Math.random() * 0.18,
       hp: T.hp * tough * (elite ? config.horde.eliteHp : 1),
       speed: T.speed * (0.85 + Math.random() * 0.3) * (elite ? 1.25 : 1),
-      yaw: angle + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: Math.random() * 6.28,
+      yaw, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: Math.random() * 6.28,
     });
   }
 
   // The final boss claws his way up ahead of you.
   spawnBoss(player) {
-    const T = ENEMY_TYPES.boss, heading = Math.atan2(player.vel.x, player.vel.z);
-    const x = player.pos.x + Math.sin(heading) * 55, z = player.pos.z + Math.cos(heading) * 55;
+    const name = world.level === 2 ? 'boss2' : 'boss';   // each level has its own
+    const T = ENEMY_TYPES[name], heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.bossHp * (T.hpScale || 1);
+    // What he throws, in his colours.
+    tint.set(T.blob ?? 0x5a3418);
+    this.blobs.forEach((_, i) => this.blobMesh.setColorAt(i, tint));
+    this.blobMesh.instanceColor.needsUpdate = true;
+    this.splatMesh.material.color.set(T.splat ?? 0x35170b);
+    const [x, z] = placeAt(player.pos.x, player.pos.z, heading, 55);
     this.boss = {
-      name: 'boss', T, x, y: heightAt(x, z), z, elite: false, scale: T.scale,
-      hp: config.horde.bossHp, maxHp: config.horde.bossHp, speed: T.speed,
+      name, T, x, y: heightAt(x, z), z, elite: false, scale: T.scale,
+      hp, maxHp: hp, speed: T.speed, shedAt: T.shed ? 1 - T.shed.every : -1,
       yaw: heading + Math.PI, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: 0, throwTimer: 2,
     };
     this.enemies.push(this.boss);
@@ -245,7 +257,7 @@ export class Horde {
       // You can't lose the boss: leave him behind and he digs his way up ahead of you.
       if (e.T.boss && dist > H.despawnDistance) {
         const heading = Math.atan2(player.vel.x, player.vel.z);
-        e.x = px + Math.sin(heading) * 55; e.z = pz + Math.cos(heading) * 55;
+        [e.x, e.z] = placeAt(px, pz, heading, 55);
         e.y = heightAt(e.x, e.z);
         e.rise = 0;
         continue;
@@ -289,7 +301,7 @@ export class Horde {
       const nx = e.x + mx * dt, nz = e.z + mz * dt, climb = CLIMB * Math.max(1, e.scale * 0.7);   // big things step over more
       if (e.T.flying) {
         // Fliers go straight over everything, and climb or dive to the player's height.
-        e.x = nx; e.z = nz;
+        e.x = confineX(nx, nz); e.z = nz;
       } else if (heightAt(nx, nz) - e.y < climb) { e.x = nx; e.z = nz; }   // walk over low things...
       else if (heightAt(nx, e.z) - e.y < climb) e.x = nx;                  // ...slide round tall ones
       else if (heightAt(e.x, nz) - e.y < climb) e.z = nz;
@@ -311,13 +323,13 @@ export class Horde {
       // Close enough to claw the player?
       e.ramWait -= dt;
       if (dist < reach && Math.abs(player.pos.y - e.y) < e.T.height * e.scale) {
-        if (stats.ramDamage > 0 && player.speed > ramSpeed(stats.taken.spikes)) {
-          // Deck Spikes: at speed, you run them down instead.
-          if (e.ramWait <= 0) {
-            e.ramWait = 0.3;
-            this.damage(e, stats.ramDamage, -dx, -dz);
-          }
-        } else damage = Math.max(damage, e.T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)));
+        // Deck Spikes: at speed, you run them down instead. (Elites and the boss take the hit and still hurt you.)
+        const ramming = stats.ramDamage > 0 && player.speed > ramSpeed(stats.taken.spikes);
+        if (!ramming || e.elite || e.T.boss) damage = Math.max(damage, e.T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)));
+        if (ramming && e.ramWait <= 0) {
+          e.ramWait = 0.3;
+          this.damage(e, stats.ramDamage, -dx, -dz);
+        }
       }
     }
 
@@ -404,6 +416,7 @@ export class Horde {
     e.flash = 1;
     const push = e.T.boss ? 0 : (e.elite ? 1.5 : 6) * knock;
     e.kx += dirX * push; e.kz += dirZ * push;
+    while (e.T.shed && e.hp > 0 && e.hp / e.maxHp < e.shedAt) this.shed(e);
     if (e.hp > 0) {
       if (!quiet) this.events.push({ type: 'hit', headshot });
       return;
@@ -424,6 +437,25 @@ export class Horde {
       g.vel.set(((Math.random() - 0.5) * 7 + dirX * 5) * burst, (2 + Math.random() * 5) * burst, ((Math.random() - 0.5) * 7 + dirZ * 5) * burst);
     }
     if (e.T.boss) this.bossDied(e);
+  }
+
+  // A boss that sheds (see types.js) has lost another slice of his health: a pack of monsters
+  // drops out of him, bits fly, and he's a little smaller for it.
+  shed(e) {
+    const S = e.T.shed, girth = e.T.radius * e.scale;
+    e.shedAt -= S.every;
+    e.scale = e.T.scale * (1 - S.shrink * (1 - Math.max(0, e.shedAt + S.every)));
+    for (let k = 0; k < S.count; k++) {
+      const a = (k / S.count) * Math.PI * 2 + Math.random(), z = e.z + Math.cos(a) * (girth + 1.5);
+      this.spawnAt(S.type, confineX(e.x + Math.sin(a) * (girth + 1.5), z), z, a);
+    }
+    for (let k = 0; k < 26; k++) {
+      const g = this.gibs[this.nextGib++ % this.gibs.length], a = Math.random() * Math.PI * 2;
+      g.life = 0.6 + Math.random() * 0.6;
+      g.pos.set(e.x + Math.sin(a) * girth * 0.6, e.y + (0.3 + Math.random() * 0.6) * e.T.height * e.scale, e.z + Math.cos(a) * girth * 0.6);
+      g.vel.set(Math.sin(a) * (4 + Math.random() * 6), 3 + Math.random() * 6, Math.cos(a) * (4 + Math.random() * 6));
+    }
+    this.events.push({ type: 'bossShed' });
   }
 
   // The boss is dead: the monsters near you die with him, and the escape begins.
@@ -451,7 +483,7 @@ export class Horde {
     let x = 0, z = 0;
     for (let tries = 0; tries < 12; tries++) {
       const a = away + (tries ? (Math.random() - 0.5) * 1.6 : 0);
-      x = p.x + Math.sin(a) * H.escapeDistance; z = p.z + Math.cos(a) * H.escapeDistance;
+      [x, z] = placeAt(p.x, p.z, a, H.escapeDistance);
       if (heightAt(x, z) - groundAt(x, z) < 0.4) break;   // not on top of a tomb or a ramp
     }
     this.events.push({ type: 'bossDead', name: boss.T.title, x, y: heightAt(x, z), z });

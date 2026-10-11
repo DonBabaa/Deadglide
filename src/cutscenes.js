@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { heightAt } from './world/terrain.js';
 import { hud } from './ui/hud.js';
-import { playDread, playThunder, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop } from './fx/audio.js';
+import { playBones, playDread, playThunder, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
 
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
@@ -19,6 +19,10 @@ const spin = new THREE.Quaternion();
 export function createCutscenes({ camera, model, skater, horde, portal, renderPos }) {
   let scene = null;   // the one playing: { time, duration, step, done, marks }
   const home = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), fov: 0 };   // where the camera was
+
+  // A light the camera can carry, for scenes shot somewhere dark (the Catacombs). Off unless a scene turns it on.
+  const lamp = new THREE.PointLight(0xd8ffd0, 0, 70, 1.4);
+  model.root.parent.add(lamp);
 
   function begin(duration, step, done) {
     home.position.copy(camera.position);
@@ -31,6 +35,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
   function finish(completed) {
     const { done } = scene;
     scene = null;
+    lamp.intensity = 0;
     document.body.classList.remove('cutscene');
     hud.flash(null);
     hud.dread(0);
@@ -80,6 +85,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     boss() {
       const b = horde.boss;
       if (!b) return;
+      if (b.T.cutIn === 'skulls') return this.skullBoss(b);
       const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, STRIKES = [1.1, 2.0, 2.18, 3.0];
       b.rise = 0;
       playDread();
@@ -123,6 +129,65 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           setMusicStyle('rock');
         });
         if (t >= 4.5) goHome();
+      });
+    },
+
+    // ---- Level 2's boss arrives -------------------------------------------------------
+    // Four shots, cut hard, each on a white flash: bones heaping up at floor level; down the tunnel
+    // over Kirky's shoulder as the heap stands up; right in on the two green lights in his skull;
+    // then from under his jaw as he throws his arms up and his name slams across the screen.
+    skullBoss(b) {
+      const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.2, 2.4, 3.2];
+      b.rise = 0;
+      playDread();
+      playBones(1.2);
+      begin(5.0, (t, dt) => {
+        dir.set(skater.pos.x - b.x, 0, skater.pos.z - b.z).normalize();   // (from him, toward you)
+        side.set(dir.z, 0, -dir.x);
+        b.yaw = Math.atan2(dir.x, dir.z);
+        b.rise = Math.min(0.999, 0.45 * smooth(t / 1.2) + 0.55 * smooth((t - 1.2) / 1.0));
+        b.roar = smooth((t - 3.2) / 0.15) * (1 - smooth((t - 4.3) / 0.4));
+        if (t < 2.3) horde.erupt(b.x, b.z, wide, Math.random() < dt * 60 ? 2 : 0);
+        horde.draw(dt);
+
+        const ground = heightAt(b.x, b.z), k = (a, len) => smooth((t - a) / len);
+        if (t < CUTS[1]) {            // 1: at his feet
+          eye.set(b.x, ground + 0.35, b.z).addScaledVector(dir, wide + 3.2 - 0.6 * k(0, 1.2)).addScaledVector(side, 1.2);
+          target.set(b.x, ground + 0.6 + tall * 0.25 * b.rise, b.z);
+          view(40, 0.06);
+        } else if (t < CUTS[2]) {     // 2: down the tunnel, over Kirky's shoulder: a snap zoom as he stands
+          eye.copy(skater.pos).addScaledVector(dir, 2.6).addScaledVector(side, 0.9);
+          eye.y = skater.pos.y + 1.9;
+          target.set(b.x, ground + tall * 0.55 * b.rise, b.z);
+          view(62 - 30 * k(1.2, 0.22), 0.03);
+        } else if (t < CUTS[3]) {     // 3: his eyes
+          eye.set(b.x, ground + tall * 0.87, b.z).addScaledVector(dir, wide + 3.4 - 0.5 * k(2.4, 0.8)).addScaledVector(side, 0.3);
+          target.set(b.x, ground + tall * 0.87, b.z);
+          view(24, 0.015);
+        } else {                      // 4: from under his jaw, roaring
+          eye.set(b.x, ground + tall * 0.12, b.z).addScaledVector(dir, wide + 5.5 - 1.2 * k(3.2, 1.2)).addScaledVector(side, -1.6);
+          target.set(b.x, ground + tall * 0.8, b.z);
+          view(58 - 8 * b.roar, 0.22 * b.roar);
+        }
+
+        // Lit from the camera, a sickly green, flaring on every cut.
+        lamp.position.copy(eye).y += 1.2;
+        lamp.intensity = t < 4.6 ? 70 + 160 * Math.max(...CUTS.map((c) => (t >= c ? Math.exp(-(t - c) * 5) : 0))) : 0;
+        hud.dread(0.55 * smooth(t / 0.8) * (1 - smooth((t - 4.3) / 0.6)));
+        let pop = 0;
+        for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
+        const dark = blink(t, 4.6);
+        if (dark > 0.02) hud.flash('#000', dark);
+        else hud.flash('#ffffff', pop * 0.85);
+        once('stand', t, CUTS[1], () => playBones(0.9));
+        once('eyes', t, CUTS[2], () => playThunder());
+        once('roar', t, CUTS[3], () => {
+          playBossIntro();
+          playBones(1.0);
+          hud.bossIntro(b.T.title);
+          setMusicStyle('rock');
+        });
+        if (t >= 4.6) goHome();
       });
     },
 

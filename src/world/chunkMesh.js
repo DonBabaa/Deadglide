@@ -2,12 +2,14 @@
 // Materials and repeated shapes (headstones, trees) are made once and shared;
 // everything else is built per chunk and thrown away when the chunk unloads.
 import * as THREE from 'three';
+import { CATA, EDGE, LIP, route, floorAt } from './catacombs.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CHUNK, chunkBase, chunkHeight, chunkPaved } from './worldgen.js';
 import { seededRandom } from './random.js';
 import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture } from './textures.js';
 
 const CONCRETE = new THREE.Color(0x9c9b96), GRASS = new THREE.Color(0x35452a);
+const FLAGSTONE = new THREE.Color(0x77705f), ROCK = new THREE.Color(0x4a4238);   // the Catacombs: floor, and the curve up the walls
 const Y = new THREE.Vector3(0, 1, 0);
 const shared = (geo) => { geo.userData.shared = true; return geo; };
 
@@ -18,6 +20,8 @@ export function createChunkBuilder() {
     ramp: new THREE.MeshStandardMaterial({ map: rampTexture(), roughness: 0.8, side: THREE.DoubleSide }),
     tomb: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95, side: THREE.DoubleSide }),
     wall: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), roughness: 0.95 }),
+    rock: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, roughness: 1, side: THREE.DoubleSide }),
+    ember: new THREE.MeshBasicMaterial({ color: 0xff8a3a }),
     stone: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95 }),
     steel: new THREE.MeshStandardMaterial({ color: 0xb9bec4, roughness: 0.3, metalness: 0.55 }),
     iron: new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6, metalness: 0.4 }),
@@ -28,6 +32,10 @@ export function createChunkBuilder() {
     flare: new THREE.SpriteMaterial({ map: glow, color: 0xffc98a, transparent: true, opacity: 0.6, depthWrite: false }),
     flame: new THREE.PointsMaterial({ map: glow, color: 0xffb060, size: 0.9, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
   };
+  // The Catacombs' ramps and coffins are old stone, not skatepark concrete.
+  const under = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
+  under.ramp.color.set(0x7a7262);
+  under.tomb.color.set(0x8c8474);
   const rand = seededRandom(11);
   const headstones = headstoneGeometries().map(shared);
   const trees = [0, 1, 2, 3].map(() => shared(treeGeometry(rand)));
@@ -38,6 +46,7 @@ export function createChunkBuilder() {
   function build(c) {
     const group = new THREE.Group();
     group.add(buildGround(c, mat));
+    if (c.level === 2 && c.cx === 0) group.add(buildTunnelWalls(c, under));
     for (const b of c.bowls) {   // steel coping round each bowl, following the ground at its lip
       const ring = [];
       for (let k = 0; k <= 72; k++) {
@@ -62,7 +71,8 @@ export function createChunkBuilder() {
       else if (p.type === 'monument') group.add(buildMonument(p, mat));
       else if (p.type === 'chapel') group.add(buildChapel(p, mat));
       else if (p.type === 'lamp') group.add(buildLamp(p, mat));
-      else group.add(buildProp(p, mat, c));
+      else if (p.type === 'brazier') group.add(buildBrazier(p, mat));
+      else group.add(buildProp(p, c.level === 2 ? under : mat, c));
     }
 
     // Headstones: one instanced mesh per shape.
@@ -135,9 +145,11 @@ function buildGround(c, mat) {
   for (let j = 0; j <= n; j++) {
     for (let i = 0; i <= n; i++) {
       const x = c.x0 + i, z = c.z0 + j;
-      positions.push(x, chunkBase(c, x, z), z);
+      // (In the Catacombs the rock above the lip isn't part of this mesh: the walls are built separately, below.)
+      // and the ground stops at the foot of them (it dips out of sight under the curve).
+      positions.push(x, c.level === 2 && !chunkPaved(c, x, z) ? floorAt(z) - 0.6 : chunkBase(c, x, z), z);
       uvs.push(x / 6, z / 6);
-      const col = chunkPaved(c, x, z) ? CONCRETE : GRASS;
+      const col = c.level === 2 ? (chunkPaved(c, x, z) ? FLAGSTONE : ROCK) : chunkPaved(c, x, z) ? CONCRETE : GRASS;
       colors.push(col.r, col.g, col.b);
     }
   }
@@ -157,6 +169,65 @@ function buildGround(c, mat) {
   ground.receiveShadow = true;
   return ground;
 }
+
+// The Catacombs' walls, as a full pipe: up each side of the tunnel a smooth curve from the floor,
+// through vertical, to the roof (the same curve the physics rides: see catacombs.js). Smooth stone
+// to ride up to about head height, masonry from there on over.
+function buildTunnelWalls(c, mat) {
+  const group = new THREE.Group(), STEP = 2, ROWS = CHUNK / STEP, Q = CATA.quarter, SPLIT = 0.5;
+  const sheet = (positions, uvs, cols, material) => {   // a grid of (ROWS + 1) x cols points -> a mesh
+    const indices = [];
+    for (let j = 0; j < ROWS; j++) for (let i = 0; i < cols - 1; i++) {
+      const p = j * cols + i;
+      indices.push(p, p + cols, p + 1, p + 1, p + cols, p + cols + 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.receiveShadow = true;
+    return mesh;
+  };
+  // One strip of the curve, between two angles round it (0 = floor, PI = roof).
+  const strip = (side, from, to, steps, material, tile, apron) => {
+    const pos = [], uv = [];
+    for (let j = 0; j <= ROWS; j++) {
+      const z = c.z0 + j * STEP, r = route(z, c.seed), edge = r.x + side * r.w;
+      if (apron) { pos.push(edge - side * 1.3, r.floor + 0.015, z); uv.push(z / tile, -0.3); }   // a strip of floor to meet it
+      for (let i = 0; i <= steps; i++) {
+        const a = from + ((to - from) * i) / steps;
+        pos.push(edge + side * Q * Math.sin(a), r.floor + Q * (1 - Math.cos(a)) + 0.015, z);
+        uv.push(z / tile, (Q * a) / tile);
+      }
+    }
+    return sheet(pos, uv, steps + 1 + (apron ? 1 : 0), material);
+  };
+  for (const side of [-1, 1]) {
+    group.add(strip(side, 0, SPLIT, 8, mat.ramp, 4, true), strip(side, SPLIT, Math.PI, 26, mat.rock, 5, false));
+  }
+  return group;
+}
+
+// A fire bowl on an iron stand.
+function buildBrazier(p, mat) {
+  const g = new THREE.Group();
+  const stand = new THREE.Mesh(mergeGeometries([
+    new THREE.CylinderGeometry(0.07, 0.12, 1.0, 8).translate(0, 0.5, 0),
+    new THREE.CylinderGeometry(0.3, 0.36, 0.08, 10).translate(0, 0.04, 0),
+    new THREE.CylinderGeometry(0.5, 0.26, 0.36, 12).translate(0, 1.16, 0),
+  ]), mat.iron);
+  const embers = new THREE.Mesh(shared(EMBERS), mat.ember);
+  embers.position.y = 1.33;
+  const flare = new THREE.Sprite(mat.flare);
+  flare.position.y = 1.7;
+  flare.scale.setScalar(4);
+  g.add(stand, embers, flare);
+  g.position.set(p.x, p.y0, p.z);
+  return g;
+}
+const EMBERS = new THREE.CylinderGeometry(0.44, 0.44, 0.06, 12);
 
 // ---- Ramps, pipes, tombs -------------------------------------------------------
 

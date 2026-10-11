@@ -5,7 +5,7 @@ import './style.css';
 import { config } from './config.js';
 import { input } from './input.js';
 import { buildArena } from './world/arena.js';
-import { SEED } from './world/terrain.js';
+import { SEED, setLevel } from './world/terrain.js';
 import { Skater } from './player/skater.js';
 import { SkaterModel } from './player/skaterModel.js';
 import { ChaseCamera } from './player/chaseCamera.js';
@@ -13,7 +13,7 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playBones, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
@@ -70,6 +70,14 @@ const menuScene = new MenuScene(scene, camera);
 
 // ---- Run state: health, death, restart -------------------------------------
 let inMenu = true;        // on the main menu (true) or in a run (false)
+let level = 1;            // the level the world is built for: 1 = the Cemetery, 2 = the Catacombs
+// Rebuild the world for a level (the menu's backdrop is always the Cemetery).
+function setWorld(n) {
+  if (n === level) return;
+  level = n;
+  setLevel(n);
+  arena.setLevel(n);
+}
 let creative = null;      // the Creative-mode loadout for this run, or null for a normal run
 let hp = config.player.maxHp, invulnerable = 0, dead = false;
 let won = false;          // through the exit portal: the level is complete
@@ -259,6 +267,7 @@ function lockPointer() {
 
 function showMenu() {
   inMenu = true;
+  if (level !== 1) { setWorld(1); arena.prime(menuScene.origin); }
   paused = true;
   document.exitPointerLock?.();
   hud.hideOverlay();
@@ -306,8 +315,9 @@ document.getElementById('menu-casino-open').addEventListener('click', () => {
 });
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
-menu.onStart((loadout) => {
+menu.onStart((loadout, chosen = 1) => {
   creative = loadout;
+  setWorld(chosen);
   hud.name(getName() || 'Kirky');
   inMenu = false;
   menu.hide();
@@ -418,6 +428,16 @@ function handleEvents() {
       if (e.trick) { playTrickLand(e.boost); trickLanded(); score.trick(e.boost); }
     } else if (e.type === 'grindEnd') {
       score.grind(e.distance);
+    } else if (e.type === 'ceiling') {   // (the Catacombs) stuck to the roof
+      hud.popup('Roof ride', 'trick');
+      playTrickLand(4);
+    } else if (e.type === 'ceilingEnd') {
+      score.grind(e.distance * 2);   // worth double a grind
+    } else if (e.type === 'fullpipe') {   // up one wall, across the roof and down the other
+      hud.popup('Full pipe!', 'trick');
+      playTrickLand(8);
+      trickLanded();
+      score.trick(8);
     } else if (e.type === 'trick') {
       hud.popup(e.name, 'pending');
     }
@@ -431,6 +451,7 @@ function handleEvents() {
     else if (e.type === 'wraiths') hud.popup('They can fly now', 'alert');
     else if (e.type === 'boss') cutscenes.boss();   // (his name, his roar and the music change are all in there)
     else if (e.type === 'bossThrow') playBossThrow();
+    else if (e.type === 'bossShed') { playBones(0.7); chase.onSloppy(); }   // a pack of skeletons drops out of him
     else if (e.type === 'splat') playSplat();
     else if (e.type === 'bossDead') {
       const name = e.name;
@@ -665,7 +686,7 @@ function frame(now) {
     if (gain.spare > 0) score.add(gain.spare * config.xp.cappedGemPoints);   // at the level cap, XP becomes points
     if (pendingLevels > 0 && !choosing && !dead && !won) offerUpgrade();
 
-    arena.update(dt, renderPos);
+    arena.update(dt, renderPos, aimPoint);
     hud.update(skater, aiming, hp, horde, xp, maxHp(), { 'Frenzy': stats.frenzy, 'Invincible': shield, 'Double damage': trickBuff });
   }
   renderer.render(scene, camera);

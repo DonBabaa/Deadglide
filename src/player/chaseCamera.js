@@ -4,7 +4,7 @@
 // board so your aim stays put while you carve. The mouse wheel zooms in and out.
 import { Vector3, MathUtils } from 'three';
 import { config } from '../config.js';
-import { heightAt } from '../world/terrain.js';
+import { airFloorAt, fitCamera } from '../world/terrain.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -64,7 +64,7 @@ export class ChaseCamera {
     // Swing lazily behind the heading (ignore it when the board points straight up/down).
     // Not in the air: spinning a 360 turns the board, not the view.
     const { fwd } = skater;
-    if ((skater.grounded || skater.grinding) && fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
+    if ((skater.grounded || skater.grinding || skater.ceiling) && fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
       const step = wrap(Math.atan2(fwd.x, fwd.z) - this.yaw) * damp(c.yawLag, dt);
       this.yaw += step;
       if (holding) this.aimYaw = wrap(this.aimYaw - step);   // cancel it out: keep pointing where you were pointing
@@ -76,9 +76,11 @@ export class ChaseCamera {
 
     // Follow the board; height follows more slowly so jumps read as jumps.
     const kxz = damp(c.followLag, dt), ky = damp(c.followLagY, dt);
-    this.focus.x = lerp(this.focus.x, target.x, kxz);
-    this.focus.z = lerp(this.focus.z, target.z, kxz);
-    this.focus.y = lerp(this.focus.y, target.y, ky);
+    // (On the pipe's wall or roof his body is out to the side of the board, or under it: follow the body.)
+    const lean = skater.ceiling ? 0.9 : 0, up = skater.up;
+    this.focus.x = lerp(this.focus.x, target.x + up.x * lean, kxz);
+    this.focus.z = lerp(this.focus.z, target.z + up.z * lean, kxz);
+    this.focus.y = lerp(this.focus.y, target.y + (up.y - 1) * lean, skater.ceiling ? kxz : ky);
 
     const yaw = this.yaw + this.aimYaw;
     // The camera orbits at `elevation` but looks out past the rider toward the
@@ -97,8 +99,9 @@ export class ChaseCamera {
       this.focus.y + lerp(c.lookHeight, 1.58, this.scope) + Math.sin(elevation) * dist,
       this.focus.z + rz - Math.cos(yaw) * Math.cos(elevation) * dist);
 
-    // Stay above the ground.
-    cam.position.y = Math.max(cam.position.y, heightAt(cam.position.x, cam.position.z) + 0.5);
+    // Stay out of the walls, and above the ground.
+    fitCamera(cam.position);
+    cam.position.y = Math.max(cam.position.y, airFloorAt(cam.position.x, cam.position.z) + 0.5);
 
     this.dip *= 1 - damp(9, dt);
     this.shake *= 1 - damp(6, dt);

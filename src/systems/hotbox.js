@@ -3,7 +3,7 @@
 // power-up. Leave early and the smoke thins out again. One zone is up at a time.
 import * as THREE from 'three';
 import { config } from '../config.js';
-import { heightAt, groundAt } from '../world/terrain.js';
+import { heightAt, groundAt, placeAt } from '../world/terrain.js';
 import { glowTexture } from '../world/textures.js';
 
 const HAZE = 0xc9b8ff;   // every zone looks the same: you can't tell what's inside
@@ -65,7 +65,7 @@ export class HotBox {
     const H = config.hotbox, heading = Math.atan2(player.vel.x, player.vel.z);
     for (let tries = 0; tries < 12; tries++) {
       const a = heading + (Math.random() - 0.5) * 2.6, d = H.minDistance + Math.random() * (H.maxDistance - H.minDistance);
-      const x = player.pos.x + Math.sin(a) * d, z = player.pos.z + Math.cos(a) * d;
+      const [x, z] = placeAt(player.pos.x, player.pos.z, a, d);
       if (heightAt(x, z) - groundAt(x, z) > 0.6) continue;   // something is standing there
       this.zone = { x, y: groundAt(x, z), z, age: 0, progress: 0 };
       this.group.position.set(x, this.zone.y, z);

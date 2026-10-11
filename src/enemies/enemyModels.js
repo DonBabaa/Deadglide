@@ -213,4 +213,56 @@ function boss() {
   return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
 }
 
-export const ENEMY_PARTS = { shambler, rattler, wraith, boss };
+// ---- Level 2's boss: a giant made of skulls, held together by nothing you can see. ----
+// (Modelled at normal size; the horde draws him several times bigger.)
+
+function boss2() {
+  const bone = 0xc9c2ad, old = 0x9c9279, dark = 0x050505, eye = 0x8dff5a, gold = 0xc9a23a;
+  // A skull of radius r facing +z (turned by `yaw`): cranium, two sockets, a nose hole, a jaw.
+  const skull = (x, y, z, r, color = bone, yaw = 0) => [
+    at(ball(r, 1, 1.05, 1.1), color, 0, 0, 0),
+    at(ball(r * 0.3), dark, -r * 0.38, r * 0.08, r * 0.92), at(ball(r * 0.3), dark, r * 0.38, r * 0.08, r * 0.92),
+    at(box(r * 0.16, r * 0.26, r * 0.1), dark, 0, -r * 0.3, r * 1.05),
+    at(box(r * 1.05, r * 0.42, r * 0.9), color, 0, -r * 0.82, r * 0.35),
+    at(box(r * 0.8, r * 0.1, r * 0.06), dark, 0, -r * 0.72, r * 0.82),
+  ].map((g) => g.rotateY(yaw).translate(x, y, z));
+
+  const body = part([
+    // A heap of skulls for hips, three rows of them for a chest.
+    ...skull(-0.2, 0.86, 0.02, 0.17, old, -0.5), ...skull(0.2, 0.86, 0.02, 0.17, bone, 0.5), ...skull(0, 0.8, 0.12, 0.16, old),
+    ...skull(-0.3, 1.14, 0.04, 0.18, bone, -0.6), ...skull(0, 1.12, 0.14, 0.19, old), ...skull(0.3, 1.14, 0.04, 0.18, bone, 0.6),
+    ...skull(-0.34, 1.44, 0.02, 0.19, old, -0.5), ...skull(0, 1.42, 0.13, 0.2, bone), ...skull(0.34, 1.44, 0.02, 0.19, old, 0.5),
+    ...skull(-0.16, 1.28, -0.16, 0.17, old, 2.6), ...skull(0.16, 1.28, -0.16, 0.17, bone, -2.6),   // and more behind
+    at(rod(0.05, 0.06, 1.0), old, 0, 1.2, -0.1),                                                    // a spine through the middle of it
+    ...[1.0, 1.3, 1.58].map((y) => at(hoop(0.4, 0.022), bone, 0, y, 0)),                            // ribs holding it together
+    ...skull(-0.56, 1.62, 0, 0.16, bone, -1.2), ...skull(0.56, 1.62, 0, 0.16, bone, 1.2),           // shoulders
+    // The head: one huge skull, wearing a crown of rib bones.
+    ...skull(0, 1.9, 0.08, 0.3, bone),
+    ...[-0.12, -0.04, 0.04, 0.12].map((x) => at(box(0.06, 0.07, 0.04), bone, x, 1.67, 0.4)),        // teeth
+    at(hoop(0.27, 0.03, 1), gold, 0, 2.12, 0.06),
+    ...[0, 1, 2, 3, 4, 5, 6].map((k) => at(rod(0.006, 0.026, 0.24), bone, Math.sin(k * 0.9) * 0.27, 2.24, 0.06 + Math.cos(k * 0.9) * 0.27)),
+  ]);
+  const eyes = glowing([
+    at(ball(0.05), eye, -0.115, 1.925, 0.415), at(ball(0.05), eye, 0.115, 1.925, 0.415),              // his own
+    at(ball(0.028), eye, -0.076, 1.436, 0.355), at(ball(0.028), eye, 0.076, 1.436, 0.355),              // and a pair still lit in his chest
+  ]);
+
+  const arm = (side, phase) => part([
+    at(rod(0.045, 0.06, 0.5), bone, side * 0.66, 1.36, 0.04, 0.2),                                  // one long bone...
+    at(ball(0.07), old, side * 0.68, 1.1, 0.1),
+    at(rod(0.035, 0.045, 0.46), bone, side * 0.68, 0.86, 0.2, 0.45),                                // ...then two
+    at(rod(0.03, 0.04, 0.46), old, side * 0.73, 0.86, 0.18, 0.45),
+    ...skull(side * 0.7, 0.58, 0.32, 0.17, bone, side * 0.4),                                       // and a skull for a fist
+  ], [side * 0.58, 1.6, 0], [0.5, 0, 0], phase);
+
+  const leg = (side, phase) => part([
+    at(rod(0.06, 0.075, 0.42), bone, side * 0.22, 0.6, 0),
+    at(ball(0.085), old, side * 0.22, 0.38, 0.02),
+    at(rod(0.05, 0.06, 0.34), bone, side * 0.22, 0.2, 0),
+    ...skull(side * 0.22, 0.13, 0.08, 0.13, old),                                                   // he walks on them, too
+  ], [side * 0.22, 0.8, 0], [0.3, 0, 0], phase);
+
+  return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
+}
+
+export const ENEMY_PARTS = { shambler, rattler, wraith, boss, boss2 };

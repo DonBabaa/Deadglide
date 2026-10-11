@@ -44,6 +44,12 @@ export const config = {
     airLevelLookahead: 0.2,
 
     stepHeight: 0.45,     // ledges taller than this are walls
+    // The full pipe (the Catacombs): ride up a wall, on past vertical, across the roof and down the other side.
+    pipeGravity: 0.25,    // how much of gravity you feel on the pipe's walls (1 would make the loop all but impossible)
+    ceilingReach: 0.5,    // jump to within this far of the roof (metres) and the board is pulled onto it
+    ceilingSpeed: 6.4,     // you always set off across the roof at least this fast
+    ceilingDrag: 4.8,       // metres per second lost every second you spend past vertical
+    ceilingMinSpeed: 9.6,   // slower than this past vertical and you drop off
     wallBounce: 0.2,
   },
 
@@ -88,8 +94,8 @@ export const config = {
 
   player: {
     maxHp: 100,
-    invulnerableTime: 0.8,   // seconds of safety after taking a hit
-    levelUpSafety: 4,        // seconds nothing can hurt you after choosing a level-up upgrade
+    invulnerableTime: 0.5,   // seconds of safety after taking a hit
+    levelUpSafety: 1,        // seconds nothing can hurt you after choosing a level-up upgrade (kept short: you level up a lot)
   },
 
   // The monster spawn director (see enemies/horde.js).
@@ -108,7 +114,7 @@ export const config = {
     despawnDistance: 115, // left this far behind, they are recycled ahead of you
     riseTime: 0.7,        // seconds to climb out of the ground
     contactRange: 0.55,   // how close they must get to hurt you
-    ramSpeed: 16.7,       // with Deck Spikes, ride into them faster than this (60 km/h) to hurt them instead; each extra level needs 12% less
+    ramSpeed: 16.7,       // with Deck Spikes, ride into them faster than this (60 km/h) to hurt them instead (elites and the boss still hurt you); each extra level needs 6% less
     swarmEvery: 45,       // seconds between swarms (a ring closing in on you)
     swarmSize: 18,
     eliteEvery: 60,       // seconds between elites
@@ -176,7 +182,7 @@ export const config = {
 
   loot: {
     chestChance: 0.03,    // chance a (non-elite) monster drops a chest; elites always do
-    heartChance: 0.06,    // chance a monster drops a small heart
+    heartChance: 0.03,    // chance a monster drops a small heart
     heartHeal: 10,        // HP a heart restores
     heartLifetime: 30,    // seconds before an uncollected heart fades
     heartPull: 5,         // hearts this close drift toward you

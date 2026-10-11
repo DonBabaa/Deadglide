@@ -89,6 +89,9 @@ export const monument = ({ statue = 0, ...at }) => solidBox('monument', at, 1.6,
 // Tree trunk.
 export const tree = ({ scale = 1.6, variant = 0, ...at }) => solidBox('tree', at, 0.6 * scale, 0.6 * scale, 12, { scale, variant });
 
+// A fire bowl on a stand (the Catacombs' lighting).
+export const brazier = (at) => solidBox('brazier', at, 0.8, 0.8, 1.2);
+
 // Street lamp post.
 export const lamp = (at) => solidBox('lamp', at, 0.3, 0.3, 7);
 

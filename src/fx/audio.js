@@ -527,6 +527,15 @@ export function playWheel(seconds = 4.2) {
   for (let t = 0.1, gap = 0.05; t < seconds; t += gap, gap *= 1.09) tone('triangle', 2200, 1800, 0.02, 0.045, t);
   [0, 0.13, 0.22].forEach((delay, i) => tone('sine', 900 - i * 130, 480, 0.05, 0.11, seconds + delay));
 }
+// Bones: a dry clatter (the skull boss putting himself together, and bits of him falling off).
+export function playBones(seconds = 0.6) {
+  if (!ready()) return;
+  for (let t = 0; t < seconds; t += 0.03 + Math.random() * 0.05) {
+    const f = 700 + Math.random() * 1300;
+    tone('triangle', f, f * 0.55, 0.035, 0.07, t);
+  }
+  hiss('bandpass', 1800, 700, seconds, 0.05);
+}
 // One coin landing on the pile. progress 0..1 through the count: they ring higher as it goes.
 export function playCoin(progress = 0) {
   if (!ready()) return;

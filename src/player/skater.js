@@ -2,7 +2,8 @@
 // board orientation and the rules for rolling, jumping, tricks, rails and landing.
 import { Vector3 } from 'three';
 import { config } from '../config.js';
-import { heightAt, normalAt, railsNear, SPAWN } from '../world/terrain.js';
+import { heightAt, normalAt, railsNear, SPAWN, pipeAt, airFloorAt } from '../world/terrain.js';
+import { PIPE_R, PIPE_FROM, LIP, EDGE } from '../world/catacombs.js';
 import { TRICKS } from './tricks.js';
 import { stats } from './stats.js';
 
@@ -14,7 +15,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (t) => clamp(t, 0, 1);
 
 // scratch vectors
-const side = new Vector3(), dir = new Vector3(), target = new Vector3();
+const side = new Vector3(), dir = new Vector3(), target = new Vector3(), pn = new Vector3(), pt = new Vector3();
 const newPos = new Vector3(), wallN = new Vector3(), tmpN = new Vector3();
 
 // Lay a velocity onto the plane with normal n, keeping its speed (unless it
@@ -60,6 +61,10 @@ export class Skater {
     this.trickTime = 0;
     this.trickIndex = 0;    // which trick the button does next
     this.landed = [];       // tricks completed in this air
+    this.ceiling = false;   // riding the pipe above its lip: a wall past vertical, or the roof (the Catacombs)
+    this.pipeSide = 0; this.pipeAngle = 0; this.pipeX = 0; this.pipeEntry = 0; this.pipeCooldown = 0; this.roofed = false;
+    this.offRoof = false;   // falling from it
+    this.ceilingDistance = 0;
     this.rail = null;       // the rail we're grinding, if any
     this.railT = 0;         // distance along it
     this.railSpeed = 0;     // signed speed along it
@@ -82,6 +87,7 @@ export class Skater {
     this.drifting = inp.drift && this.grounded && !this.rail;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     this.railCooldown = Math.max(0, this.railCooldown - dt);
+    this.pipeCooldown = Math.max(0, this.pipeCooldown - dt);
     this.sinceKick += dt;
 
     // Ollie: hold to charge, release to pop. Works on the ground and off rails.
@@ -89,14 +95,15 @@ export class Skater {
     if (inp.jumpReleased) {
       inp.jumpReleased = false;
       if (this.rail) this.leaveRail();
-      if (this.sinceGround <= config.jump.coyoteTime) this.ollie();
+      if (this.ceiling) this.dropCeiling();   // (jump lets go of the roof)
+      else if (this.sinceGround <= config.jump.coyoteTime) this.ollie();
       this.charge = 0;
     }
 
     // Trick button: in the air, start the next trick on the list.
     if (inp.trickPressed) {
       inp.trickPressed = false;
-      if (!this.grounded && !this.rail && !this.trick) {
+      if (!this.grounded && !this.rail && !this.ceiling && !this.trick) {
         this.trick = TRICKS[this.trickIndex++ % TRICKS.length];
         this.trickTime = 0;
         this.events.push({ type: 'trick', name: this.trick.name });
@@ -104,6 +111,7 @@ export class Skater {
     }
 
     if (this.rail) this.stepGrind(dt);
+    else if (this.ceiling) this.stepPipe(dt, inp);
     else if (this.grounded) this.stepGround(dt, inp);
     else this.stepAir(dt);
 
@@ -207,6 +215,7 @@ export class Skater {
 
     // Move, then decide: wall, still on the ground, or airborne.
     newPos.copy(pos).addScaledVector(vel, dt);
+    if (this.rideOntoPipe(newPos)) return;   // (the Catacombs) up the wall past its lip: the pipe takes over
     const h = heightAt(newPos.x, newPos.z);
     if (h - newPos.y > s.stepHeight) {
       this.hitWall(newPos);
@@ -263,7 +272,9 @@ export class Skater {
     fwd.normalize();
 
     newPos.copy(pos).addScaledVector(vel, dt);
-    const h = heightAt(newPos.x, newPos.z);
+    if (this.tryPipe(newPos)) return;   // into the pipe's wall above the lip, or its roof: ride it
+    const h = airFloorAt(newPos.x, newPos.z);
+    if (false) return;   // into the pipe's wall above the lip, or its roof: ride it
     if (newPos.y > h) {
       pos.copy(newPos);
       this.tryCatchRail();
@@ -279,6 +290,181 @@ export class Skater {
       pos.set(newPos.x, h, newPos.z);
       this.land();
     }
+  }
+
+  // ---- The full pipe (the Catacombs) -------------------------------------------
+  // Above the lip, the tunnel's wall carries on round: up through vertical, over your head, across
+  // the flat roof and down the far wall. Where you are on it is `pipeSide` (-1 / +1: on that wall's
+  // curve, at `pipeAngle` round it from the floor; 0: on the roof, `pipeX` from the tunnel's middle)
+  // and your z. You carve on it as on the ground; gravity is gentler than it should be, so the loop
+  // can be made; past vertical you bleed speed, and drop off when you run out (or when you jump).
+
+  // The pipe's surface where we are: pn points off it (into the tunnel), pt along it toward the roof (on the roof: +x).
+  pipeFrame() {
+    const s = this.pipeSide, a = this.pipeAngle;
+    if (s === 0) { pn.set(0, -1, 0); pt.set(1, 0, 0); }
+    else { pn.set(-s * Math.sin(a), Math.cos(a), 0); pt.set(s * Math.cos(a), Math.sin(a), 0); }
+  }
+  pipePlace(r) {
+    const s = this.pipeSide, a = this.pipeAngle;
+    if (s === 0) this.pos.set(r.x + this.pipeX, r.floor + 2 * PIPE_R, this.pos.z);
+    else this.pos.set(r.x + s * (r.w + PIPE_R * Math.sin(a)), r.floor + PIPE_R * (1 - Math.cos(a)), this.pos.z);
+  }
+
+  // In the air, about to be at `p`: is that into the pipe's wall or roof? If so, we're riding it.
+  tryPipe(p) {
+    const r = pipeAt(p.z);
+    if (!r) return false;
+    const { vel } = this, c = config.skate, wait = this.pipeCooldown > 0;   // (just let go of it: don't grab it again unless we actually hit it)
+    const off = p.x - r.x, side = off < 0 ? -1 : 1, d = Math.abs(off) - r.w, h = p.y - r.floor;
+    if (d <= 0) {   // under the flat of the roof
+      if (h < 2 * PIPE_R - (wait ? 0 : c.ceilingReach) || vel.y <= 0) return false;
+      this.pipeSide = 0;
+      this.pipeX = off;
+    } else {        // out by a wall
+      const rho = Math.hypot(d, h - PIPE_R), a = Math.atan2(d, PIPE_R - h);
+      if (a < PIPE_FROM || rho < PIPE_R - (wait ? 0.02 : 0.35)) return false;   // below the lip (that's the ground's business), or not there yet
+      if (rho < PIPE_R - 0.02 && vel.x * side * Math.sin(a) - vel.y * Math.cos(a) <= 0) return false;   // (near it, but moving away)
+      this.pipeSide = side;
+      this.pipeAngle = a;
+    }
+    this.pos.z = p.z;
+    this.pipeFrame();
+    vel.addScaledVector(pn, -vel.dot(pn));   // only the speed along the surface counts
+    this.joinPipe(r);
+    this.trick = null;       // (whatever you were doing on the way up is forgotten)
+    this.landed.length = 0;
+    this.spin = this.flip = 0;
+    return true;
+  }
+
+  // Rolling up the wall, about to be at `p`: past the lip? Then carry on up the pipe with all your speed.
+  rideOntoPipe(p) {
+    const r = pipeAt(p.z);
+    if (!r) return false;
+    const off = p.x - r.x, side = off < 0 ? -1 : 1, { vel } = this;
+    if (Math.abs(off) - r.w < EDGE - 0.02 || vel.x * side <= 0) return false;
+    const speed = vel.length();
+    this.pipeSide = side;
+    this.pipeAngle = PIPE_FROM + 0.002;
+    this.pos.z = p.z;
+    this.pipeFrame();
+    vel.addScaledVector(pn, -vel.dot(pn)).setLength(speed);
+    this.grounded = false;
+    this.airTime = 0;
+    this.joinPipe(r);
+    return true;
+  }
+
+  joinPipe(r) {
+    const { vel, fwd } = this;
+    this.roofed = this.pipeHigh = false;   // (pipeHigh: this ride has been past vertical, which is what scores)
+    if (this.pipeSide === 0) this.onRoof();
+    if (vel.lengthSq() < 0.25) vel.copy(pt).multiplyScalar(0.5);
+    fwd.copy(vel).normalize();
+    this.ceiling = true;
+    this.pipeEntry = this.pipeSide;
+    this.ceilingDistance = 0;
+    this.pipePlace(r);
+  }
+
+  // The first time a ride reaches the roof: you set off across it at a decent speed, whatever you arrived with.
+  onRoof() {
+    if (this.roofed) return;
+    this.roofed = true;
+    const { vel, fwd } = this, want = config.skate.ceilingSpeed, speed = vel.length();
+    if (speed < 4) vel.set(0, 0, (Math.abs(vel.z) > 0.5 ? vel.z : fwd.z) < 0 ? -want : want);   // straight up into it: off along the tunnel
+    else if (speed < want) vel.multiplyScalar(want / speed);
+    this.events.push({ type: 'ceiling' });
+  }
+
+  stepPipe(dt, inp) {
+    const c = config.skate, { pos, vel, fwd, up } = this;
+    let r = pipeAt(pos.z);
+    if (!r) return this.dropCeiling();
+    this.pipeFrame();
+
+    // Carve, as on the ground.
+    fwd.applyAxisAngle(pn, this.steer * lerp(c.turnRateSlow, c.turnRateFast, clamp01(vel.length() / c.maxSpeed)) * dt);
+    fwd.addScaledVector(pn, -fwd.dot(pn)).normalize();
+    // Gravity along the wall; past vertical, speed drains away.
+    let speed = vel.length();
+    const overhead = this.pipeSide === 0 || this.pipeAngle > Math.PI / 2;
+    this.pipeHigh ||= overhead;
+    if (this.pipeSide !== 0) speed -= config.physics.gravity * stats.gravity * c.pipeGravity * Math.sin(this.pipeAngle) * fwd.dot(pt) * dt;
+    if (overhead) speed -= (c.ceilingDrag + (inp.brake ? c.brakeDecel : 0)) * dt;
+    // On the walls (not the roof) you can roll and push, as on the ground.
+    if (this.pipeSide !== 0) {
+      const top = c.pushMaxSpeed * stats.topSpeed;
+      if (inp.push) speed += c.pushAccel * Math.max(0, 1 - Math.max(0, speed) / (c.cruiseSpeed * stats.topSpeed)) * dt;
+      if (inp.kick && this.kickTimer <= 0) {
+        speed += clamp(top - speed, 0, c.kickImpulse);
+        this.kickTimer = c.kickInterval;
+        this.sinceKick = 0;
+        this.events.push({ type: 'kick' });
+      }
+    }
+    if (speed < 0) { speed = -speed; fwd.negate(); }   // ran out of push on the way up: roll back down
+    vel.copy(fwd).multiplyScalar(speed);
+
+    // Move along the surface, from wall to roof to wall as it comes.
+    const along = vel.dot(pt), vz = vel.z;
+    let turned = along;   // the same speed, measured along the new surface's own direction
+    pos.z += vz * dt;
+    r = pipeAt(pos.z);
+    if (this.pipeSide === 0) {
+      this.pipeX += along * dt;
+      if (Math.abs(this.pipeX) > r.w) {   // off the edge of the roof: onto that side's wall, heading down it
+        const side = this.pipeX < 0 ? -1 : 1;
+        this.pipeAngle = Math.PI - (Math.abs(this.pipeX) - r.w) / PIPE_R;
+        this.pipeSide = side;
+        turned = -side * along;
+      }
+    } else {
+      this.pipeAngle += (along * dt) / PIPE_R;
+      if (this.pipeAngle < PIPE_FROM) return this.pipeToGround(r);
+      if (this.pipeAngle > Math.PI) {     // over the top: onto the roof, heading across it
+        const side = this.pipeSide;
+        this.pipeX = side * (r.w - (this.pipeAngle - Math.PI) * PIPE_R);
+        this.pipeSide = 0;
+        turned = -side * along;
+      }
+    }
+    this.pipeFrame();
+    vel.copy(pt).multiplyScalar(turned);
+    vel.z = vz;
+    if (this.pipeSide === 0) this.onRoof();
+    if (vel.lengthSq() > 1e-6) fwd.copy(vel).normalize();
+    this.pipePlace(r);
+    this.ceilingDistance += speed * dt;
+    up.lerp(pn, 1 - Math.exp(-16 * dt)).normalize();
+    if ((this.pipeSide === 0 || this.pipeAngle > Math.PI / 2) && vel.length() < c.ceilingMinSpeed) this.dropCeiling();
+  }
+
+  // Back down a wall to its lip: the ground takes over again.
+  pipeToGround(r) {
+    const side = this.pipeSide, { pos, vel } = this;
+    pos.x = r.x + side * (r.w + EDGE - 0.06);
+    pos.y = heightAt(pos.x, pos.z);
+    this.ceiling = false;
+    this.grounded = true;
+    this.airTime = 0;
+    normalAt(pos.x, pos.z, vel.x, vel.z, this.normal);
+    if (this.pipeHigh) this.events.push({ type: 'ceilingEnd', distance: this.ceilingDistance });
+    if (this.roofed && this.pipeEntry !== 0 && this.pipeEntry !== side) this.events.push({ type: 'fullpipe' });   // up one wall, over, and down the other
+  }
+
+  // Let go of the pipe (too slow up there, or you jumped): you fall.
+  dropCeiling() {
+    if (!this.ceiling) return;
+    this.pipeFrame();
+    this.ceiling = false;
+    this.offRoof = true;
+    this.pipeCooldown = 0.4;
+    this.airTime = 0;        // (a fresh fall: there's time to get a trick in on the way down)
+    this.pos.addScaledVector(pn, 0.4);
+    this.vel.addScaledVector(pn, 1);
+    if (this.pipeHigh) this.events.push({ type: 'ceilingEnd', distance: this.ceilingDistance });
   }
 
   // What did we do in the air, and was the board back under our feet in time?
@@ -325,9 +511,12 @@ export class Skater {
     if (this.airTime < L.minAirTime) return;
 
     const speed = vel.length();
-    const upright = trick.ok && this.up.dot(n) >= Math.cos(rad(L.uprightAngle));
+    // (Dropping off the roof, you come down however you come down: only a botched trick makes it sloppy.)
+    const offRoof = this.offRoof;
+    this.offRoof = false;
+    const upright = trick.ok && (offRoof || this.up.dot(n) >= Math.cos(rad(L.uprightAngle)));
     let aligned = true;
-    if (speed > L.minCheckSpeed) {
+    if (speed > L.minCheckSpeed && !offRoof) {
       const d = fwd.dot(vel) / speed;   // 1 = nose first, -1 = tail first, 0 = sideways
       if (Math.abs(d) < Math.cos(rad(L.maxAngle))) aligned = false;
       else if (d < 0) {

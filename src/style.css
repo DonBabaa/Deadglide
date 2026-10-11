@@ -210,6 +210,8 @@ body { font-family: var(--text); font-size: 16px; letter-spacing: 0.3px; color: 
 /* Level select: a big ticket. */
 #menu .level { padding: 18px 24px 16px; border-left-width: 14px; border-color: var(--amber) !important; background: #17181c; }
 #menu .level:hover { background: #22201a !important; }
+#menu .level + .level { margin-top: 14px; }
+.level-desc { white-space: nowrap; }
 .level-name { font-size: 40px; line-height: 1; }
 .level-desc { font-family: var(--text); font-size: 17px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; }
 

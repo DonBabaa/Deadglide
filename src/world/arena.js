@@ -7,6 +7,7 @@ import { CHUNK } from './worldgen.js';
 import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
 import { glowTexture } from './textures.js';
+import { CATA, floorAt } from './catacombs.js';
 
 const HORIZON = 0x1c2535;
 const MOON_DIR = new THREE.Vector3(-0.6, 0.62, -0.4).normalize();
@@ -19,7 +20,8 @@ export function buildArena(scene) {
   scene.background = new THREE.Color(HORIZON);
 
   // Moonlight (casts the shadows) + sky fill.
-  scene.add(new THREE.HemisphereLight(0x7f95c4, 0x20241c, 0.75));
+  const fill = new THREE.HemisphereLight(0x7f95c4, 0x20241c, 0.75);
+  scene.add(fill);
   const moon = new THREE.DirectionalLight(0xc3d4ff, 1.9);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -32,6 +34,16 @@ export function buildArena(scene) {
   const mist = buildMist();
   const far = buildFarGround();
   scene.add(sky, mist.group, far);
+
+  // The Catacombs: a roof (only drawn; nothing can reach it), a lamp on Kirky's head pointing where he
+  // aims, and a little glow round him. They stay switched off in the Cemetery.
+  const roof = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 1, side: THREE.DoubleSide }));
+  roof.rotation.x = -Math.PI / 2 + Math.atan(CATA.slope);   // (it slopes down with the floor)
+  roof.visible = false;
+  const headlamp = new THREE.SpotLight(0xfff0d6, 0, 120, 0.62, 0.55, 1.5);
+  const glow = new THREE.PointLight(0xa8b8e0, 0, 30, 1.6);
+  scene.add(roof, headlamp, headlamp.target, glow);
+  let level = 1;
 
   const lampLights = Array.from({ length: LAMP_LIGHTS }, () => {
     const light = new THREE.PointLight(0xffc488, 0, 70, 2);
@@ -85,20 +97,39 @@ export function buildArena(scene) {
     lamps.sort((a, b) => a[0] - b[0]);
     lampLights.forEach((light, i) => {
       if (i < lamps.length) {
-        light.position.set(lamps[i][1].x - 1.6, lamps[i][1].y + 6.4, lamps[i][1].z - 1.6);
-        light.intensity = 900;
+        const l = lamps[i][1], off = l.dx ?? -1.6;   // (street lamps hang out from their post; braziers burn where they stand)
+        light.position.set(l.x + off, l.y + (l.h ?? 6.4), l.z + off);
+        light.intensity = l.power ?? 900;
       } else light.intensity = 0;
     });
   }
 
   let lampTimer = 0;
   return {
+    // Change level: drop everything on screen and redress the place. (terrain.js's setLevel comes first.)
+    setLevel(n) {
+      level = n;
+      for (const entry of loaded.values()) { scene.remove(entry.group); builder.dispose(entry.group); }
+      loaded.clear();
+      centre = null;
+      const under = n === 2;
+      scene.fog.color.set(under ? 0x060508 : HORIZON);
+      scene.fog.density = under ? 0.017 : 0.0085;
+      scene.background.set(under ? 0x060508 : HORIZON);
+      fill.intensity = under ? 0.22 : 0.75;
+      moon.intensity = under ? 0 : 1.9;
+      sky.visible = far.visible = !under;
+      roof.visible = under;
+      headlamp.intensity = under ? 2400 : 0;
+      glow.intensity = under ? 90 : 0;
+    },
     // Build everything around the start point up front.
     prime(pos) {
       stream(pos, Infinity);
       assignLampLights(pos);
     },
-    update(dt, playerPos) {
+    // aim: the point the player is aiming at (the Catacombs' headlamp points there).
+    update(dt, playerPos, aim) {
       stream(playerPos, 1);   // one new chunk per frame at most, to avoid hitches
       if ((lampTimer -= dt) <= 0) {
         lampTimer = 0.25;
@@ -109,6 +140,12 @@ export function buildArena(scene) {
       moon.position.copy(playerPos).addScaledVector(MOON_DIR, 150);
       sky.position.copy(playerPos);
       mist.update(dt, playerPos);
+      if (level === 2) {
+        roof.position.set(playerPos.x, floorAt(playerPos.z) + CATA.ceiling, playerPos.z);
+        glow.position.copy(playerPos).y += 2.4;
+        headlamp.position.copy(playerPos).y += 1.7;
+        if (aim) headlamp.target.position.copy(aim);
+      }
     },
   };
 }

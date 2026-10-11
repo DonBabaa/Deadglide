@@ -17,7 +17,7 @@ export const POWERUPS = {
   shield: {
     name: 'Shield', color: 0x58b7ff, max: 5, description: 'a bubble soaks up damage, then recharges',
     explain: 'A bubble round you takes the hits instead of your health. Leave it alone for a few seconds and it recharges by itself.',
-    numbers: (L, m) => ({ capacity: (30 + 25 * L) * m.size, delay: 7 / m.rate, regen: 15 }),   // HP it holds, seconds unhit before it refills, HP per second
+    numbers: (L, m) => ({ capacity: (20 + 12 * L) * m.size, delay: 9 / m.rate, regen: 10 }),   // HP it holds, seconds unhit before it refills, HP per second
   },
   gas: {
     name: 'TozToxik', color: 0x8dff5a, max: 5, description: 'toxic gas round you and in a trail behind you',
