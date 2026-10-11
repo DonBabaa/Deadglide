@@ -93,7 +93,10 @@
           <span class="level-desc">The Cemetery &middot; endless waves</span>
         </button>
         <div id="menu-best"></div>
-        <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
+        <div class="menu-row">
+          <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
+          <button id="menu-casino-open" type="button">Casino</button>
+        </div>
         <div class="menu-label">Leaderboard</div>
         <ol id="menu-board" class="board"></ol>
       </div>
@@ -125,6 +128,69 @@
         </div>
       </div>
       <div id="menu-foot">Controls and sound are on the pause screen (Esc)</div>
+    </div>
+
+    <!-- The casino: buttons over the 3D room. -->
+    <div id="casino" class="hidden">
+      <div id="casino-top">
+        <span id="casino-gold"></span>
+        <span id="casino-house"></span>
+        <button id="casino-friends" type="button">Play with friends</button>
+        <button id="casino-stand" class="hidden" type="button">Leave table</button>
+        <button id="casino-leave" type="button">Leave casino</button>
+      </div>
+      <div id="casino-net" class="hidden">
+        <div id="casino-net-idle">
+          <button id="casino-host" type="button">Open a table</button>
+          <span>or join one:</span>
+          <input id="casino-code" type="text" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false">
+          <button id="casino-join" type="button">Join</button>
+        </div>
+        <div id="casino-net-live" class="hidden">
+          <span id="casino-room"></span>
+          <button id="casino-quit" type="button">Disconnect</button>
+        </div>
+        <div id="casino-net-status"></div>
+      </div>
+      <div id="casino-help">W / S walk &middot; A / D turn &middot; hold left mouse and drag to look around</div>
+      <div id="casino-prompt" class="hidden"><b>E</b> <span id="casino-prompt-text">Take a seat</span></div>
+      <div id="casino-bar" class="hidden">
+        <div id="casino-bar-status"></div>
+        <div id="casino-drinks"></div>
+        <button id="casino-drink" class="hidden" type="button">Drink <kbd>E</kbd></button>
+      </div>
+      <div id="casino-cine"><i></i><i></i><div id="casino-lines"></div><div id="casino-flash"></div><div id="casino-title"></div></div>
+      <div id="casino-banner"></div>
+      <div id="casino-laugh">HA! HA! HA!</div>
+      <div id="casino-table" class="hidden">
+        <div id="casino-totals">
+          <div><small>Dealer</small><span id="casino-dealer"></span></div>
+          <div><small>You</small><span id="casino-you"></span></div>
+          <div><small>Bet</small><span id="casino-bet"></span></div>
+        </div>
+        <div id="casino-status"></div>
+        <div id="casino-betting">
+          <div id="casino-chips"></div>
+          <button id="casino-deal" type="button">Deal</button>
+        </div>
+        <div id="casino-actions" class="hidden">
+          <button id="casino-hit" type="button">Hit <kbd>H</kbd></button>
+          <button id="casino-stay" type="button">Stand <kbd>S</kbd></button>
+          <button id="casino-double" type="button">Double <kbd>D</kbd></button>
+          <button id="casino-split" type="button">Split <kbd>P</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shown (with the game paused) the first time you win a power-up in a run. -->
+    <div id="power-info" class="hidden">
+      <div id="power-info-card">
+        <div id="power-info-kicker">New power-up</div>
+        <div id="power-info-name"></div>
+        <p id="power-info-text"></p>
+        <p id="power-info-more"></p>
+        <div id="power-info-hint">Click, or press Enter, to carry on</div>
+      </div>
     </div>
 
     <div id="levelup" class="hidden">

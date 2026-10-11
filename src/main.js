@@ -36,6 +36,7 @@ import { leaderboard } from './ui/leaderboard.js';
 import { getName } from './ui/playerName.js';
 import { goldTally } from './ui/goldTally.js';
 import { createCutscenes } from './cutscenes.js';
+import { createCasino } from './casino/casino.js';
 import { setMusicStyle } from './fx/music.js';
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
@@ -120,6 +121,7 @@ function restart() {
   shield = 0;
   freeUpgrades = 0;
   resetStats();
+  powerInfo.classList.add('hidden');
   if (drag) endDrag(false);
   cutscenes.cancel();
   goldTally.hide();
@@ -294,6 +296,14 @@ function showMenu() {
   menu.show(score.best);
   leaderboard.showMenu();
 }
+
+// The casino: its own 3D room, entered from the menu. Leaving it comes back to the menu.
+const casino = createCasino({ onLeave: showMenu });
+document.getElementById('menu-casino-open').addEventListener('click', () => {
+  menu.hide();
+  if (unlockAudio()) startMusic();
+  casino.enter();
+});
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
 menu.onStart((loadout) => {
@@ -495,6 +505,34 @@ function updateDrag(dt) {
   if (t >= DRAG.end) endDrag(true);
 }
 
+// The first time you win a power-up in a run, the game stops on a card that says what it does.
+const powerInfo = document.getElementById('power-info');
+function explainPower(id) {
+  const P = POWERUPS[id];
+  powerInfo.style.setProperty('--power', `#${P.color.toString(16).padStart(6, '0')}`);
+  document.getElementById('power-info-name').textContent = P.name;
+  document.getElementById('power-info-text').textContent = P.explain;
+  document.getElementById('power-info-more').textContent = `It works on its own, and it's yours for the rest of the run. Win it again in another HotBox Zone to strengthen it (up to level ${P.max}); level-up cards can improve it too.`;
+  powerInfo.classList.remove('hidden');
+  choosing = true;   // (the game waits, like it does for a level-up)
+  paused = true;
+  document.exitPointerLock?.();
+}
+function closePowerInfo() {
+  if (powerInfo.classList.contains('hidden')) return;
+  powerInfo.classList.add('hidden');
+  choosing = false;
+  paused = false;
+  last = performance.now();
+  if (!panel.open) lockPointer();
+}
+powerInfo.addEventListener('click', closePowerInfo);
+window.addEventListener('keydown', (e) => {
+  if (powerInfo.classList.contains('hidden') || !['Enter', 'Escape'].includes(e.code)) return;
+  e.preventDefault();
+  closePowerInfo();
+});
+
 // reward: false when the run is being reset under it.
 function endDrag(reward) {
   drag = null;
@@ -504,8 +542,9 @@ function endDrag(reward) {
   if (!reward) return;
   const won = powerups.random();   // you only find out what was in it now
   if (won) {
-    powerups.grant(won);
-    hud.popup(`${powerups.label(won)}: ${POWERUPS[won].description}`, 'loot');
+    const level = powerups.grant(won);
+    if (level === 1) explainPower(won);   // new to you this run: stop and say what it does
+    else hud.popup(`${powerups.label(won)}: ${POWERUPS[won].description}`, 'loot');
   } else {                         // every power-up is already at full strength
     run.heal(40);
     hud.popup('Everything maxed: +40 HP', 'loot');
@@ -520,6 +559,11 @@ function frame(now) {
   last = now;
   const [mouseDX, mouseDY] = input.takeMouse();
 
+  if (casino.active) {   // in the casino (a room of its own, reached from the menu)
+    casino.update(dt, input);
+    renderer.render(casino.scene, casino.camera);
+    return;
+  }
   if (inMenu) {
     menuScene.update(dt);
     arena.update(dt, menuScene.origin);
@@ -636,4 +680,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { get cutscene() { return drag; }, gold, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, gold, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

@@ -2,7 +2,8 @@
 // shares the audio context and volume controls set up here.
 import { config } from '../config.js';
 
-export const audio = { ctx: null, noise: null, sfx: null, music: null, muted: false, sfxMuted: false };   // muted = the music is off
+// sfx / music: the two volume controls. duck: turns the music down for a moment (cutscenes) without touching its volume setting.
+export const audio = { ctx: null, noise: null, sfx: null, music: null, duck: null, muted: false, sfxMuted: false };   // muted = the music is off
 
 // Recorded sounds (optional). Any audio file dropped into src/assets/sounds/
 // replaces the synthesized sound of the same name: e.g. sniper.mp3 replaces
@@ -34,13 +35,16 @@ export function unlockAudio() {
     let ctx;
     try { ctx = new AudioContext(); } catch { return false; }
     audio.ctx = ctx;
-    // Everything goes through a gentle compressor so loud moments don't clip.
-    const master = ctx.createDynamicsCompressor();
-    master.connect(ctx.destination);
+    // Sound effects and music each get their own compressor, so loud moments don't clip
+    // and a wall of gunfire can't squash the music out of the mix.
+    const sfxOut = ctx.createDynamicsCompressor(), musicOut = ctx.createDynamicsCompressor();
+    sfxOut.connect(ctx.destination);
+    musicOut.connect(ctx.destination);
     audio.sfx = ctx.createGain();
     audio.music = ctx.createGain();
-    audio.sfx.connect(master);
-    audio.music.connect(master);
+    audio.duck = ctx.createGain();
+    audio.sfx.connect(sfxOut);
+    audio.music.connect(audio.duck).connect(musicOut);
     audio.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const data = audio.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -51,12 +55,14 @@ export function unlockAudio() {
   return true;
 }
 
-// Push the tuning-panel volumes (and the mute toggle) to the mixer.
+// Push the volumes (and the mute toggles) to the mixer. Safe to call often: it only
+// does anything when a value has actually changed.
+const applied = { sfx: null, music: null };
 export function applyVolume() {
   if (!audio.ctx) return;
-  const t = audio.ctx.currentTime;
-  audio.sfx.gain.setTargetAtTime(audio.sfxMuted ? 0 : config.audio.sfxVolume, t, 0.05);
-  audio.music.gain.setTargetAtTime(audio.muted ? 0 : config.audio.musicVolume, t, 0.05);
+  const t = audio.ctx.currentTime, sfx = audio.sfxMuted ? 0 : config.audio.sfxVolume, music = audio.muted ? 0 : config.audio.musicVolume;
+  if (sfx !== applied.sfx) { applied.sfx = sfx; audio.sfx.gain.cancelScheduledValues(t); audio.sfx.gain.setTargetAtTime(sfx, t, 0.05); }
+  if (music !== applied.music) { applied.music = music; audio.music.gain.cancelScheduledValues(t); audio.music.gain.setTargetAtTime(music, t, 0.05); }
 }
 export function toggleMusic() {
   audio.muted = !audio.muted;
@@ -66,10 +72,27 @@ export function toggleMusic() {
 
 const ready = () => audio.ctx && audio.ctx.state === 'running';
 
+// Two guards against a flood of sound effects (hundreds of monsters dying at once),
+// which makes the audio crackle and drop out:
+//   voices  how many effect sounds are playing right now. Past MAX_VOICES, new ones are skipped.
+//   spaced  true if the named sound hasn't played in the last `gap` seconds (and marks it as played).
+const MAX_VOICES = 90;
+let voices = 0;
+const full = () => voices >= MAX_VOICES;
+const voice = (source) => { voices++; source.onended = () => { voices--; }; };
+const lastPlayed = {};
+function spaced(name, gap) {
+  const now = audio.ctx.currentTime;
+  if (now - (lastPlayed[name] ?? -1) < gap) return false;
+  lastPlayed[name] = now;
+  return true;
+}
+
 // ---- Building blocks ---------------------------------------------------------
 
 // A pitched tone that slides from one frequency to another and fades out.
 function tone(type, from, to, time, volume, at = 0) {
+  if (full()) return;
   const ctx = audio.ctx, t = ctx.currentTime + at, osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(from, t);
@@ -78,12 +101,14 @@ function tone(type, from, to, time, volume, at = 0) {
   gain.gain.exponentialRampToValueAtTime(volume, t + 0.006);
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   osc.connect(gain).connect(audio.sfx);
+  voice(osc);
   osc.start(t);
   osc.stop(t + time + 0.02);
 }
 
 // A burst of filtered noise whose filter sweeps from one frequency to another.
 function hiss(filterType, from, to, time, volume, at = 0) {
+  if (full()) return;
   const ctx = audio.ctx, t = ctx.currentTime + at;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = audio.noise;
@@ -94,6 +119,7 @@ function hiss(filterType, from, to, time, volume, at = 0) {
   gain.gain.setValueAtTime(volume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   src.connect(filter).connect(gain).connect(audio.sfx);
+  voice(src);
   src.start(t);
   src.stop(t + time + 0.02);
 }
@@ -110,6 +136,7 @@ function clipper() {
   return overdrive;
 }
 function blast(from, to, time, volume, at = 0) {
+  if (full()) return;
   const ctx = audio.ctx, t = ctx.currentTime + at;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), drive = ctx.createWaveShaper(), gain = ctx.createGain();
   src.buffer = audio.noise;
@@ -121,6 +148,7 @@ function blast(from, to, time, volume, at = 0) {
   gain.gain.setValueAtTime(volume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   src.connect(filter).connect(drive).connect(gain).connect(audio.sfx);
+  voice(src);
   src.start(t);
   src.stop(t + time + 0.03);
 }
@@ -172,11 +200,11 @@ export function playShot(id) {
   (SHOTS[id] || SHOTS.pistol)(0.94 + Math.random() * 0.12);
 }
 
-export const playHeadshot = () => ready() && (tone('square', 1700, 1100, 0.07, 0.09), tone('sine', 2600, 2600, 0.12, 0.07));
+export const playHeadshot = () => ready() && spaced('headshot', 0.07) && (tone('square', 1700, 1100, 0.07, 0.09), tone('sine', 2600, 2600, 0.12, 0.07));
 export const playSwitch = () => ready() && (hiss('highpass', 3000, 5000, 0.05, 0.12), tone('square', 320, 240, 0.05, 0.08, 0.05));
 
-export const playHit = () => ready() && tone('square', 900, 500, 0.04, 0.05);     // bullet hits a monster
-export const playKill = () => ready() && tone('triangle', 260, 60, 0.16, 0.3);    // monster goes down
+export const playHit = () => ready() && spaced('hit', 0.045) && tone('square', 900, 500, 0.04, 0.05);     // bullet hits a monster
+export const playKill = () => ready() && spaced('kill', 0.06) && tone('triangle', 260, 60, 0.16, 0.3);    // monster goes down
 export const playHurt = () => ready() && tone('sawtooth', 180, 50, 0.35, 0.35);   // you got clawed
 
 // Landing a trick: a thump as the wheels hit, a rush of air, and a bright
@@ -194,7 +222,7 @@ export function playTrickLand(boost = 3) {
   }
 }
 
-export const playPickup = () => ready() && tone('sine', 1250 + Math.random() * 300, 1900, 0.07, 0.05);   // XP gem collected
+export const playPickup = () => ready() && spaced('pickup', 0.05) && tone('sine', 1250 + Math.random() * 300, 1900, 0.07, 0.05);   // XP gem collected
 
 // Opening a chest: a creak and a bright two-note ding.
 export function playChest() {
@@ -263,10 +291,10 @@ export function playPowerup() {
 // Turn the music down to `level` (a fraction of its volume) for `seconds`.
 export function duckMusic(level, seconds) {
   if (!ready()) return;
-  const t = audio.ctx.currentTime, full = audio.muted ? 0 : config.audio.musicVolume;
-  audio.music.gain.cancelScheduledValues(t);
-  audio.music.gain.setTargetAtTime(full * level, t, 0.08);
-  audio.music.gain.setTargetAtTime(full, t + seconds, 0.2);
+  const t = audio.ctx.currentTime;
+  audio.duck.gain.cancelScheduledValues(t);
+  audio.duck.gain.setTargetAtTime(level, t, 0.08);
+  audio.duck.gain.setTargetAtTime(1, t + seconds, 0.2);
 }
 
 // Something is coming up out of the ground. Three seconds of it getting worse:
@@ -339,7 +367,7 @@ export function playBossIntro() {
 // He throws: a wet heave.
 export const playBossThrow = () => ready() && (hiss('bandpass', 250, 900, 0.35, 0.16), tone('sawtooth', 110, 60, 0.3, 0.1));
 // ...and it lands.
-export const playSplat = () => ready() && (hiss('lowpass', 1400, 160, 0.28, 0.22), tone('sine', 130, 45, 0.22, 0.2));
+export const playSplat = () => ready() && spaced('splat', 0.1) && (hiss('lowpass', 1400, 160, 0.28, 0.22), tone('sine', 130, 45, 0.22, 0.2));
 // He's dead: a long collapsing groan.
 export function playBossDeath() {
   if (!ready()) return;
@@ -364,11 +392,7 @@ export function playDrag() {
   if (!ready()) return;
   const ctx = audio.ctx, t = ctx.currentTime;
 
-  // Turn the music down for the length of the cutscene.
-  const level = audio.muted ? 0 : config.audio.musicVolume;
-  audio.music.gain.cancelScheduledValues(t);
-  audio.music.gain.setTargetAtTime(level * 0.06, t, 0.05);
-  audio.music.gain.setTargetAtTime(level, t + 3.0, 0.25);
+  duckMusic(0.06, 3.0);   // the game's music steps back for the length of the cutscene
 
   // The smoke itself, quietly, under the beat.
   hiss('bandpass', 500, 2200, 1.0, 0.08, 0.45);
@@ -446,6 +470,27 @@ export function playDrag() {
   lead.start(t + at(4)); wobble.start(t + at(4));
   lead.stop(t + 3.2); wobble.stop(t + 3.2);
 }
+// Casino: a card sliding off the shoe, a chip set down, and losing a hand.
+export const playCard = () => ready() && (hiss('highpass', 3500, 7000, 0.07, 0.16), tone('triangle', 900, 500, 0.03, 0.04));
+export const playChip = () => ready() && (tone('sine', 2600, 2400, 0.05, 0.08), tone('sine', 3900, 3500, 0.04, 0.05, 0.03));
+export const playLose = () => ready() && (tone('sawtooth', 220, 110, 0.35, 0.12), tone('sine', 165, 80, 0.5, 0.2, 0.08));
+// Babitus laughing: a run of deep, wet "ha"s that climbs and falls.
+export function playLaugh() {
+  if (!ready()) return;
+  [0, 0.17, 0.34, 0.5, 0.67, 0.85, 1.05, 1.27].forEach((at, i) => {
+    const f = 150 + Math.sin(i * 0.9) * 28 - i * 4;
+    tone('sawtooth', f * 1.25, f * 0.8, 0.13, 0.2, at);
+    tone('sine', f * 0.62, f * 0.45, 0.14, 0.3, at);
+    hiss('bandpass', 900, 500, 0.1, 0.1, at);
+  });
+}
+// The bar. A cocktail shaker (ice rattling), a pour, a clink, a cork, a glass on marble, a swallow.
+export const playShake = () => ready() && (hiss('bandpass', 3200 + Math.random() * 800, 1800, 0.06, 0.16), tone('triangle', 1900, 1500, 0.03, 0.03));
+export const playPour = () => ready() && (hiss('bandpass', 900, 2600, 1.1, 0.1), hiss('lowpass', 500, 1400, 1.1, 0.06));
+export const playClink = () => ready() && (tone('sine', 3100, 3000, 0.35, 0.09), tone('sine', 4650, 4500, 0.25, 0.05));
+export const playCork = () => ready() && (tone('sine', 420, 140, 0.09, 0.4), hiss('highpass', 2500, 6000, 0.25, 0.14, 0.03));
+export const playGlassDown = () => ready() && (tone('sine', 520, 300, 0.07, 0.14), tone('triangle', 1700, 1500, 0.05, 0.04));
+export const playGulp = () => ready() && (tone('sine', 150, 260, 0.09, 0.2), tone('sine', 280, 170, 0.1, 0.16, 0.1));
 // One coin landing on the pile. progress 0..1 through the count: they ring higher as it goes.
 export function playCoin(progress = 0) {
   if (!ready()) return;

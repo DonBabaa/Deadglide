@@ -9,8 +9,9 @@
 //   UNLOCKS    one-off purchases that change how a run plays
 //   GUNS       guns to unlock (so they can turn up in chests), and to start a run holding
 import { WEAPONS } from '../player/weapons.js';
+import { load, store } from './storage.js';
 
-const KEY = 'deadglide.profile';
+const KEY = 'profile';
 const PRICES = [100, 200, 350, 550, 800];   // each permanent upgrade's five levels
 
 export const PERMANENT = [
@@ -37,13 +38,15 @@ export const GUNS = [
 ].map((g) => ({ ...g, name: WEAPONS[g.id].name, description: WEAPONS[g.id].description }));
 
 // cosmetics: see systems/cosmetics.js (owned: things bought, look: what's worn in each slot, gold / goldOff: gold gun skins owned / switched off)
-const fresh = () => ({ gold: 0, upgrades: {}, unlocks: {}, guns: [], starts: [], startGun: null, cosmetics: { owned: [], look: {}, gold: [], goldOff: [] } });
+// houseTake: gold the casino has won off you, less what you've won off it (it can go negative)
+const fresh = () => ({ gold: 0, houseTake: 0, upgrades: {}, unlocks: {}, guns: [], starts: [], startGun: null, cosmetics: { owned: [], look: {}, gold: [], goldOff: [] } });
 export const profile = fresh();
 
 try {
-  const saved = JSON.parse(localStorage.getItem(KEY));
+  const saved = JSON.parse(load(KEY));
   if (saved && typeof saved === 'object') {
     profile.gold = Math.max(0, Math.floor(Number(saved.gold) || 0));
+    profile.houseTake = Math.floor(Number(saved.houseTake) || 0);
     for (const u of PERMANENT) profile.upgrades[u.id] = Math.max(0, Math.min(u.max, Math.floor(Number(saved.upgrades?.[u.id]) || 0)));
     for (const u of UNLOCKS) profile.unlocks[u.id] = !!saved.unlocks?.[u.id];
     profile.guns = GUNS.map((g) => g.id).filter((id) => saved.guns?.includes(id));
@@ -60,13 +63,19 @@ try {
 
 export const saveProfile = () => save();
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(profile)); } catch {}
+  store(KEY, JSON.stringify(profile));
 }
 
 export const level = (id) => profile.upgrades[id] || 0;
 export const hasUnlock = (id) => !!profile.unlocks[id];
 // Can this gun turn up in chests?
 export const gunUnlocked = (id) => { const g = GUNS.find((gun) => gun.id === id); return !g || g.unlock === 0 || profile.guns.includes(id); };
+
+// The casino won `amount` off you this hand (negative: you won it off the casino).
+export function houseTook(amount) {
+  profile.houseTake += Math.floor(amount);
+  save();
+}
 
 export function bank(amount) {
   profile.gold += Math.max(0, Math.floor(amount));

@@ -6,15 +6,16 @@
 // The meter cools all the time, slower the faster you're going; let it empty
 // and you drop a multiplier. Getting hit resets it to x1.
 import { config } from '../config.js';
+import { load, store } from './storage.js';
 
-const KEY = 'deadglide.best';
+const KEY = 'best';
 
 // Kill-streak milestones, announced when you reach them.
 const STREAKS = { 3: 'Triple kill', 5: 'Killing spree', 10: 'Rampage', 15: 'Massacre', 25: 'Unstoppable', 40: 'Graveyard shift', 60: 'Death incarnate' };
 
 export class Score {
   constructor() {
-    try { this.best = Number(localStorage.getItem(KEY)) || 0; } catch { this.best = 0; }
+    this.best = Number(load(KEY)) || 0;
     this.reset();
   }
 
@@ -77,7 +78,7 @@ export class Score {
     const total = Math.floor(this.points);
     if (total <= this.best) return false;
     this.best = total;
-    try { localStorage.setItem(KEY, String(total)); } catch {}
+    store(KEY, String(total));
     return true;
   }
 }

@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
-import { hoodieTexture, denimTexture, ribTexture, canvasTexture, deckTexture } from './kirkyTextures.js';
+import { hoodieTexture, denimTexture, ribTexture, canvasTexture, deckTexture, emblemTexture } from './kirkyTextures.js';
+import { buildGuns } from './gunModels.js';
 
 const TAU = Math.PI * 2;
 const x = new THREE.Vector3(), z = new THREE.Vector3(), basis = new THREE.Matrix4();
@@ -27,6 +28,7 @@ const limb = (radius, length, material, px, py, pz) => part(new THREE.CapsuleGeo
 const box = (w, h, d, material, px, py, pz) => part(new THREE.BoxGeometry(w, h, d), material, px, py, pz);
 const tube = (radius, length, material, px, py, pz, radiusTop = radius) => part(new THREE.CylinderGeometry(radiusTop, radius, length, 16), material, px, py, pz);
 
+const HAND = new THREE.Vector3(0, 0, 0.56);   // his gun hand, in the gun arm's space
 const FLIP_PIVOT = 0.85;   // he flips about this height (his middle)
 const X_AXIS = new THREE.Vector3(1, 0, 0), flipQ = new THREE.Quaternion(), pivot = new THREE.Vector3();
 
@@ -92,12 +94,17 @@ export class SkaterModel {
       const group = new THREE.Group();
       group.position.set(side * 0.17, 0.86, 0);
       const foot = shoe();
-      foot.position.set(0, -0.865, 0.05);
-      group.add(
-        limb(0.085, 0.3, denim, 0, -0.2, 0.03), limb(0.07, 0.3, denim, 0, -0.6, 0),
-        tube(0.076, 0.05, denim, 0, -0.775, 0),   // turned-up cuff
+      foot.position.set(0, -0.445, 0.04);
+      // The shin, cuff and foot hang off the knee, so the leg can bend (group.knee.rotation.x).
+      const knee = (group.knee = new THREE.Group());
+      knee.position.set(0, -0.42, 0.01);
+      knee.add(
+        part(new THREE.SphereGeometry(0.078, 10, 8), denim),
+        limb(0.07, 0.3, denim, 0, -0.18, -0.01),
+        tube(0.076, 0.05, denim, 0, -0.355, -0.01),   // turned-up cuff
         foot,
       );
+      group.add(limb(0.085, 0.3, denim, 0, -0.2, 0.03), knee);
       return group;
     };
     this.backLeg = leg(-1);   // swings for the kick-push
@@ -106,10 +113,18 @@ export class SkaterModel {
     this.torso = new THREE.Group();
     this.torso.position.y = 0.86;
     const flat = (mesh) => { mesh.scale.z = 0.73; return mesh; };   // bodies are wider than they are deep
-    const armL = limb(0.062, 0.46, hoodie, -0.33, 0.34, 0.04); armL.rotation.z = -0.5;
-    const cuffL = tube(0.058, 0.06, hoodieRib, -0.455, 0.13, 0.04); cuffL.rotation.z = -0.5;
-    const handL = part(new THREE.SphereGeometry(0.055, 10, 8), skin, -0.485, 0.085, 0.04);
+    // Left arm: hangs from the shoulder (this.leftArm.rotation.x swings it forward and back).
+    const armL = limb(0.062, 0.46, hoodie, -0.13, -0.24, 0); armL.rotation.z = -0.5;
+    const cuffL = tube(0.058, 0.06, hoodieRib, -0.255, -0.45, 0); cuffL.rotation.z = -0.5;
+    const handL = part(new THREE.SphereGeometry(0.055, 10, 8), skin, -0.285, -0.495, 0);
+    this.leftArm = new THREE.Group();
+    this.leftArm.position.set(-0.2, 0.58, 0.04);
+    this.leftArm.add(armL, cuffL, handL);
     this.offArm = [armL, cuffL, handL];   // hidden while that hand is on a two-handed gun
+    // A bone-white skull stencilled on the back of the hoodie (the side the camera sees most).
+    const emblem = part(new THREE.CircleGeometry(0.105, 20), new THREE.MeshStandardMaterial({ map: emblemTexture(), transparent: true, roughness: 0.9 }), 0, 0.4, -0.146);
+    emblem.rotation.y = Math.PI;
+    emblem.castShadow = false;
     // Hood, up: a shell round the head, open at the face and underneath.
     const hood = part(new THREE.SphereGeometry(0.178, 20, 14, Math.PI / 2 + 0.78, TAU - 1.56, 0, 2.35), hoodie, 0, 0.79, -0.025);
     hood.scale.set(1, 1.1, 1.14);
@@ -122,7 +137,7 @@ export class SkaterModel {
       flat(tube(0.192, 0.07, hoodieRib, 0, 0.11, 0, 0.196)),                // ribbed hem
       box(0.25, 0.13, 0.03, hoodie, 0, 0.24, 0.132),                        // kangaroo pocket
       tube(0.006, 0.17, white, -0.045, 0.52, 0.142), tube(0.006, 0.14, white, 0.045, 0.535, 0.142),   // drawstrings
-      armL, cuffL, handL,
+      this.leftArm, emblem,
       part(new THREE.SphereGeometry(0.17, 14, 10), hoodie, 0, 0.61, -0.06),          // hood gathered at the neck
       part(new THREE.SphereGeometry(0.125, 16, 12), skin, 0, 0.8, 0),                // head
       (this.beanieDome = part(new THREE.SphereGeometry(0.133, 16, 8, 0, TAU, 0, Math.PI / 2), beanie, 0, 0.825, 0)),   // beanie...
@@ -130,6 +145,10 @@ export class SkaterModel {
       (this.brim = brim),                                                                           // ...with a folded brim
       part(new THREE.SphereGeometry(0.013, 8, 6), dark, -0.045, 0.8, 0.114), part(new THREE.SphereGeometry(0.013, 8, 6), dark, 0.045, 0.8, 0.114),   // eyes
       box(0.04, 0.008, 0.01, dark, -0.045, 0.82, 0.116), box(0.04, 0.008, 0.01, dark, 0.045, 0.82, 0.116),                                           // brows
+      part(new THREE.SphereGeometry(0.018, 8, 6).scale(0.9, 1.2, 1), skin, 0, 0.782, 0.126),                                                         // nose
+      box(0.05, 0.007, 0.01, dark, -0.004, 0.752, 0.118),                                                                                            // mouth
+      part(new THREE.SphereGeometry(0.024, 8, 6).scale(0.5, 1, 0.8), skin, -0.123, 0.795, 0), part(new THREE.SphereGeometry(0.024, 8, 6).scale(0.5, 1, 0.8), skin, 0.123, 0.795, 0),   // ears
+      part(new THREE.SphereGeometry(0.128, 14, 8, 0, TAU, 1.2, 0.5), dark, 0, 0.8, -0.004),                                                           // hair showing under the beanie, round the back and sides
       hood,
     );
 
@@ -180,21 +199,16 @@ export class SkaterModel {
       limb(0.062, 0.4, hoodie, 0, 0, 0.26).rotateX(Math.PI / 2),
       tube(0.058, 0.06, hoodieRib, 0, 0, 0.5).rotateX(Math.PI / 2),
       part(new THREE.SphereGeometry(0.055, 10, 8), skin, 0, 0, 0.56),
-      (this.barrel = box(0.045, 0.07, 0.3, gunmetal, 0, 0.03, 0.7)),   // slide + barrel
-      box(0.04, 0.13, 0.06, gunmetal, 0, -0.05, 0.6),                  // grip
     );
-    // Telescopic sight (only shown on scoped guns): tube, mounts, and a glinting lens.
-    this.scope = new THREE.Group();
-    this.scope.position.set(0, 0.125, 0.86);
-    this.scope.add(
-      part(new THREE.CylinderGeometry(0.024, 0.024, 0.3, 12).rotateX(Math.PI / 2), gunmetal),
-      part(new THREE.CylinderGeometry(0.034, 0.026, 0.07, 12).rotateX(Math.PI / 2), gunmetal, 0, 0, 0.17),    // front bell
-      part(new THREE.CylinderGeometry(0.028, 0.03, 0.05, 12).rotateX(Math.PI / 2), gunmetal, 0, 0, -0.16),    // eyepiece
-      box(0.02, 0.05, 0.03, gunmetal, 0, -0.035, 0.08), box(0.02, 0.05, 0.03, gunmetal, 0, -0.035, -0.08),    // mounts
-      part(new THREE.CircleGeometry(0.031, 16), new THREE.MeshBasicMaterial({ color: 0x7fd4ff, toneMapped: false }), 0, 0, 0.206),   // lens
-    );
-    this.scope.visible = false;
-    this.gunArm.add(this.scope);
+    // The guns (see gunModels.js): all built up front, one shown at a time. The hand holds them by the grip.
+    this.guns = buildGuns(gunmetal);
+    for (const id in this.guns) {
+      const g = this.guns[id];
+      g.group.position.add(HAND);
+      g.group.visible = id === 'pistol';
+      this.gunArm.add(g.group);
+    }
+    this.gun = this.guns.pistol;   // the one in his hand
 
     // Support arm for two-handed guns: reaches from the left shoulder to the
     // fore-end. It lives in the gun's space and is re-aimed every frame.
@@ -305,14 +319,14 @@ export class SkaterModel {
     // Second hand on the fore-end: stretch the support arm from the left shoulder to it.
     if (this.twoHanded) {
       this.gunArm.worldToLocal(this.torso.localToWorld(local.set(-0.27, 0.5, 0.04)));   // left shoulder, in the gun's space
-      grip.set(0, -0.035, 0.84);
+      grip.copy(this.gun.support).add(HAND);
       this.supportHand.position.copy(grip);
       const reach = grip.sub(local).length();
       this.supportArm.position.copy(local).addScaledVector(grip, 0.5);
       this.supportArm.quaternion.setFromUnitVectors(UP, grip.divideScalar(reach));
       this.supportArm.scale.y = reach / 0.516;   // (0.516 = the arm's own length)
     }
-    this.muzzle.set(0, 0.03, 0.6 + 0.3 * this.barrel.scale.z).applyMatrix4(this.gunArm.matrixWorld);
+    this.muzzle.copy(this.gun.muzzle).add(HAND).applyMatrix4(this.gunArm.matrixWorld);
   }
 
   // Cigarette smoke: little puffs left hanging in the air behind you.
@@ -347,7 +361,6 @@ export class SkaterModel {
     if (!visible) for (const puff of this.smoke) { puff.visible = false; puff.userData.life = 0; }
   }
 
-  // Longer guns get a longer (and slightly chunkier) barrel.
   // Dress him. look: see currentLook() in systems/cosmetics.js.
   applyLook(look) {
     const M = this.mats, repaint = (material, texture) => { material.map?.dispose(); material.map = texture; material.needsUpdate = true; };
@@ -381,9 +394,8 @@ export class SkaterModel {
   setWeapon(def) {
     this.def = def;
     this.paintGun();
-    this.barrel.scale.set(1 + (def.barrel - 1) * 0.25, 1 + (def.barrel - 1) * 0.2, def.barrel);
-    this.barrel.position.z = 0.55 + 0.15 * def.barrel;
-    this.scope.visible = !!def.scope;
+    this.gun = this.guns[def.id] || this.guns.pistol;
+    for (const id in this.guns) this.guns[id].group.visible = this.guns[id] === this.gun;
     this.twoHanded = !!def.twoHanded;
     this.supportArm.visible = this.supportHand.visible = this.twoHanded;
     for (const piece of this.offArm) piece.visible = !this.twoHanded;

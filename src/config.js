@@ -143,6 +143,14 @@ export const config = {
     gemLifetime: 45,      // seconds before an uncollected gem fades
   },
 
+  // The casino (from the main menu): walk in and bet your banked gold.
+  casino: {
+    minBet: 10,
+    maxBet: 500,
+    walkSpeed: 4.2,       // metres per second on foot
+    turnRate: 2.4,        // radians per second with A / D
+  },
+
   // Gold: dropped by monsters, banked only if you leave through the exit portal, spent in the shop.
   gold: {
     dropChance: 0.1,      // chance an ordinary monster drops a coin

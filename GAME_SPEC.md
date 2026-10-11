@@ -1,4 +1,4 @@
-# DEADGLIDE — Game Spec for Claude Code
+# DEADSLIDE — Game Spec for Claude Code
 
 > Read this whole file before writing code. Build **one milestone at a time**. After each milestone, stop, tell me how to run it, and wait for my feedback before continuing.
 

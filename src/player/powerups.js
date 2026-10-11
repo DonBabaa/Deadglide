@@ -7,6 +7,7 @@
 //   L = its level (how many times you've won it), and
 //   m = its upgrade bonuses { damage, size, rate, count } (multipliers, count is added).
 // To add a power-up: add an entry here and make it act in update().
+// `explain` is the text on the card shown the first time you win it in a run.
 import * as THREE from 'three';
 import { stats, POWER_IDS } from './stats.js';
 import { config } from '../config.js';
@@ -15,30 +16,37 @@ import { glowTexture } from '../world/textures.js';
 export const POWERUPS = {
   shield: {
     name: 'Shield', color: 0x58b7ff, max: 5, description: 'a bubble soaks up damage, then recharges',
+    explain: 'A bubble round you takes the hits instead of your health. Leave it alone for a few seconds and it recharges by itself.',
     numbers: (L, m) => ({ capacity: (30 + 25 * L) * m.size, delay: 7 / m.rate, regen: 15 }),   // HP it holds, seconds unhit before it refills, HP per second
   },
   gas: {
     name: 'TozToxik', color: 0x8dff5a, max: 5, description: 'toxic gas round you and in a trail behind you',
+    explain: 'A cloud of toxic gas follows you and damages every monster inside it. It also hangs in a trail behind you: the faster you skate, the longer the trail.',
     numbers: (L, m) => ({ radius: (4 + 0.6 * (L - 1)) * m.size, dps: (14 + 6 * (L - 1)) * m.damage, linger: 2.2 + 0.3 * (L - 1) }),   // linger: seconds the trail hangs about
   },
   fire: {
     name: 'Ring of Fire', color: 0xff7a2a, max: 5, description: 'fireballs circle you and burn what they touch',
+    explain: 'Fireballs circle you, sweeping in and out, and burn any monster they pass through. Nothing to aim: just skate close.',
     numbers: (L, m) => ({ orbs: Math.min(8, 1 + L + m.count), radius: 3.2 * m.size, damage: (22 + 6 * (L - 1)) * m.damage, spin: 2.6 }),
   },
   seekers: {
     name: 'Grave Seekers', color: 0xc9a6ff, max: 5, description: 'homing skulls hunt the nearest monsters',
+    explain: 'Every second or two, skulls fly out on their own and home in on the nearest monsters.',
     numbers: (L, m) => ({ volley: 1 + Math.floor(L / 2) + m.count, every: 1.6 / m.rate, damage: (26 + 8 * (L - 1)) * m.damage, speed: 30, range: 45 }),
   },
   thorns: {
     name: 'Thorns', color: 0xc8d0d6, max: 5, description: 'anything that gets close is torn up and thrown back',
+    explain: 'A ring of barbs spins round you. Anything that gets close enough to claw you is torn up and thrown back.',
     numbers: (L, m) => ({ radius: 1.9 * m.size, dps: (26 + 12 * (L - 1)) * m.damage, knock: 2.5 }),
   },
   lightning: {
     name: 'Chain Lightning', color: 0x9fe8ff, max: 5, description: 'bolts strike nearby monsters and jump between them',
+    explain: 'Every few seconds a bolt strikes the nearest monster, then jumps on to the ones next to it.',
     numbers: (L, m) => ({ every: 2.6 / m.rate, damage: (45 + 15 * (L - 1)) * m.damage, jumps: 2 + L + m.count, range: 30, hop: 9 }),
   },
   float: {
     name: 'Moon Rocks', color: 0xdfe8ff, max: 4, description: 'lower gravity: bigger air',
+    explain: 'Gravity pulls on you less. You jump higher, hang longer and have more time for tricks and flips.',
     numbers: (L) => ({ gravity: Math.max(0.5, 1 - 0.12 * L) }),
   },
 };

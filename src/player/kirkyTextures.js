@@ -120,3 +120,21 @@ export function deckTexture(kind) {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+// The skull stencilled on the back of Kirky's hoodie (see-through round it).
+export function emblemTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e9e3d2';
+  g.beginPath(); g.ellipse(64, 54, 40, 42, 0, 0, Math.PI * 2); g.fill();   // the dome
+  g.fillRect(40, 78, 48, 34);                                             // the jaw
+  g.globalCompositeOperation = 'destination-out';                         // cut the holes out
+  g.beginPath(); g.ellipse(47, 58, 12, 14, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(81, 58, 12, 14, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.moveTo(64, 72); g.lineTo(57, 88); g.lineTo(71, 88); g.fill();
+  for (let x = 48; x < 88; x += 10) g.fillRect(x, 96, 3, 16);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}

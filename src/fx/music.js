@@ -1,5 +1,6 @@
 // Generated background music: haunted drum & bass / jungle at 172 BPM, which
 // turns to hard rock (same tempo, same key) when the final boss arrives.
+// The casino has its own: a slow swing trio (brushes, walking bass, piano).
 // Nothing is recorded. A small sequencer schedules synthesized drums and sub
 // bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
 // a wailing ghost voice, a broken music box and gusts of wind.
@@ -46,9 +47,21 @@ const RIFFS = [
 const ROCK_KICK = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0.8, 0, 0, 0, 0, 0.6];
 const ROCK_SNARE = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
 
-let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null;
+// Casino: swing at 116 BPM. Each beat is three steps (the swing), so a bar is 12.
+// Two bars per chord round a ii-V-I-VI in C: the bass walks four notes to the bar,
+// the piano stabs a voicing here and there.
+const SWING_STEP = 60 / 116 / 3;
+const LOUNGE = [
+  { walk: [38, 41, 45, 48, 50, 48, 45, 44], chord: [60, 64, 65, 69] },   // Dm9
+  { walk: [43, 47, 50, 53, 55, 53, 50, 49], chord: [59, 64, 65, 69] },   // G13
+  { walk: [36, 40, 43, 45, 48, 45, 43, 40], chord: [59, 62, 64, 67] },   // Cmaj9
+  { walk: [45, 49, 52, 55, 57, 55, 52, 39], chord: [61, 65, 67, 72] },   // A7 (b13), leading back to D
+];
+const LICKS = [[76, 79, 81, 79], [84, 81, 79, 76], [72, 74, 76, 79, 81], [81, 79, 75, 74, 72]];   // vibraphone phrases
 
-// 'dnb' (the usual music) or 'rock' (the boss fight). The new groove starts from bar one, at once.
+let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null, lick = null;
+
+// 'dnb' (the usual music), 'rock' (the boss fight) or 'casino'. The new groove starts from bar one, at once.
 export function setMusicStyle(next) {
   if (next === style) return;
   style = next;
@@ -80,13 +93,14 @@ export function startMusic() {
     if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;   // fell behind (tab was asleep)
     while (nextTime < horizon) {
       schedule(step++, nextTime);
-      nextTime += STEP;
+      nextTime += style === 'casino' ? SWING_STEP : STEP;
     }
   }, 60);
 }
 
 function schedule(index, t) {
   if (style === 'rock') return rock(index, t);
+  if (style === 'casino') return lounge(index, t);
   const bar = Math.floor(index / 16), s = index % 16;
   const chord = CHORDS[Math.floor(bar / 2) % CHORDS.length];
   const intro = bar < 4;                          // atmosphere and hats only
@@ -130,6 +144,84 @@ function rock(index, t) {
     guitar(t, 41 + up, open ? STEP * 1.9 : STEP * 1.25, !open);
     bass(t, STEP * 1.7, 29 + up);
   }
+}
+
+function lounge(index, t) {
+  const S = SWING_STEP, bar = Math.floor(index / 12), s = index % 12, beat = Math.floor(s / 3), on = s % 3 === 0;
+  const { walk, chord } = LOUNGE[Math.floor(bar / 2) % LOUNGE.length], second = bar % 2;
+
+  // Drums, played with brushes: the ride's "ding, ding-a-ding", a hi-hat on two and four, a swish on the snare.
+  if (on) noiseBurst(t, 0.22, 0.05, 'highpass', 7000);
+  if (s % 3 === 2 && beat % 2 === 1) noiseBurst(t, 0.12, 0.032, 'highpass', 7500);
+  if (on && beat % 2 === 1) noiseBurst(t, 0.05, 0.07, 'highpass', 9500);
+  if (on) noiseBurst(t, S * 2.6, 0.022, 'bandpass', 2600, 0.6);
+  if (s === 0 && bar % 4 === 0) drumKick(t, 0.28);
+
+  // Walking bass: a note on every beat.
+  if (on) upright(t, S * 2.8, walk[second * 4 + beat]);
+
+  // Piano: a chord on the one, and again just ahead of three or four, not the same way every bar.
+  if (s === 0 || (s === (bar % 3 === 1 ? 8 : 5) && bar % 2 === 0) || (s === 11 && bar % 4 === 3)) keys(t, s === 0 ? S * 5 : S * 2, chord, s === 0 ? 1 : 0.7);
+
+  // Vibraphone: every few bars it plays a short phrase, swung, then leaves space.
+  if (s === 0 && bar % 4 === 1 && Math.random() < 0.8) lick = { notes: pick(LICKS), at: 0 };
+  if (lick && (s % 3 === 0 || s % 3 === 2)) {
+    vibes(t, lick.notes[lick.at++]);
+    if (lick.at >= lick.notes.length) lick = null;
+  }
+}
+
+// Upright bass: a round, woody pluck.
+function upright(t, time, note) {
+  const ctx = audio.ctx, f = midi(note), out = ctx.createGain();
+  envelope(out, t, 0.5, 0.012, t + time);
+  out.connect(audio.music);
+  for (const [type, ratio, level] of [['sine', 1, 0.7], ['triangle', 2, 0.22], ['sine', 3, 0.06]]) {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f * ratio * 1.02, t);            // the string settles onto the note
+    osc.frequency.exponentialRampToValueAtTime(f * ratio, t + 0.05);
+    gain.gain.value = level;
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + time + 0.05);
+  }
+}
+
+// Piano chord: soft hammers, a little spread from bottom note to top.
+function keys(t, time, notes, loud) {
+  const ctx = audio.ctx, out = ctx.createBiquadFilter();
+  out.type = 'lowpass';
+  out.frequency.value = 2600;
+  out.connect(audio.music);
+  notes.forEach((note, i) => {
+    const begin = t + i * 0.012;
+    for (const [type, ratio, level] of [['triangle', 1, 0.055], ['sine', 2, 0.02]]) {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = midi(note) * ratio;
+      envelope(gain, begin, level * loud, 0.008, begin + time);
+      osc.connect(gain).connect(out);
+      osc.start(begin);
+      osc.stop(begin + time + 0.05);
+    }
+  });
+}
+
+// Vibraphone: a pure note with a slow shimmer that rings on.
+function vibes(t, note) {
+  const ctx = audio.ctx, f = midi(note), osc = ctx.createOscillator(), over = ctx.createOscillator(), gain = ctx.createGain(), shimmer = ctx.createOscillator(), depth = ctx.createGain();
+  osc.frequency.value = f;
+  over.frequency.value = f * 4;
+  envelope(gain, t, 0.07, 0.004, t + 1.6);
+  shimmer.frequency.value = 5.5;
+  depth.gain.value = 0.02;
+  shimmer.connect(depth).connect(gain.gain);
+  const overGain = ctx.createGain();
+  envelope(overGain, t, 0.012, 0.002, t + 0.25);
+  osc.connect(gain).connect(audio.music);
+  over.connect(overGain).connect(audio.music);
+  for (const o of [osc, over, shimmer]) { o.start(t); o.stop(t + 1.65); }
 }
 
 // Distorted guitar: a power chord (root, fifth, octave) of saws into a shared amp.

@@ -1,6 +1,7 @@
 // Settings on the pause menu: music and sound effects (on/off and volume),
 // and mouse sensitivity. The choices are remembered between visits.
 import { config } from '../config.js';
+import { load, store } from '../systems/storage.js';
 import { audio, applyVolume, toggleMusic, playShot } from '../fx/audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -8,13 +9,13 @@ const box = $('audio-controls');
 const musicButton = $('music-toggle'), musicSlider = $('music-volume');
 const sfxButton = $('sfx-toggle'), sfxSlider = $('sfx-volume');
 const sensSlider = $('sens'), sensValue = $('sens-value');
-const KEY = 'deadglide.audio';
+const KEY = 'audio';
 const BASE_SENSITIVITY = config.camera.mouseSensitivity;   // the slider is a percentage of this
 const unit = (n, fallback) => (Number.isFinite(Number(n)) ? Math.min(1, Math.max(0, Number(n))) : fallback);
 
 // Restore last time's settings.
 try {
-  const saved = JSON.parse(localStorage.getItem(KEY));
+  const saved = JSON.parse(load(KEY));
   if (saved) {
     config.audio.musicVolume = unit(saved.volume, config.audio.musicVolume);
     audio.muted = !!saved.muted;
@@ -25,13 +26,11 @@ try {
 } catch {}
 
 function save() {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({
-      volume: config.audio.musicVolume, muted: audio.muted,
-      sfxVolume: config.audio.sfxVolume, sfxMuted: audio.sfxMuted,
-      sensitivity: config.camera.mouseSensitivity / BASE_SENSITIVITY,
-    }));
-  } catch {}
+  store(KEY, JSON.stringify({
+    volume: config.audio.musicVolume, muted: audio.muted,
+    sfxVolume: config.audio.sfxVolume, sfxMuted: audio.sfxMuted,
+    sensitivity: config.camera.mouseSensitivity / BASE_SENSITIVITY,
+  }));
 }
 
 // Make the controls show the current state (call after changing it elsewhere, e.g. the M key).
