@@ -213,6 +213,95 @@ function boss() {
   return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
 }
 
+// ---- Level 2: a giant rat. Low, long, all teeth and tail. ----
+
+function rat() {
+  const fur = 0x3b332b, dark = 0x26201b, pink = 0xa87370, tooth = 0xe8e0c8, eye = 0xff5a3a;
+  const body = part([
+    at(ball(0.2, 1, 0.85, 1.9), fur, 0, 0.27, 0),                               // body
+    at(ball(0.17, 1, 0.8, 1.2), dark, 0, 0.34, -0.16),                          // haunches, humped
+    at(ball(0.13, 1, 1, 1.45), fur, 0, 0.3, 0.42),                              // head
+    at(ball(0.055, 1, 1, 1.7), pink, 0, 0.26, 0.6),                             // snout
+    at(ball(0.055, 1, 1, 0.3), pink, -0.09, 0.42, 0.36), at(ball(0.055, 1, 1, 0.3), pink, 0.09, 0.42, 0.36),   // ears
+    at(box(0.022, 0.06, 0.02), tooth, -0.016, 0.2, 0.66), at(box(0.022, 0.06, 0.02), tooth, 0.016, 0.2, 0.66), // two long teeth
+  ]);
+  const eyes = glowing([at(ball(0.024), eye, -0.065, 0.345, 0.5), at(ball(0.024), eye, 0.065, 0.345, 0.5)]);
+  const tail = part([at(rod(0.008, 0.03, 0.62), pink, 0, 0.22, -0.66, PI / 2)], [0, 0.24, -0.36], [0, 0.6, 0], 0);
+  const leg = (side, front, phase) => part([
+    at(rod(0.028, 0.04, 0.2), fur, side * 0.15, 0.1, front * 0.22),
+    at(ball(0.035, 1, 0.5, 1.6), pink, side * 0.15, 0.015, front * 0.22 + 0.03),
+  ], [side * 0.15, 0.2, front * 0.22], [0.9, 0, 0], phase);
+  return [body, eyes, tail, leg(-1, 1, 0), leg(1, 1, PI), leg(-1, -1, PI), leg(1, -1, 0)];
+}
+
+// ---- Level 2: the spider. Eight legs, a fat abdomen, a cluster of eyes. (The Spider Queen is the same, recoloured.) ----
+
+// A straight piece from one point to another.
+function strut(from, to, rFrom, rTo, color) {
+  const A = new THREE.Vector3(...from), B = new THREE.Vector3(...to), geo = rod(rTo, rFrom, A.distanceTo(B));
+  geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()));
+  return at(geo, color, (A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+}
+
+function spider(c = { body: 0x2b221c, shell: 0x1b1512, leg: 0x211a15, mark: 0x8a1a16, fang: 0xd8d2bf, eye: 0xff3a2a }) {
+  const body = part([
+    at(ball(0.3, 1, 0.85, 1.25), c.body, 0, 0.52, -0.34),                       // abdomen
+    at(ball(0.1, 1.1, 0.3, 1.9), c.mark, 0, 0.75, -0.36),                       // the mark on its back
+    at(ball(0.19, 1.15, 0.7, 1.15), c.shell, 0, 0.42, 0.1),                     // the front half, where the legs join
+    at(ball(0.115), c.body, 0, 0.42, 0.31),                                     // head
+    at(rod(0.008, 0.03, 0.17), c.fang, -0.05, 0.31, 0.4, 0.5), at(rod(0.008, 0.03, 0.17), c.fang, 0.05, 0.31, 0.4, 0.5),   // fangs
+    at(rod(0.012, 0.04, 0.12), c.shell, 0, 0.44, -0.72, -PI / 2),               // spinneret
+  ]);
+  const eyes = glowing([
+    ...[-0.075, -0.027, 0.027, 0.075].map((x) => at(ball(0.019), c.eye, x, 0.46, 0.405 - Math.abs(x) * 0.5)),
+    at(ball(0.024), c.eye, -0.045, 0.515, 0.385), at(ball(0.024), c.eye, 0.045, 0.515, 0.385),
+  ]);
+  // A leg: out and up from the body to a knee higher than its back, then down to the floor, fanned front to back.
+  const leg = (side, k) => {
+    const z0 = 0.2 - k * 0.11, fan = [0.6, 0.22, -0.18, -0.58][k], hip = [side * 0.15, 0.42, z0];
+    const knee = [side * 0.52, 0.82, z0 + fan * 0.55], foot = [side * 0.9, 0, z0 + fan * 1.1];
+    return part([
+      strut(hip, knee, 0.04, 0.03, c.leg), at(ball(0.04), c.body, ...knee), strut(knee, foot, 0.03, 0.012, c.leg),
+    ], hip, [0.22, 0.42, 0], (k % 2 ? PI : 0) + (side > 0 ? PI : 0));
+  };
+  return [body, eyes, ...[0, 1, 2, 3].flatMap((k) => [leg(-1, k), leg(1, k)])];
+}
+const crawler = () => spider();
+const queen = () => spider({ body: 0x23122c, shell: 0x140a1a, leg: 0x1c1024, mark: 0xd0201b, fang: 0xe8e0c8, eye: 0xc17bff });
+
+// ---- Level 2: the bone-thrower. Hooded, bent under a sack of bones, one arm cocked back with a femur. ----
+
+function thrower() {
+  const robe = 0x2d2722, robeDark = 0x1a1714, bone = 0xd8d2bf, dark = 0x0c0b0a, sack = 0x5e4d34, eye = 0x8dff5a;
+  const femur = (x, y, z, rx, length = 0.4) => [
+    at(rod(0.022, 0.022, length), bone, x, y, z, rx),
+    at(ball(0.04), bone, x, y + Math.cos(rx) * length / 2, z + Math.sin(rx) * length / 2),
+    at(ball(0.04), bone, x, y - Math.cos(rx) * length / 2, z - Math.sin(rx) * length / 2),
+  ];
+  const body = part([
+    at(rod(0.17, 0.36, 1.1), robe, 0, 0.55, 0),                                 // robe to the ground
+    at(box(0.5, 0.05, 0.5), robeDark, 0, 0.03, 0),                              // its ragged hem
+    at(cap(0.21, 0.3, 0.85), robe, 0, 1.26, 0.06, 0.3),                         // bent back
+    at(ball(0.21, 1, 1, 1.1), robeDark, 0, 1.6, 0.16),                          // hood
+    at(ball(0.13, 1, 1.1, 1), bone, 0, 1.58, 0.24),                             // the skull inside it
+    at(ball(0.036), dark, -0.05, 1.6, 0.345), at(ball(0.036), dark, 0.05, 1.6, 0.345),
+    at(box(0.1, 0.05, 0.05), bone, 0, 1.49, 0.33),                              // jaw
+    at(ball(0.27, 1, 1.15, 0.9), sack, -0.04, 1.2, -0.3),                       // the sack
+    ...femur(-0.12, 1.52, -0.3, 0.5, 0.36), ...femur(0.08, 1.5, -0.36, -0.4, 0.34),   // what's in it, sticking out
+  ]);
+  const eyes = glowing([at(ball(0.02), eye, -0.05, 1.6, 0.37), at(ball(0.02), eye, 0.05, 1.6, 0.37)]);
+  const throwing = part([
+    at(rod(0.05, 0.06, 0.36), robe, 0.3, 1.56, -0.04, -0.5),                    // arm, cocked back over his shoulder
+    at(rod(0.028, 0.034, 0.3), bone, 0.3, 1.84, -0.18, -0.3),
+    ...femur(0.3, 2.06, -0.22, 1.0, 0.42),                                      // the next one
+  ], [0.27, 1.42, 0], [0.9, 0, 0], 0);
+  const other = part([
+    at(rod(0.05, 0.06, 0.4), robe, -0.3, 1.2, 0.08, 0.25),
+    at(rod(0.026, 0.032, 0.3), bone, -0.3, 0.9, 0.16, 0.4),
+  ], [-0.27, 1.42, 0], [0.4, 0, 0], PI);
+  return [body, eyes, throwing, other];
+}
+
 // ---- Level 2's boss: a giant made of skulls, held together by nothing you can see. ----
 // (Modelled at normal size; the horde draws him several times bigger.)
 
@@ -265,4 +354,4 @@ function boss2() {
   return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
 }
 
-export const ENEMY_PARTS = { shambler, rattler, wraith, boss, boss2 };
+export const ENEMY_PARTS = { shambler, rattler, wraith, rat, crawler, thrower, queen, boss, boss2 };

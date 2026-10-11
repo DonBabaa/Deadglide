@@ -3,7 +3,7 @@
 // Physics samples this directly; chunkMesh.js builds matching meshes.
 import { CHUNK, generateChunk, chunkHeight, chunkBase, chunkPaved } from './worldgen.js';
 import { world } from './level.js';
-import { cataPlace, cataConfine, cataAirFloor, floorAt, route, CATA, EDGE } from './catacombs.js';
+import { cataPlace, cataConfine, cataAirFloor, floorAt, route, CATA, EDGE, loopNear, pipePoint, pipeCoord, pipeAround } from './catacombs.js';
 
 // World seed: random each run, or fixed with ?seed=1234 in the URL.
 const fromUrl = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('seed')) : 0;
@@ -55,6 +55,15 @@ export function blockedAt(x, y, z) {
   if (d > EDGE - 0.1) return h <= 0 || Math.hypot(d, h - R) >= R;
   return y <= heightAt(x, z);
 }
+// The Catacombs are a loop: things repeat every lap. This is the copy of `z` nearest to `near` (elsewhere, just z).
+// Whatever lies on the floor waiting to be picked up is kept at the copy of its spot nearest the player, so you
+// find it again whether you carry on round or turn back.
+export const lapNear = (z, near) => (world.level === 2 ? loopNear(z, near) : z);
+// Round the pipe, for monsters that climb (see catacombs.js): a place on its surface is (s, z).
+export const onPipe = (s, z, out) => pipePoint(s, z, SEED, out);
+export const pipeS = (x, y, z) => pipeCoord(x, y, z, SEED);
+export const pipeRound = (z) => pipeAround(z, SEED);
+export const hasPipe = () => world.level === 2;
 // How high the roof is (the Catacombs have one; the Cemetery is open sky).
 export const ceilingAt = (z) => (world.level === 2 ? floorAt(z) + CATA.ceiling : Infinity);
 // Keep the camera (a THREE.Vector3) out of solid rock: in the Catacombs, inside the pipe (a good

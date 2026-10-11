@@ -1,5 +1,6 @@
 // The exit portal. It tears open where the final boss died; ride into it to
 // finish the level.
+import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
 
 const RADIUS = 3.4;   // of the ring, in metres
@@ -47,6 +48,7 @@ export class Portal {
   update(dt, player) {
     if (!this.active) return false;
     this.age += dt;
+    this.position.z = lapNear(this.position.z, player.pos.z);
     const grow = Math.min(1, this.age / 1.2), pulse = 1 + Math.sin(this.age * 4) * 0.04;
     this.gate.scale.setScalar(grow * grow * (3 - 2 * grow) * pulse);
     // Always face the player, so it's a doorway from wherever you come at it.

@@ -46,10 +46,10 @@ export const config = {
     stepHeight: 0.45,     // ledges taller than this are walls
     // The full pipe (the Catacombs): ride up a wall, on past vertical, across the roof and down the other side.
     pipeGravity: 0.25,    // how much of gravity you feel on the pipe's walls (1 would make the loop all but impossible)
-    ceilingReach: 0.5,    // jump to within this far of the roof (metres) and the board is pulled onto it
+    ceilingReach: 0.2,    // jump to within this far of the roof (metres) and the board is pulled onto it
     ceilingSpeed: 6.4,     // you always set off across the roof at least this fast
-    ceilingDrag: 4.8,       // metres per second lost every second you spend past vertical
-    ceilingMinSpeed: 9.6,   // slower than this past vertical and you drop off
+    ceilingDrag: 7.7,       // metres per second lost every second you spend past vertical
+    ceilingMinSpeed: 15.4,   // slower than this past vertical and you drop off
     wallBounce: 0.2,
   },
 
@@ -105,6 +105,7 @@ export const config = {
     baseAlive: 14,        // monsters the director keeps around you in wave 1
     alivePerWave: 9,      // ...plus this many per wave after that
     maxAlive: 220,
+    mobScale: 2,          // how big ordinary monsters and elites are drawn (and are to hit, and to be hit by); 1 = life size. Bosses have their own sizes in enemies/types.js
     baseSpawnRate: 3,     // monsters per second while topping up
     spawnRatePerWave: 1,
     hpGrowth: 0.15,       // extra monster health per wave (0.15 = +15%)
@@ -122,6 +123,8 @@ export const config = {
     rattlerWave: 3,       // skeletons join in from this wave
     wraithWave: 5,        // ghosts join in from this wave
     wraithFlight: 4,      // ghosts that arrive together when a ghost wave starts (+2 each wave after the first)
+    miniWave: 4,          // (level 2) the Spider Queen arrives when this wave starts
+    miniHp: 3200,
     bossWave: 7,          // the final boss arrives when this wave starts; it is the last wave
     bossHp: 8000,
     bossCrowd: 0.45,      // the ordinary crowd is thinned to this fraction during the boss fight
@@ -142,7 +145,7 @@ export const config = {
   xp: {
     firstLevel: 5,        // XP needed for level 2...
     perLevel: 4,          // ...and this much more for each level after
-    maxLevel: 30,         // the level cap; after it, gems are worth points instead
+    maxLevel: 20,         // the level cap; after it, gems are worth points instead
     cappedGemPoints: 15,  // ...this many per XP
     pickupRadius: 7,      // gems this close fly to you
     pullSpeed: 32,
@@ -164,7 +167,7 @@ export const config = {
     eliteGold: 25,
     bossGold: 150,
     overtimeBonus: 2,     // after the boss, ordinary monsters drop coins this many times as often
-    lifetime: 40,         // seconds before an uncollected coin vanishes
+    lifetime: 90,         // seconds before an uncollected coin vanishes
   },
 
   // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).
@@ -184,11 +187,11 @@ export const config = {
     chestChance: 0.03,    // chance a (non-elite) monster drops a chest; elites always do
     heartChance: 0.03,    // chance a monster drops a small heart
     heartHeal: 10,        // HP a heart restores
-    heartLifetime: 30,    // seconds before an uncollected heart fades
+    heartLifetime: 60,    // seconds before an uncollected heart fades
     heartPull: 5,         // hearts this close drift toward you
     weaponWeight: 1.5,    // how often each unowned gun turns up in a chest (ordinary items are 1 to 4)
     pickupRadius: 2.4,    // ride this close to open one
-    chestLifetime: 60,    // seconds before an unopened chest disappears
+    chestLifetime: 100,    // seconds before an unopened chest disappears
   },
 
   // Settings shared by every gun. Each gun's own numbers are in player/weapons.js.

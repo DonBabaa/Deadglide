@@ -15,6 +15,11 @@
 //   beam        true: an instant laser that goes through everything in its path until it hits the world
 //   scope       true: aiming looks down a scope
 //   twoHanded   true: Kirky holds it with both hands
+//   flame       true: it shoots fire. Each puff drifts, slows and burns through everything it passes;
+//               whatever it touches is set alight for burn.seconds, taking burn.dps (see Horde.ignite)
+//   chill       { seconds, slow }: what it hits moves at `slow` times its speed for a while (Horde.chill)
+//   lance       true: drawn as a big shard of ice; shatter = when it breaks, everything within this many metres is chilled too
+//   blade       true: drawn as a spinning sawblade; bounce = how many times it glances off the world before it stops
 
 export const WEAPONS = {
   pistol: {
@@ -44,6 +49,30 @@ export const WEAPONS = {
     damage: 45, fireRate: 0.9, pellets: 1, spreadHip: 1, spreadAim: 0.3, speed: 55, life: 4,
     pierce: 0, gravity: 14, blast: 6, flash: 1.3, tracer: [4, 0.35],
     kick: 3, twoHanded: true,
+  },
+  revolver: {
+    name: 'Hand Cannon', description: 'Six huge rounds. Slow, accurate, and each one goes through three of them.',
+    damage: 48, fireRate: 2.6, pellets: 1, spreadHip: 1.2, spreadAim: 0.1, speed: 220, life: 1.2,
+    pierce: 2, gravity: 0, blast: 0, flash: 1.7, tracer: [1.6, 1.4],
+    knock: 2.2, kick: 4,
+  },
+  cryo: {
+    name: 'Frostbite', description: 'Hurls great lances of ice. Each goes through four of them, chills what it hits, and bursts into a freezing cloud.',
+    damage: 32, fireRate: 3.2, pellets: 1, spreadHip: 1.6, spreadAim: 0.4, speed: 80, life: 1.5,
+    pierce: 3, gravity: 1.5, blast: 0, flash: 0.4, tracer: [1, 1],
+    knock: 1.4, kick: 2.2, lance: true, chill: { seconds: 3, slow: 0.35 }, shatter: 3.5,
+  },
+  saw: {
+    name: 'Sawblade Launcher', description: 'Spinning blades that cut through everything in their way and bounce off walls, floor and roof.',
+    damage: 26, fireRate: 2.2, pellets: 1, spreadHip: 1.5, spreadAim: 0.4, speed: 58, life: 4.5,
+    pierce: Infinity, gravity: 7, blast: 0, flash: 0.3, tracer: [1, 1],
+    knock: 0.6, kick: 2, twoHanded: true, blade: true, bounce: 10,
+  },
+  flamer: {
+    name: 'Flamethrower', description: 'A jet of fire. Short range, but everything it touches burns, and keeps burning.',
+    damage: 4, fireRate: 30, pellets: 1, spreadHip: 5, spreadAim: 3.5, speed: 30, life: 0.55,
+    pierce: Infinity, gravity: 0, blast: 0, flash: 0.5, tracer: [1, 1],
+    knock: 0, kick: 0.12, twoHanded: true, flame: true, burn: { seconds: 3, dps: 14 },
   },
 };
 for (const id in WEAPONS) Object.assign(WEAPONS[id], { id, knock: WEAPONS[id].knock ?? 1, kick: WEAPONS[id].kick ?? 1 });

@@ -186,6 +186,31 @@ const SHOTS = {
     hiss('bandpass', 2000, 900, 0.05, 0.2, 0.27); tone('square', 430, 300, 0.035, 0.06, 0.27);
     hiss('bandpass', 2600, 1300, 0.045, 0.18, 0.38); tone('square', 560, 420, 0.03, 0.05, 0.38);
   },
+  // Hand Cannon: a magnum. Bigger and longer than the pistol, with a heavy thump under it.
+  revolver(r) {
+    hiss('highpass', 4600 * r, 2000, 0.025, 0.55);
+    blast(3600 * r, 150, 0.24, 0.6);
+    tone('sine', 120 * r, 34, 0.32, 0.85);
+    tone('triangle', 260 * r, 70, 0.1, 0.3);
+    hiss('lowpass', 1000, 120, 0.9, 0.2, 0.04);
+  },
+  // Frostbite: a lance of ice. A crack, a rush of cold air, and a glassy ring.
+  cryo(r) {
+    tone('sine', 900 * r, 240, 0.14, 0.4);
+    hiss('highpass', 6500 * r, 2600, 0.16, 0.22);
+    hiss('bandpass', 1400, 500, 0.12, 0.2);
+    tone('triangle', 3400 * r, 3000, 0.22, 0.06, 0.02);
+    tone('sine', 5100 * r, 4700, 0.3, 0.035, 0.03);
+  },
+  // Sawblade Launcher: steel leaving steel. A spring's clack, then the blade ringing as it spins up.
+  saw(r) {
+    tone('sine', 170 * r, 70, 0.07, 0.45);
+    hiss('highpass', 6200, 3000, 0.1, 0.22);
+    tone('sawtooth', 1850 * r, 2650, 0.2, 0.11);
+    tone('square', 2780 * r, 3950, 0.24, 0.05);
+    tone('sine', 4170 * r, 4170, 0.42, 0.06, 0.01);
+    tone('sine', 6230 * r, 6230, 0.3, 0.03, 0.01);
+  },
   // Launcher: a hollow "thoomp" out of the tube.
   launcher(r) {
     tone('sine', 200 * r, 42, 0.32, 0.85);
@@ -536,6 +561,64 @@ export function playBones(seconds = 0.6) {
   }
   hiss('bandpass', 1800, 700, seconds, 0.05);
 }
+// A sawblade glancing off stone: a bright ring.
+export function playClang() {
+  if (!ready() || !spaced('clang', 0.05)) return;
+  const f = 2900 + Math.random() * 1100;
+  tone('sine', f, f, 0.3, 0.07);
+  tone('sine', f * 1.51, f * 1.51, 0.22, 0.04);
+  tone('square', f * 0.7, f * 0.5, 0.04, 0.05);
+  hiss('highpass', 7000, 4000, 0.05, 0.12);
+}
+
+// The flamethrower's roar: one continuous sound that runs for as long as the trigger is held.
+// Put a recording called flamer.mp3 (or .ogg / .wav) in src/assets/sounds/ and it is looped instead of this one.
+let flame = null;
+export function setFlame(on) {
+  if (!ready() || (!flame && !on)) return;
+  const ctx = audio.ctx;
+  if (!flame) {
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(audio.sfx);
+    if (samples.flamer) {
+      const src = ctx.createBufferSource();
+      src.buffer = samples.flamer;
+      src.loop = true;
+      src.connect(out);
+      src.start();
+      flame = { out, level: 0.9 };
+    } else {
+      // Built from noise: a low roar whose tone flutters, the rush of gas over it, a hiss on top, and a rumble underneath.
+      const noise = (rate) => { const n = ctx.createBufferSource(); n.buffer = audio.noise; n.loop = true; n.playbackRate.value = rate; n.start(); return n; };
+      const filter = (type, f, q = 0.7) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
+      const level = (v) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+      const roar = filter('lowpass', 560);
+      noise(0.6).connect(roar).connect(level(1)).connect(out);
+      noise(0.9).connect(filter('bandpass', 1500, 0.5)).connect(level(0.4)).connect(out);
+      noise(1.3).connect(filter('highpass', 4500)).connect(level(0.1)).connect(out);
+      for (const [hz, depth] of [[11, 190], [3.7, 120]]) {   // two wobbles that never line up: it gutters like a real flame
+        const lfo = ctx.createOscillator(), amount = level(depth);
+        lfo.frequency.value = hz;
+        lfo.connect(amount).connect(roar.frequency);
+        lfo.start();
+      }
+      const rumble = ctx.createOscillator();
+      rumble.type = 'sawtooth';
+      rumble.frequency.value = 48;
+      rumble.connect(filter('lowpass', 130)).connect(level(0.5)).connect(out);
+      rumble.start();
+      flame = { out, level: 0.5 };
+    }
+  }
+  if (flame.on === on) return;
+  flame.on = on;
+  const t = ctx.currentTime;
+  flame.out.gain.cancelScheduledValues(t);
+  flame.out.gain.setTargetAtTime(on ? flame.level : 0, t, on ? 0.05 : 0.1);
+  if (on) { tone('sine', 150, 45, 0.25, 0.35); hiss('lowpass', 2200, 400, 0.3, 0.3); }   // the whoomp as it lights
+}
+
 // One coin landing on the pile. progress 0..1 through the count: they ring higher as it goes.
 export function playCoin(progress = 0) {
   if (!ready()) return;

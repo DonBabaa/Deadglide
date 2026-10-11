@@ -169,6 +169,21 @@ export class SkaterModel {
       ],
       toothpick: [part(new THREE.CylinderGeometry(0.003, 0.0045, 0.12, 5).rotateX(Math.PI / 2), wood, 0, 0, 0.06)],
       nothing: [],
+      pipe: [   // a briar pipe (it smokes)
+        part(new THREE.CylinderGeometry(0.007, 0.009, 0.09, 6).rotateX(Math.PI / 2), std(0x1c1410, 0.5), 0, 0, 0.045),
+        part(new THREE.CylinderGeometry(0.024, 0.018, 0.045, 10), std(0x4a2a16, 0.55), 0, 0.012, 0.1),
+        part(new THREE.CylinderGeometry(0.019, 0.019, 0.006, 10), std(0x100c0a, 0.9), 0, 0.036, 0.1),
+      ],
+      rose: [   // held between his teeth by the stem
+        part(new THREE.CylinderGeometry(0.004, 0.004, 0.15, 5).rotateX(Math.PI / 2), std(0x2f6a35, 0.7), 0, 0, 0.07),
+        part(new THREE.SphereGeometry(0.03, 10, 8), std(0xb3101e, 0.5), 0, 0.004, 0.155),
+        part(new THREE.SphereGeometry(0.018, 8, 6), std(0x7a0a14, 0.5), 0, 0.012, 0.165),
+        part(new THREE.SphereGeometry(0.014, 6, 5).scale(1, 0.4, 1.6), std(0x2f6a35, 0.7), 0.012, 0, 0.09),
+      ],
+      bone: [
+        part(new THREE.CylinderGeometry(0.006, 0.006, 0.11, 6).rotateX(Math.PI / 2), std(0xd8d2bf, 0.6), 0, 0, 0.06),
+        part(new THREE.SphereGeometry(0.011, 6, 5), std(0xd8d2bf, 0.6), 0, 0, 0.118), part(new THREE.SphereGeometry(0.011, 6, 5), std(0xd8d2bf, 0.6), 0, 0, 0.004),
+      ],
       cigar: [   // (a casino prize)
         part(new THREE.CylinderGeometry(0.019, 0.017, 0.125, 10).rotateX(Math.PI / 2), std(0x4a2e18, 0.8), 0, 0, 0.068),
         part(new THREE.CylinderGeometry(0.0195, 0.0195, 0.018, 10).rotateX(Math.PI / 2), std(0xd9b24a, 0.35), 0, 0, 0.04),
@@ -382,7 +397,7 @@ export class SkaterModel {
     }
     M.urethane.color.set(look.wheels);
     for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke;
-    this.smoking = this.ember.visible = look.smoke === 'cigarette' || look.smoke === 'cigar';
+    this.smoking = this.ember.visible = look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe';
     this.look = { ...look };
     this.paintGun();   // (the gun may have gone gold)
   }

@@ -13,7 +13,7 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playBones, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossIntro, playBossThrow, playBones, playClang, setFlame, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
@@ -451,6 +451,11 @@ function handleEvents() {
     else if (e.type === 'wraiths') hud.popup('They can fly now', 'alert');
     else if (e.type === 'boss') cutscenes.boss();   // (his name, his roar and the music change are all in there)
     else if (e.type === 'bossThrow') playBossThrow();
+    else if (e.type === 'throw') playBones(0.2);   // a bone-thrower lets fly
+    else if (e.type === 'clatter') playBones(0.15);   // ...and it lands
+    else if (e.type === 'miniboss') cutscenes.queen();   // the Spider Queen arrives
+    else if (e.type === 'miniDead') hud.popup(`${e.name} is dead`, 'loot');
+    else if (e.type === 'webbed') hud.popup('Webbed!', 'alert');
     else if (e.type === 'bossShed') { playBones(0.7); chase.onSloppy(); }   // a pack of skeletons drops out of him
     else if (e.type === 'splat') playSplat();
     else if (e.type === 'bossDead') {
@@ -465,6 +470,8 @@ function handleEvents() {
       if (e.headshot) playHeadshot();
       if (!e.quiet) hud.hitMarker('kill');
       xp.drop(e.x, e.y, e.z, e.xp);
+      const pact = powerups.onKill();   // (Blood Pact: enough kills heal you)
+      if (pact && hp < maxHp()) { run.heal(pact); playHeal(); }
       loot.maybeDrop(e);
       if (!creative) gold.maybeDrop(e, horde.finished);
       const milestone = score.kill(e.score, { elite: e.elite, headshot: e.headshot, airborne: airborne() });
@@ -579,6 +586,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const [mouseDX, mouseDY] = input.takeMouse();
+  if (paused || inMenu || dead) setFlame(false);
 
   if (casino.active) {   // in the casino (a room of its own, reached from the menu)
     casino.update(dt, input);
@@ -625,12 +633,15 @@ function frame(now) {
       if (weapon.def.beam) {
         playSniper();
         hud.scopeFlash();
-      } else playShot(weapon.def.id);
+      } else if (!weapon.def.flame) playShot(weapon.def.id);   // (the flamethrower roars for as long as it's held: see below)
     }
+    setFlame(firing && !!weapon.def.flame);
+    if (weapon.clangs) { weapon.clangs = 0; playClang(); }   // a sawblade bounced
 
     handleEvents();
     runTime = horde.time;
-    hud.boss(horde.boss ? horde.boss.hp / horde.boss.maxHp : null, horde.boss?.T.title);
+    const big = horde.boss || horde.mini;   // the boss, or the mini-boss: either gets the health bar
+    hud.boss(big ? big.hp / big.maxHp : null, big?.T.title);
 
     // The exit portal (open once the boss is dead): ride into it to finish the level.
     const exit = portal.update(dt, skater);

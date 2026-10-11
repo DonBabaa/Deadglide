@@ -11,6 +11,7 @@
 // Chests hold one of two categories: ITEMS (below) or a weapon. Every gun in
 // player/weapons.js that you've unlocked in the shop and don't own yet is in the draw; once you have them
 // all, chests only hold items.
+import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
@@ -147,6 +148,7 @@ export class Loot {
     for (let i = this.chests.length - 1; i >= 0; i--) {
       const c = this.chests[i];
       c.age += dt;
+      c.mesh.position.z = lapNear(c.mesh.position.z, player.pos.z);
       c.mesh.scale.setScalar(Math.min(1, c.age * 4));        // pop in
       c.box.position.y = 0.25 + Math.sin(c.age * 3) * 0.15;  // hover, turning slowly
       c.box.rotation.y += dt * 1.2;
@@ -169,6 +171,7 @@ export class Loot {
     for (let i = this.hearts.length - 1; i >= 0; i--) {
       const h = this.hearts[i];
       h.age += dt;
+      h.z = lapNear(h.z, player.pos.z);
       v.set(player.pos.x - h.x, player.pos.y + 0.8 - h.y, player.pos.z - h.z);
       const dist = v.length();
       if (dist < 1.3 && wanted) {

@@ -14,7 +14,7 @@ import { seededRandom } from './random.js';
 import * as F from './features.js';
 import { hillHeight } from './noise.js';
 import { world } from './level.js';
-import { cataHeight, cataFloor, fillCatacombs } from './catacombs.js';
+import { cataHeight, cataFloor, fillCatacombs, lapChunk } from './catacombs.js';
 
 export const CHUNK = 96;        // metres per chunk
 export const SLOT = CHUNK / 3;  // metres per feature slot
@@ -23,9 +23,9 @@ const TOO_STEEP = 0.28;         // slots sloping more than this (rise / run) are
 
 // Feature weights per district type.
 const DISTRICTS = {
-  park: { funbox: 2, kicker: 3, rail: 3, quarter: 2, halfpipe: 1, bowl: 2, mound: 1, platform: 2, tombs: 1, graves: 1, empty: 3 },
+  park: { funbox: 2, kicker: 3, rail: 3, quarter: 2, halfpipe: 1, bowl: 2, mound: 1, platform: 2, tombs: 1, graves: 1, gap: 2, spine: 2, ledges: 2, megaramp: 1, empty: 3 },
   graveyard: { graves: 6, mausoleum: 2, monument: 2, trees: 2, tombs: 2, rail: 1, kicker: 1, empty: 3 },
-  mixed: { graves: 3, funbox: 1, kicker: 2, rail: 2, quarter: 1, bowl: 1, mound: 2, platform: 1, mausoleum: 1, monument: 1, trees: 1, tombs: 1, empty: 4 },
+  mixed: { graves: 3, funbox: 1, kicker: 2, rail: 2, quarter: 1, bowl: 1, mound: 2, platform: 1, mausoleum: 1, monument: 1, trees: 1, tombs: 1, gap: 1, spine: 1, ledges: 1, megaramp: 1, empty: 4 },
 };
 
 const DIRS = [0, 90, 180, 270];
@@ -94,6 +94,45 @@ const FEATURES = {
   mound(c, x, z, rand) {
     c.mounds.push({ x, z, r: range(rand, 11, 15), h: range(rand, 2.5, 4.5) });
     return rand() < 0.5;
+  },
+
+  // A gap: two kickers facing each other, with a rail strung between their lips. Clear it, or grind it.
+  gap(c, x, z, rand) {
+    const facing = pick(rand, DIRS), ux = Math.cos(F.rad(facing)), uz = Math.sin(F.rad(facing)), half = range(rand, 5, 7);
+    const shape = { width: 6, radius: 9, angle: 32 }, start = half + F.kicker({ x: 0, z: 0, ...shape }).lipU;   // (each kicker's lip is `half` metres from the middle)
+    const up = F.kicker({ x: x - ux * start, z: z - uz * start, facing, ...shape });
+    c.props.push(up, F.kicker({ x: x + ux * start, z: z + uz * start, facing: facing + 180, ...shape }));
+    if (rand() < 0.6) c.railSpecs.push([x - ux * half, z - uz * half, x + ux * half, z + uz * half, up.lipY + 0.25, up.lipY + 0.25]);
+    return true;
+  },
+
+  // A spine: two quarter pipes back to back. Up one side, over the top, down the other.
+  spine(c, x, z, rand) {
+    const facing = pick(rand, [0, 90]), ux = Math.cos(F.rad(facing)), uz = Math.sin(F.rad(facing));
+    const shape = { width: range(rand, 11, 15), radius: 5, angle: 60, deck: 0.3 }, back = F.quarter({ x: 0, z: 0, ...shape }).u1 - 0.15;   // (how far back from the top each one starts)
+    c.props.push(
+      F.quarter({ x: x - ux * back, z: z - uz * back, facing, ...shape }),
+      F.quarter({ x: x + ux * back, z: z + uz * back, facing: facing + 180, ...shape }));
+    return true;
+  },
+
+  // Ledges: three long stone blocks stepping up, side by side, with a rail along the tallest.
+  ledges(c, x, z, rand) {
+    const facing = pick(rand, DIRS), ux = Math.cos(F.rad(facing)), uz = Math.sin(F.rad(facing)), length = range(rand, 9, 12);
+    [0.4, 0.75, 1.1].forEach((height, i) => {
+      const off = (i - 1) * 3.1, along = (i - 1) * 2.5;   // (each one a little further on than the last)
+      c.props.push(F.box({ x: x - uz * off + ux * along, z: z + ux * off + uz * along, facing, length, width: 2.2, height }));
+    });
+    const rx = x - uz * 3.1 + ux * 2.5, rz = z + ux * 3.1 + uz * 2.5, half = length / 2 - 0.6;
+    c.railSpecs.push([rx - ux * half, rz - uz * half, rx + ux * half, rz + uz * half, 0.45, 0.45]);
+    return true;
+  },
+
+  // One enormous kicker.
+  megaramp(c, x, z, rand) {
+    const facing = pick(rand, DIRS), ux = Math.cos(F.rad(facing)), uz = Math.sin(F.rad(facing));
+    c.props.push(F.kicker({ x: x - ux * 13, z: z - uz * 13, facing, width: range(rand, 8, 10), radius: 14, angle: range(rand, 36, 41) }));
+    return true;
   },
 
   // Raised platform: bank up one side, handrail down the other.
@@ -230,13 +269,13 @@ function chunkSeed(cx, cz, seed) {
 }
 
 export function generateChunk(cx, cz, seed) {
-  const rand = seededRandom(chunkSeed(cx, cz, seed));
+  const rand = seededRandom(chunkSeed(cx, world.level === 2 ? lapChunk(cz) : cz, seed));   // (the Catacombs are a loop: every lap is built the same)
   const c = {
     cx, cz, seed, level: world.level, x0: cx * CHUNK, z0: cz * CHUNK,
     props: [], rails: [], railSpecs: [], bowls: [], mounds: [], plots: [],
     dirt: [], flames: [], lamps: [], paved: new Uint8Array(9),
   };
-  if (c.level === 2) fillCatacombs(c, rand);
+  if (c.level === 2) fillCatacombs(c, rand, FEATURES);
   else fillCemetery(c, rand, seed);
 
   // Stand everything on the ground: rigid props at the height under their centre,

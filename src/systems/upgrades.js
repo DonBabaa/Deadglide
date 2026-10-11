@@ -48,6 +48,11 @@ export const UPGRADES = [
   { id: 'boltDamage', requires: 'lightning', name: 'Chain Lightning: More Volts', description: '+35% bolt damage.', rarity: 'common', max: 5, apply: (s) => { s.power.lightning.damage += 0.35; } },
   { id: 'shieldSize', requires: 'shield', name: 'Shield: Thicker', description: '+20% shield capacity.', rarity: 'common', max: 4, apply: (s) => { s.power.shield.size += 0.2; } },
   { id: 'shieldRate', requires: 'shield', name: 'Shield: Quick Recharge', description: 'The shield starts recharging 15% sooner.', rarity: 'common', max: 4, apply: (s) => { s.power.shield.rate += 0.15; } },
+  { id: 'frostSize', requires: 'frost', name: 'Frost Aura: Wider', description: '+20% frost radius.', rarity: 'common', max: 4, apply: (s) => { s.power.frost.size += 0.2; } },
+  { id: 'frostDamage', requires: 'frost', name: 'Frost Aura: Bitter', description: '+40% frost damage.', rarity: 'common', max: 5, apply: (s) => { s.power.frost.damage += 0.4; } },
+  { id: 'rainCount', requires: 'rain', name: 'Bone Rain: Downpour', description: '+1 bone in every fall.', rarity: 'rare', max: 3, apply: (s) => { s.power.rain.count += 1; } },
+  { id: 'rainRate', requires: 'rain', name: 'Bone Rain: Restless', description: 'Bones fall 25% more often.', rarity: 'common', max: 4, apply: (s) => { s.power.rain.rate += 0.25; } },
+  { id: 'rainDamage', requires: 'rain', name: 'Bone Rain: Heavier', description: '+35% bone damage.', rarity: 'common', max: 5, apply: (s) => { s.power.rain.damage += 0.35; } },
   { id: 'skin', name: 'Thick Skin', description: '+0.2 s of safety after taking a hit.', rarity: 'common', max: 2, apply: (s) => { s.invulnerable += 0.2; } },
 ];
 

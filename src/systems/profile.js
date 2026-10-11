@@ -32,9 +32,13 @@ export const UNLOCKS = [
 // unlock: the price to make it turn up in chests (0 = it always can). start: the price to be able to begin a run with it.
 export const GUNS = [
   { id: 'machineGun', unlock: 0, start: 300 },
+  { id: 'revolver', unlock: 300, start: 700 },
   { id: 'shotgun', unlock: 400, start: 800 },
+  { id: 'cryo', unlock: 700, start: 1500 },
   { id: 'launcher', unlock: 900, start: 1800 },
+  { id: 'saw', unlock: 1100, start: 2200 },
   { id: 'sniper', unlock: 1500, start: 3000 },
+  { id: 'flamer', unlock: 1800, start: 3500 },
 ].map((g) => ({ ...g, name: WEAPONS[g.id].name, description: WEAPONS[g.id].description }));
 
 // cosmetics: see systems/cosmetics.js (owned: things bought, look: what's worn in each slot, gold / goldOff: gold gun skins owned / switched off)

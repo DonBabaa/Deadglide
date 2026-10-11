@@ -23,7 +23,7 @@ const BASE = {
 // HotBox power-ups (see player/powerups.js). For each one:
 //   level = how many times you've won it (0 = don't have it)
 //   damage / size / rate = multipliers from level-up upgrades; count = extra orbs, skulls or jumps
-export const POWER_IDS = ['shield', 'gas', 'fire', 'seekers', 'thorns', 'lightning', 'float'];
+export const POWER_IDS = ['shield', 'gas', 'fire', 'seekers', 'thorns', 'lightning', 'float', 'frost', 'rain', 'pact'];
 const freshPowers = () => Object.fromEntries(POWER_IDS.map((id) => [id, { level: 0, damage: 1, size: 1, rate: 1, count: 0 }]));
 
 export const stats = { ...BASE, taken: {}, power: freshPowers() };   // taken: upgrade id -> how many times picked

@@ -3,7 +3,7 @@
 // power-up. Leave early and the smoke thins out again. One zone is up at a time.
 import * as THREE from 'three';
 import { config } from '../config.js';
-import { heightAt, groundAt, placeAt } from '../world/terrain.js';
+import { heightAt, groundAt, placeAt, lapNear } from '../world/terrain.js';
 import { glowTexture } from '../world/textures.js';
 
 const HAZE = 0xc9b8ff;   // every zone looks the same: you can't tell what's inside
@@ -84,6 +84,7 @@ export class HotBox {
     }
     const zone = this.zone;
     zone.age += dt;
+    this.group.position.z = zone.z = lapNear(zone.z, player.pos.z);
     const inside = Math.hypot(player.pos.x - zone.x, player.pos.z - zone.z) < H.radius && Math.abs(player.pos.y - zone.y) < 6;
     zone.progress = Math.max(0, Math.min(1, zone.progress + (inside ? dt / H.captureTime : -dt / H.drainTime)));
 

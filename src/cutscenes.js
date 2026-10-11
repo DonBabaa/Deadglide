@@ -132,6 +132,49 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       });
     },
 
+    // ---- The Spider Queen arrives (level 2's mini-boss) ---------------------------------
+    // Three shots, cut hard, each on a white flash: straight up from under her as she hangs on the roof;
+    // right in on her eyes; then from down by Kirky, looking up at her, as her name comes across.
+    queen() {
+      const e = horde.mini;
+      if (!e) return;
+      const size = e.T.height * e.scale, CUTS = [0, 1.1, 2.0];
+      playDread();
+      begin(3.5, (t, dt) => {
+        horde.draw(dt);
+        const k = (a, len) => smooth((t - a) / len);
+        centre.set(e.x + e.nx * size * 0.6, e.y + e.ny * size * 0.6, e.z);   // the middle of her
+        dir.set(skater.pos.x - e.x, 0, skater.pos.z - e.z).normalize();       // (from her, toward you)
+        if (t < CUTS[1]) {            // 1: from the floor under her
+          eye.set(e.x + 1.5, heightAt(e.x, e.z) + 0.6, e.z + 2 - k(0, 1.1));
+          target.copy(centre);
+          view(52 - 16 * k(0, 0.2), 0.03);
+        } else if (t < CUTS[2]) {     // 2: her eyes, from straight in front of her
+          side.set(e.ny * e.fs, -e.nx * e.fs, e.fz).normalize();   // (the way she's facing)
+          target.set(e.x + e.nx * size * 0.55, e.y + e.ny * size * 0.55, e.z).addScaledVector(side, size * 0.4);
+          eye.copy(target).addScaledVector(side, 3.6 - 0.6 * k(1.1, 0.9));
+          view(34, 0.012);
+        } else {                      // 3: from the floor on your side of her, looking up, as her name comes across
+          eye.set(e.x, 0, e.z).addScaledVector(dir, 11 - 2 * k(2.0, 1.4));
+          eye.x += dir.z * 3; eye.z -= dir.x * 3;
+          eye.y = heightAt(eye.x, eye.z) + 0.7;
+          target.copy(centre);
+          view(56 - 10 * k(2.0, 0.25), 0.05 * (1 - k(2.0, 1.2)));
+        }
+        lamp.position.copy(eye).y += 0.8;
+        lamp.intensity = t < 3.2 ? 110 + 220 * Math.max(...CUTS.map((c) => (t >= c ? Math.exp(-(t - c) * 5) : 0))) : 0;
+        hud.dread(0.4 * smooth(t / 0.5) * (1 - smooth((t - 2.9) / 0.5)));
+        let pop = 0;
+        for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
+        const dark = blink(t, 3.2);
+        if (dark > 0.02) hud.flash('#000', dark);
+        else hud.flash('#ffffff', pop * 0.85);
+        once('eyes', t, CUTS[1], () => playBones(0.5));
+        once('name', t, CUTS[2], () => { playThunder(); hud.bossIntro(e.T.title, 'Mini boss'); });
+        if (t >= 3.2) goHome();
+      });
+    },
+
     // ---- Level 2's boss arrives -------------------------------------------------------
     // Four shots, cut hard, each on a white flash: bones heaping up at floor level; down the tunnel
     // over Kirky's shoulder as the heap stands up; right in on the two green lights in his skull;

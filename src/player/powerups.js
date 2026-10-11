@@ -49,6 +49,21 @@ export const POWERUPS = {
     explain: 'Gravity pulls on you less. You jump higher, hang longer and have more time for tricks and flips.',
     numbers: (L) => ({ gravity: Math.max(0.5, 1 - 0.12 * L) }),
   },
+  frost: {
+    name: 'Frost Aura', color: 0x9fd8ff, max: 5, description: 'a ring of cold: monsters near you slow right down',
+    explain: 'A ring of cold surrounds you. Any monster inside it is chilled: it moves far slower, and the cold eats at it.',
+    numbers: (L, m) => ({ radius: (5 + 0.8 * (L - 1)) * m.size, slow: Math.max(0.35, 0.72 - 0.07 * L), dps: (5 + 3 * (L - 1)) * m.damage }),
+  },
+  rain: {
+    name: 'Bone Rain', color: 0xe8dfc8, max: 5, description: 'bones fall out of the dark onto monsters and burst',
+    explain: 'Every few seconds, huge bones drop out of the dark onto monsters near you and burst, hurting everything around where they land.',
+    numbers: (L, m) => ({ every: 3.2 / m.rate, strikes: 1 + Math.floor(L / 2) + m.count, damage: (50 + 15 * (L - 1)) * m.damage, radius: 3.6 * m.size, range: 28 }),
+  },
+  pact: {
+    name: 'Blood Pact', color: 0xd0201b, max: 4, description: 'killing heals you, a little',
+    explain: 'Kill enough monsters and you get some health back. The more of these you have, the fewer kills it takes.',
+    numbers: (L) => ({ every: Math.max(6, 20 - 4 * L), heal: 3 + L }),   // kills per heal, HP per heal
+  },
 };
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -127,6 +142,23 @@ export class Powerups {
     this.boltLight = new THREE.PointLight(POWERUPS.lightning.color, 0, 30, 2);
     scene.add(this.boltLight);
 
+    // Frost Aura: a pale ring on the ground.
+    this.frostRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 56).rotateX(-Math.PI / 2), basic(POWERUPS.frost.color, { transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    this.frostFill = new THREE.Mesh(new THREE.CircleGeometry(0.9, 40).rotateX(-Math.PI / 2), basic(POWERUPS.frost.color, { transparent: true, opacity: 0.06, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    this.frostRing.add(this.frostFill);
+    this.frostRing.visible = false;
+    scene.add(this.frostRing);
+
+    // Bone Rain: bones on their way down.
+    const femur = new THREE.CylinderGeometry(0.13, 0.13, 1.9, 8);
+    this.drops = Array.from({ length: 8 }, () => {
+      const mesh = new THREE.Mesh(femur, new THREE.MeshStandardMaterial({ color: 0xe8dfc8, roughness: 0.6, emissive: 0x3a352a }));
+      for (const y of [-0.95, 0.95]) for (const x of [-0.13, 0.13]) { const knob = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mesh.material); knob.position.set(x, y, 0); mesh.add(knob); }
+      mesh.visible = false;
+      scene.add(mesh);
+      return { mesh, life: 0, at: new THREE.Vector3(), damage: 0, radius: 0 };
+    });
+
     this.clock = 0;
     this.reset();
   }
@@ -147,6 +179,19 @@ export class Powerups {
     for (const s of this.seekers) { s.life = 0; s.mesh.visible = false; }
     this.bolts.count = 0;
     this.boltLight.intensity = 0;
+    this.frostRing.visible = false;
+    this.rainTimer = 2;
+    for (const d of this.drops) { d.life = 0; d.mesh.visible = false; }
+    this.pactKills = 0;
+  }
+
+  // Blood Pact: a monster has died. Returns the HP that heals you (usually 0).
+  onKill() {
+    if (!level('pact')) return 0;
+    const N = numbers('pact');
+    if (++this.pactKills < N.every) return 0;
+    this.pactKills = 0;
+    return N.heal;
   }
 
   // ---- Winning them ---------------------------------------------------------------
@@ -204,6 +249,52 @@ export class Powerups {
     this.updateSeekers(dt, pos, horde, alive);
     this.updateThorns(dt, pos, horde, ticking);
     this.updateLightning(dt, pos, horde);
+    this.updateFrost(dt, pos, horde, ticking);
+    this.updateRain(dt, pos, horde, alive);
+  }
+
+  updateFrost(dt, pos, horde, ticking) {
+    const on = level('frost') > 0;
+    this.frostRing.visible = on;
+    if (!on) return;
+    const N = numbers('frost');
+    this.frostRing.position.set(pos.x, pos.y + 0.12, pos.z);
+    this.frostRing.scale.setScalar(N.radius * (1 + 0.03 * Math.sin(this.clock * 3)));
+    this.frostRing.rotation.y = this.clock * 0.4;
+    if (!ticking) return;
+    for (const e of [...horde.enemies]) {
+      if (e.rise < 1 || Math.abs(e.y - pos.y) > 6) continue;
+      if (Math.hypot(e.x - pos.x, e.z - pos.z) > N.radius + (e.T.boss ? e.T.radius * e.scale : 0)) continue;
+      horde.chill(e, 0.7, N.slow);
+      horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true);
+    }
+  }
+
+  updateRain(dt, pos, horde, alive) {
+    if (level('rain') && (this.rainTimer -= dt) <= 0) {
+      const N = numbers('rain');
+      this.rainTimer = N.every;
+      const near = alive.filter((e) => e.rise >= 1 && Math.hypot(e.x - pos.x, e.z - pos.z) < N.range);
+      for (let k = 0; k < N.strikes && near.length; k++) {
+        const e = near[Math.floor(Math.random() * near.length)], d = this.drops.find((x) => x.life <= 0);
+        if (!d) break;
+        d.life = 0.5;
+        d.at.set(e.x, e.y, e.z);
+        d.damage = N.damage;
+        d.radius = N.radius;
+        d.mesh.visible = true;
+      }
+    }
+    for (const d of this.drops) {
+      if (d.life <= 0) continue;
+      d.life -= dt;
+      d.mesh.position.set(d.at.x, d.at.y + Math.max(0, d.life) * 28, d.at.z);   // (half a second to fall 14 m)
+      d.mesh.rotation.set(this.clock * 13, 0, 0.6);
+      if (d.life <= 0) {
+        d.mesh.visible = false;
+        horde.shockwave(d.at, d.radius, d.damage);
+      }
+    }
   }
 
   updateShield(dt, pos) {

@@ -110,6 +110,61 @@ export function buildGuns(metal) {
       guard(0.05), box(0.006, 0.022, 0.008, steel, 0, -0.008, 0.045, 0.3),
     ], [0.058, 0.79], [0.0, 0.43]),
 
+    // Hand Cannon: a huge revolver. Long heavy barrel, fluted cylinder, wooden grip.
+    revolver: gun([
+      box(0.034, 0.05, 0.1, metal, 0, 0.04, 0.02),                     // frame
+      tube(0.03, 0.035, 0.105, steel, 0.045, 0, 0.03, 8),              // cylinder
+      ...[0, 1, 2, 3].map((k) => box(0.006, 0.006, 0.06, polymer, Math.cos(k * 1.6 + 0.4) * 0.027, 0.045 + Math.sin(k * 1.6 + 0.4) * 0.027, 0.07)),   // its flutes
+      tube(0.016, 0.105, 0.34, metal, 0.052),                          // barrel
+      box(0.014, 0.022, 0.22, metal, 0, 0.03, 0.22),                   // the lug under it
+      box(0.008, 0.016, 0.014, steel, 0, 0.076, 0.33),                 // front sight
+      box(0.018, 0.012, 0.02, steel, 0, 0.072, -0.02),                 // rear sight
+      box(0.012, 0.03, 0.016, steel, 0, 0.066, -0.042, -0.6),          // hammer
+      box(0.04, 0.12, 0.052, wood, 0, -0.058, -0.016, 0.24),           // grip
+      guard(), box(0.006, 0.022, 0.008, steel, 0, -0.008, 0.04, 0.3),
+    ], [0.052, 0.35], [-0.02, 0.06], 1.5, [0, 0]),
+
+    // Frostbite: a boxy sprayer with a glowing canister of coolant on top and a ringed nozzle.
+    cryo: gun([
+      box(0.05, 0.06, 0.24, metal, 0, 0.04, 0.07),                     // body
+      box(0.044, 0.04, 0.12, polymer, 0, 0.035, 0.25),                 // fore-end
+      tube(0.016, 0.3, 0.42, steel, 0.04),                             // nozzle
+      ...[0.33, 0.37, 0.41].map((z) => ring(0.02, 0.005, metal, 0.04, z)),   // cooling rings
+      mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.13, 10).rotateX(HALF), glass, 0, 0.1, 0.06),   // the canister
+      mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.02, 10).rotateX(HALF), metal, 0, 0.1, 0.13), mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.02, 10).rotateX(HALF), metal, 0, 0.1, -0.01),   // its caps
+      tube(0.006, 0.13, 0.28, steel, 0.085),                           // feed pipe
+      grip(polymer, 0.25), guard(0.05),
+    ], [0.04, 0.43], [-0.01, 0.25], 1.3, [0, 0]),
+
+    // Sawblade Launcher: a wide flat tray with the next blade lying in it, a drum of spares underneath.
+    saw: gun([
+      box(0.05, 0.07, 0.3, metal, 0, 0.04, 0.06),                      // body
+      box(0.24, 0.022, 0.28, polymer, 0, 0.05, 0.36),                  // the tray
+      ...[-1, 1].map((s) => box(0.014, 0.034, 0.28, metal, s * 0.12, 0.062, 0.36)),   // its rails
+      mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.01, 10), steel, 0, 0.07, 0.4),  // a blade, loaded
+      mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.02, 8), brass, 0, 0.074, 0.4),  // its hub
+      box(0.25, 0.012, 0.016, metal, 0, 0.075, 0.495),                 // the lip it leaves over
+      mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.075, 12).rotateZ(HALF), steel, 0, -0.035, 0.2),   // drum of spare blades
+      mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.08, 8).rotateZ(HALF), brass, 0, -0.035, 0.2),
+      box(0.04, 0.08, 0.15, polymer, 0, 0.03, -0.15), box(0.044, 0.09, 0.02, polymer, 0, 0.025, -0.23),   // stock
+      grip(polymer, 0.28), guard(0.05),
+    ], [0.07, 0.52], [-0.005, 0.32]),
+
+    // Flamethrower: a fuel tank slung under a long pipe, a heat shield, and a pilot light burning at the nozzle.
+    flamer: gun([
+      box(0.046, 0.06, 0.26, metal, 0, 0.04, 0.05),                    // body
+      tube(0.014, 0.18, 0.7, steel, 0.05),                             // the pipe
+      tube(0.024, 0.34, 0.6, polymer, 0.05, 0, 0.024, 10),             // heat shield...
+      ...[0.38, 0.44, 0.5, 0.56].map((z) => ring(0.025, 0.004, metal, 0.05, z)),   // ...with vents
+      tube(0.02, 0.7, 0.78, metal, 0.05, 0, 0.03),                     // flared nozzle
+      mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffa040, toneMapped: false }), 0, 0.078, 0.77),   // pilot light
+      tube(0.045, 0.02, 0.3, brass, -0.035, 0, 0.045, 12),             // fuel tank
+      mesh(new THREE.SphereGeometry(0.045, 12, 8), brass, 0, -0.035, 0.3), mesh(new THREE.SphereGeometry(0.045, 12, 8), brass, 0, -0.035, 0.02),   // its rounded ends
+      tube(0.007, 0.3, 0.36, steel, 0.0),                              // fuel line up to the pipe
+      box(0.04, 0.08, 0.14, polymer, 0, 0.03, -0.14), box(0.044, 0.09, 0.02, polymer, 0, 0.025, -0.215),   // stock
+      grip(polymer, 0.28), guard(0.05),
+    ], [0.05, 0.8], [0.0, 0.42]),
+
     // Bone Launcher: a fat tube lashed together out of bone, a jawbone foregrip, a skull for a rear sight.
     launcher: gun([
       tube(0.062, 0.02, 0.56, bone, 0.06, 0, 0.062, 14),               // the tube

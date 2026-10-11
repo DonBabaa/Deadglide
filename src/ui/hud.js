@@ -168,8 +168,9 @@ export const hud = {
   dread(amount) { $('dread').style.opacity = amount; },
 
   // His name slams onto the middle of the screen when he arrives.
-  bossIntro(name) {
+  bossIntro(name, label = 'Final boss') {
     const el = $('boss-intro');
+    el.querySelector('small').textContent = label;
     el.querySelector('span').textContent = name;
     el.classList.remove('hidden');
     void el.offsetWidth;   // restart the animation

@@ -133,6 +133,54 @@ export function deckTexture(kind) {
     g.textBaseline = 'middle';
     g.font = '86px Anton, Impact, sans-serif';
     for (let i = 0; i < 3; i++) { g.fillStyle = '#d9b24a'; g.fillText('7', 67, 52 + i * 78); g.fillStyle = '#c8201b'; g.fillText('7', 63, 48 + i * 78); }
+  } else if (kind === 'web') {
+    // A spider's web spun from one end of the deck.
+    g.strokeStyle = '#e9e4d4';
+    g.lineWidth = 2;
+    const cx = 64, cy = 40;
+    for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * 260, cy + Math.sin(a) * 260); g.stroke(); }
+    for (let r = 22; r < 260; r += 24) {
+      g.beginPath();
+      for (let k = 0; k <= 12; k++) {
+        const a = (k / 12) * Math.PI * 2, mid = ((k - 0.5) / 12) * Math.PI * 2;
+        if (k === 0) g.moveTo(cx + r, cy); else g.quadraticCurveTo(cx + Math.cos(mid) * r * 0.86, cy + Math.sin(mid) * r * 0.86, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      }
+      g.stroke();
+    }
+    g.fillStyle = '#c8201b';
+    g.beginPath(); g.ellipse(88, 150, 9, 13, 0.3, 0, Math.PI * 2); g.fill();   // and something red sitting in it
+    g.fillStyle = '#141416';
+    g.beginPath(); g.arc(84, 134, 6, 0, Math.PI * 2); g.fill();
+  } else if (kind === 'bones') {
+    // Crossbones, three times over.
+    g.strokeStyle = '#e9e4d4';
+    g.fillStyle = '#e9e4d4';
+    g.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const cy = 44 + i * 84;
+      for (const s of [-1, 1]) {
+        g.lineWidth = 9;
+        g.beginPath(); g.moveTo(64 - 36, cy - s * 26); g.lineTo(64 + 36, cy + s * 26); g.stroke();
+        for (const e of [-1, 1]) for (const k of [-1, 1]) { g.beginPath(); g.arc(64 + e * 36 + k * 5 * s * e * -1, cy + e * s * 26 + k * 6, 7, 0, Math.PI * 2); g.fill(); }
+      }
+    }
+  } else if (kind === 'toxic') {
+    // Slime running down a black deck.
+    g.fillStyle = '#8dff5a';
+    g.fillRect(0, 0, w, 26);
+    for (let x = 6; x < w; x += 17) {
+      const len = 40 + ((x * 37) % 150);
+      g.fillRect(x, 20, 10, len);
+      g.beginPath(); g.arc(x + 5, 20 + len, 7, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = '#d8ff7a';
+    for (let x = 10; x < w; x += 34) g.fillRect(x, 4, 4, 30);
+  } else if (kind === 'stripes') {
+    // Hazard stripes: black on yellow, on the slant.
+    g.fillStyle = '#e8c21f';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#141416';
+    for (let y = -w; y < h + w; y += 44) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + w); g.lineTo(w, y + w + 22); g.lineTo(0, y + 22); g.closePath(); g.fill(); }
   } else if (kind === 'skull') {
     g.fillStyle = '#e6e0cf';
     g.beginPath(); g.ellipse(64, 108, 46, 50, 0, 0, Math.PI * 2); g.fill();   // the dome

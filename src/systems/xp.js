@@ -1,5 +1,6 @@
 // XP: monsters drop glowing gems, gems near you fly to you, and enough of
 // them levels you up (main.js then offers an upgrade).
+import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { stats } from '../player/stats.js';
@@ -48,6 +49,7 @@ export class Xp {
     for (let i = this.gems.length - 1; i >= 0; i--) {
       const g = this.gems[i];
       g.age += dt;
+      g.z = lapNear(g.z, player.pos.z);
       v.set(player.pos.x - g.x, player.pos.y + 0.8 - g.y, player.pos.z - g.z);
       const dist = v.length();
       if (dist < radius) g.pulled = true;   // once caught, a gem follows you until it lands

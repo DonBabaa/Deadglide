@@ -14,3 +14,6 @@ If you put an audio file here, it replaces the synthesized sound with the same n
 
 `.mp3`, `.ogg`, `.wav` and `.m4a` all work. Restart `npm run dev` after adding a file.
 Only use recordings you have the right to distribute, since they ship with the game.
+
+`flamer` is different from the gunshots: it is the flamethrower's roar, and it is played as a loop for as long
+as the trigger is held. A few seconds of steady flame with no gap at the start works best.

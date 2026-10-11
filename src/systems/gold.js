@@ -1,6 +1,7 @@
 // Gold: some monsters drop coins, coins near you fly to you. What you're
 // carrying is only yours once you leave through the exit portal (main.js banks
 // it then); die and it's gone.
+import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { stats } from '../player/stats.js';
@@ -50,6 +51,7 @@ export class Gold {
     for (let i = this.coins.length - 1; i >= 0; i--) {
       const c = this.coins[i];
       c.age += dt;
+      c.z = lapNear(c.z, player.pos.z);
       v.set(player.pos.x - c.x, player.pos.y + 0.8 - c.y, player.pos.z - c.z);
       const dist = v.length();
       if (dist < radius) c.pulled = true;   // once caught, a coin follows you until it lands
