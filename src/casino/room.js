@@ -6,6 +6,7 @@
 // casino.js ties them together.
 import * as THREE from 'three';
 import { SkaterModel } from '../player/skaterModel.js';
+import { createEmoter } from '../player/emotes.js';
 import { Bar, DRINKS } from './bar.js';
 import { WHEEL, SPOTS, LAYOUT, colour } from './roulette.js';
 import { config } from '../config.js';
@@ -31,6 +32,7 @@ const ROU_DROP = 4.2, ROU_CALL = 4.7, ROU_END = 6.2, ROU_CHEER = 1.7;   // a spi
 const CROUPIER_X = -0.55;                          // where the croupier stands along the roulette table (the wheel is on his right)
 const WOOZY_TIME = 4.8;                            // seconds of the cut-in when the drink catches up with you
 const TIPSY_AFTER = 3;                             // drinks before it does
+const SMOKE_TIME = 4.4;                            // seconds of the cut-in for a smoke at the blackjack table
 const DRINK_TIME = 3.6;                            // seconds to down a drink
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
@@ -392,6 +394,7 @@ export class CasinoRoom {
 
     // Kirky, on foot: no board, facing the way he walks.
     this.kirky = new SkaterModel(this.scene);
+    this.emoter = createEmoter(this.kirky, true);
     const k = this.kirky;
     k.board.visible = false;
     k.rider.position.y = 0;
@@ -637,6 +640,10 @@ export class CasinoRoom {
     this.slammed = false;      // (the glass has gone back down, this drink)
     this.gloat = 0;            // seconds of the dealer's 21 cut-in left
     this.cine = { on: false, lines: 0, flash: 0, title: '', blur: false };   // the cut-in being filmed, for casino.js to dress the screen
+    this.smokeLeft = 0;        // seconds of a smoke at the table left
+    this.drag = 0;             // 0..1: his hand up at his mouth
+    this.puffing = 0;          // 1: drawing on it, 2: blowing it out (what the others are told)
+    this.firstPerson = !!this.firstPerson;   // looking out of his eyes rather than over his shoulder
     this.barShop.reset();
     this.tableBlend = 0;       // 0..1: the camera easing to its place over the blackjack table
     this.sitBlend = 0;         // 0 = on his feet, 1 = sat down
@@ -762,6 +769,39 @@ export class CasinoRoom {
     else if (t < 3.1) s = { pos: at(1.25, 1.38, 0.6), look: at(0.78, 1.3, 0.12), fov: 32 };                                                      // back over the bar: the glass on its way down
     else s = { pos: at(1.25, 1.38, 0.6), look: at(0.78, 1.3, 0.12), fov: 30, shake: 0.03 * slam, title: 'Ahhh.' };                               // bang
     return { shake: 0, lines: 0, title: '', ...s, flash: slam * 0.9 };
+  }
+
+  // ---- A smoke at the table --------------------------------------------------------------
+  // Sat at the blackjack table: a long drag and a slow cloud, filmed as a cut-in. Returns false if he can't just now.
+  smoke() {
+    if (this.seat < 0 || this.smokeLeft > 0 || this.cine.on) return false;
+    this.emoter.stop();
+    this.smokeLeft = SMOKE_TIME;
+    this.light(this.kirky, true);
+    return true;
+  }
+  // Put a lit cigarette in a model's mouth whatever it usually has there (on), or give it back its own (off).
+  light(model, on) {
+    if (!on) return model.applyLook(model.look);
+    for (const kind in model.mouth) for (const piece of model.mouth[kind]) piece.visible = kind === 'cigarette';
+    model.ember.visible = model.smoking = true;
+  }
+  // Its shots: a snap zoom on him, the ember in close-up as he draws on it, a hard cut to his profile holding it in,
+  // then from low across the felt as the cloud rolls out.
+  smokeShot() {
+    if (this.smokeLeft <= 0 || this.seat < 0) return null;
+    const t = SMOKE_TIME - this.smokeLeft, k = this.kirky;
+    k.root.updateMatrixWorld(true);
+    const head = k.torso.localToWorld(new THREE.Vector3(0, 0.8, 0));
+    const ahead = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), across = new THREE.Vector3(ahead.z, 0, -ahead.x);
+    const at = (a, b, up) => head.clone().addScaledVector(ahead, a).addScaledVector(across, b).setY(head.y + up);
+    const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
+    let s;
+    if (t < 0.7) s = { pos: at(1.5, 0.55, 0.15), look: head, fov: 46 - 22 * smooth(t / 0.18), lines: 1 };                                                    // snap zoom: his hand comes up
+    else if (t < 1.9) s = { pos: at(0.6, 0.3, -0.02), look: at(0.14, 0.03, -0.04), fov: 24 - 5 * smooth((t - 0.7) / 1.2), lines: 0.3 + 0.6 * k.inhale, shake: 0.003 * k.inhale };   // the ember, flaring
+    else if (t < 2.15) s = { pos: at(0.45, -1.4, -0.05), look: at(0.3, 0, 0.05), fov: 30, lines: 1 };                                                          // hard cut: in profile, holding it
+    else s = { pos: at(1.3 + 0.3 * smooth((t - 2.15) / 2), -0.9, -0.3), look: at(0.4, 0, 0.12), fov: 42 - 6 * smooth((t - 2.15) / 2), title: t > 3.1 ? 'Smooth.' : '' };   // and out it rolls
+    return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.7) * 0.6, pop(1.9), pop(2.15) * 0.8) };
   }
 
   // Left-button drag: swing the camera round (dx) and tip it (dy), in pixels.
@@ -1118,12 +1158,13 @@ export class CasinoRoom {
     k.backLeg.knee.rotation.x = lerp(Math.max(0, swing) * 1.3, 1.25, sat);
     k.backLeg.rotation.z = 0;
     const sip = who.sip || 0;   // raising a glass: the arm comes up and he leans back into it
+    const hand = Math.max(sip, who.drag || 0);   // (the same arm comes up for a drag on a cigarette, without the lean)
     const reach = who.reach || 0, cheer = who.cheer || 0;   // pulling a slot machine's lever; both arms up for a big win
     const hic = who.hic || 0;   // a hiccup: his chest jumps
     k.root.rotation.z = who.lean || 0;
     k.root.position.y += 0.05 * hic;
     k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
-    k.gunArm.rotation.set(lerp(lerp(lerp(1.48 - swing * 0.5, 0.5, sat), -0.95, sip), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(lerp(0.1, -0.2, sat), -0.5, sip), 0);
+    k.gunArm.rotation.set(lerp(lerp(lerp(1.48 - swing * 0.5, 0.5, sat), -0.95, hand), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(lerp(0.1, -0.2, sat), -0.5, hand), 0);
     k.leftArm.rotation.set(lerp(lerp(swing * 0.5, -1.15, sat), -2.7, cheer), 0, lerp(0, 0.35, sat));
     if (cheer) k.root.position.y += Math.abs(Math.sin(this.time * 11)) * 0.12 * cheer;   // (and he's jumping)
     k.updateSmoke(dt);
@@ -1168,7 +1209,16 @@ export class CasinoRoom {
       o.speed = before.distanceTo(o.pos) / Math.max(dt, 1e-3);
       const face = p.seat >= 0 ? Math.atan2(TABLE.x - spot.x, TABLE.z - spot.z) : o.bar >= 0 ? Math.PI / 2 : o.slot >= 0 ? -Math.PI / 2 : p.yaw;
       o.yaw += Math.atan2(Math.sin(face - o.yaw), Math.cos(face - o.yaw)) * (1 - Math.exp(-10 * dt));
+      // Having a smoke at the table: 1 = drawing on it, 2 = blowing it out.
+      const smoking = p.seat >= 0 && (p.smoke === 1 || p.smoke === 2) ? p.smoke : 0;
+      if (!!smoking !== !!o.lit) { o.lit = !!smoking; this.light(o.model, o.lit); }
+      o.drag = lerp(o.drag || 0, smoking === 1 ? 1 : 0, 1 - Math.exp(-8 * dt));
+      o.model.inhale = smoking === 1 ? o.drag : 0;
+      if (smoking === 2) o.model.exhale(dt);
       this.pose(o.model, o, dt);
+      o.emoter ||= createEmoter(o.model, true);
+      o.emoter.match(o.lit ? 0 : p.emote | 0);   // (not on top of a smoke at the table)
+      o.emoter.update(dt);
       o.tag.position.set(o.pos.x, lerp(2.2, 2.05, o.sitBlend), o.pos.z);
       o.tag.quaternion.copy(this.camera.quaternion);   // always facing you
     }
@@ -1203,7 +1253,19 @@ export class CasinoRoom {
       if (d < STOOL - 0.1 && d > 1e-3) { this.pos.x = TABLE.x + (dx / d) * (STOOL - 0.1); this.pos.z = TABLE.z + 0.4 + (dz / d) * (STOOL - 0.1); }
     }
 
+    if (this.smokeLeft > 0) {
+      const t = SMOKE_TIME - (this.smokeLeft -= dt);
+      this.drag = smooth(t / 0.5) * (1 - smooth((t - 1.9) / 0.3));
+      k.inhale = smooth((t - 0.7) / 0.4) * (1 - smooth((t - 1.85) / 0.1));
+      this.puffing = t > 2.15 && t < 3.6 ? 2 : t < 2.15 ? 1 : 0;
+      if (this.puffing === 2) k.exhale(dt);
+      if (this.smokeLeft <= 0 || this.seat < 0) {
+        this.smokeLeft = this.drag = this.puffing = k.inhale = 0;
+        this.light(k, false);
+      }
+    }
     this.pose(k, this, dt);
+    this.emoter.update(dt);
     const sat = (this.tableBlend = lerp(this.tableBlend, this.seat >= 0 ? 1 : 0, 1 - Math.exp(-7 * dt)));   // (the camera only leaves him for the blackjack table)
     this.showOthers(others, dt);
     // A drink on the bar for everyone else sitting at it. (Yours is whatever you ordered.)
@@ -1318,14 +1380,21 @@ export class CasinoRoom {
       cam.position.lerp(v2, sat);
       v.lerp(v2.set(lerp(TABLE.x, s.stand.x, 0.3), FELT_Y, lerp(TABLE.z, s.stand.z, 0.3) + 0.25), sat);
     }
+    if (this.firstPerson) {   // out of his own eyes: dragging turns his head
+      k.root.updateMatrixWorld(true);
+      k.torso.localToWorld(cam.position.set(0, 0.83, 0.05));
+      const down = (this.roulette ? 0.75 : this.seat >= 0 ? 0.5 : this.bar >= 0 ? 0.15 : 0.06) + this.tilt * 1.2;   // (at a table he is looking at the felt)
+      v.set(cam.position.x + Math.sin(round) * Math.cos(down), cam.position.y - Math.sin(down), cam.position.z + Math.cos(round) * Math.cos(down));
+    }
     cam.lookAt(v);
     cam.rotateZ(Math.sin(this.time * 0.7 + 1) * 0.05 * this.drunk);
     cam.aspect = window.innerWidth / window.innerHeight;
-    cam.fov = lerp(62, 56, sat);
+    cam.fov = this.firstPerson ? 72 : lerp(62, 56, sat);
 
     // A cut-in takes the camera over completely: the barman's performance, or you drinking.
-    const shot = this.barShop.shot() || this.drinkShot() || this.sickShot() || this.woozyShot() || this.winShot() || this.rouletteShot() || this.dealerShot();
+    const shot = this.barShop.shot() || this.smokeShot() || this.drinkShot() || this.sickShot() || this.woozyShot() || this.winShot() || this.rouletteShot() || this.dealerShot();
     this.cine.on = !!shot;
+    if (this.firstPerson && !shot) k.root.visible = false;   // (you don't see yourself, except in a cut-in)
     if (shot) {
       cam.position.copy(shot.pos);
       if (shot.shake) cam.position.add(v2.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shot.shake * 2));
@@ -1381,6 +1450,21 @@ export class CasinoRoom {
     this.chips.length = 0;
     this.chipGeo ||= new THREE.CylinderGeometry(0.075, 0.075, 0.022, 14);
     this.chipMats ||= [0xffc233, 0xc8201b, 0x1b1c20, 0x3f7fd6].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.45 }));
+    // What each stack is worth, written over it: everyone at the table can read everyone's bet.
+    this.betTags ||= new Map();
+    const tagFor = (bet) => {
+      if (!this.betTags.has(bet)) {
+        const c = Object.assign(document.createElement('canvas'), { width: 192, height: 96 }), g = c.getContext('2d');
+        g.fillStyle = '#0c0c0e'; g.fillRect(4, 4, 184, 88);
+        g.lineWidth = 6; g.strokeStyle = '#ffc233'; g.strokeRect(7, 7, 178, 82);
+        g.font = '60px Anton, Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffc233';
+        g.fillText(String(bet), 96, 52, 160);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this.betTags.set(bet, new THREE.SpriteMaterial({ map: tex, toneMapped: false }));
+      }
+      return this.betTags.get(bet);
+    };
     state.seats.forEach((seat, s) => {
       if (!seat || seat.bet <= 0) return;
       // One stack per hand (two after a split).
@@ -1395,6 +1479,13 @@ export class CasinoRoom {
           this.chips.push(chip);
           this.scene.add(chip);
         }
+        const tag = new THREE.Sprite(tagFor(bet));
+        tag.scale.set(0.34, 0.17, 1);
+        tag.position.copy(this.seats[s].bet).setY(FELT_Y + 0.14 + count * 0.023);
+        tag.position.x += Math.cos(a) * aside;
+        tag.position.z -= Math.sin(a) * aside;
+        this.chips.push(tag);
+        this.scene.add(tag);
       }
     });
   }

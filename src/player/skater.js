@@ -8,6 +8,13 @@ import { TRICKS } from './tricks.js';
 import { stats } from './stats.js';
 
 const UP = new Vector3(0, 1, 0);
+
+// The grinds. While on a rail the movement keys choose one: forward for the nose, back for the tail,
+// left and right to turn the board across the rail, and the corners for the four in between.
+// GRIND_KEYS[forward ? 1 : back ? 2 : 0][left ? 1 : right ? 2 : 0] is an index into GRINDS (and into the
+// poses in skaterModel.js, which are in the same order).
+export const GRINDS = ['50-50', 'Nosegrind', '5-0', 'Boardslide', 'Tailslide', 'Crooked grind', 'Noseslide', 'Smith grind', 'Feeble grind'];
+const GRIND_KEYS = [[0, 3, 4], [1, 5, 6], [2, 7, 8]];
 const TAU = Math.PI * 2;
 const rad = (d) => (d * Math.PI) / 180;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -70,6 +77,11 @@ export class Skater {
     this.railSpeed = 0;     // signed speed along it
     this.railCooldown = 0;
     this.grindDistance = 0;
+    this.grindStyle = 0;    // which of GRINDS
+    this.styleHeld = 0;     // how long it has been held
+    this.styleDone = new Set();   // the grinds already counted since you were last on the ground
+    this.clearOfRails = false;   // jumped clear of a rail on purpose: no catching one until you have touched the ground
+    this.hop = null;        // { rail, t, v }: you ollied off a rail and are still over it; you will come down on it
   }
 
   get speed() { return this.vel.length(); }
@@ -94,9 +106,13 @@ export class Skater {
     if (inp.jumpHeld) this.charge = Math.min(1, this.charge + dt / config.jump.chargeTime);
     if (inp.jumpReleased) {
       inp.jumpReleased = false;
+      // Off a rail you hop: you stay over it and come back down on it (hold the powerslide key to jump clear).
+      const from = this.rail && !inp.drift ? { rail: this.rail, t: this.railT, v: this.railSpeed } : null;
+      const clear = this.rail && !from;
       if (this.rail) this.leaveRail();
+      if (clear) this.clearOfRails = true;   // (or you would be drawn straight back onto it)
       if (this.ceiling) this.dropCeiling();   // (jump lets go of the roof)
-      else if (this.sinceGround <= config.jump.coyoteTime) this.ollie();
+      else if (this.sinceGround <= config.jump.coyoteTime) { this.ollie(); this.hop = from; }
       this.charge = 0;
     }
 
@@ -110,7 +126,9 @@ export class Skater {
       }
     }
 
-    if (this.rail) this.stepGrind(dt);
+    if (this.hop && (inp.drift || this.grounded || this.rail || this.ceiling)) this.hop = null;
+    if (this.grounded) { this.styleDone.clear(); this.clearOfRails = false; }
+    if (this.rail) this.stepGrind(dt, inp);
     else if (this.ceiling) this.stepPipe(dt, inp);
     else if (this.grounded) this.stepGround(dt, inp);
     else this.stepAir(dt);
@@ -272,12 +290,13 @@ export class Skater {
     fwd.normalize();
 
     newPos.copy(pos).addScaledVector(vel, dt);
+    if (this.hop && this.followHop(dt)) return;
     if (this.tryPipe(newPos)) return;   // into the pipe's wall above the lip, or its roof: ride it
     const h = airFloorAt(newPos.x, newPos.z);
     if (false) return;   // into the pipe's wall above the lip, or its roof: ride it
     if (newPos.y > h) {
       pos.copy(newPos);
-      this.tryCatchRail();
+      if (!this.hop) this.tryCatchRail(dt);
     } else if (h - newPos.y > s.stepHeight) {
       // Hit the side of something: keep falling straight down, and land if we reach the ground.
       this.hitWall(newPos);
@@ -543,32 +562,74 @@ export class Skater {
   // ---- Rails -----------------------------------------------------------------
 
   // Coming down near a rail, moving roughly along it? Lock on.
-  tryCatchRail() {
+  // (Rails are magnetic: within `pullRadius` you are drawn sideways onto the rail's line on the way down.)
+  tryCatchRail(dt = 0) {
     const G = config.grind, { pos, vel } = this;
-    if (this.railCooldown > 0 || vel.y > 1.5) return;
+    if (this.railCooldown > 0 || this.clearOfRails || vel.y > 1.5) return;
     for (const r of railsNear(pos.x, pos.z)) {
       const px = pos.x - r.ax, py = pos.y - r.ay, pz = pos.z - r.az;
       const t = px * r.dx + py * r.dy + pz * r.dz;
       if (t < 0 || t > r.len) continue;
       const offX = px - r.dx * t, offY = py - r.dy * t, offZ = pz - r.dz * t;
-      if (Math.hypot(offX, offZ) > G.catchRadius || Math.abs(offY) > G.catchHeight) continue;
+      const side = Math.hypot(offX, offZ);
+      if (side > G.pullRadius) continue;
       const along = vel.x * r.dx + vel.y * r.dy + vel.z * r.dz;
       const flat = Math.hypot(vel.x, vel.z);
-      if (Math.abs(along) < G.minSpeed || Math.abs(along) < flat * 0.5) continue;
-
-      const trick = this.resolveTricks();
-      this.rail = r;
-      this.railT = t;
-      this.railSpeed = Math.sign(along) * (flat + (trick.ok ? Math.min(trick.boost, Math.max(0, config.skate.maxSpeed - flat)) : 0));
-      this.grindDistance = 0;
-      this.events.push({ type: 'grind', trick: trick.ok ? trick.name : '', boost: trick.ok ? trick.boost : 0 });
-      this.stepGrind(0);
-      return;
+      if (Math.abs(along) < G.minSpeed || Math.abs(along) < flat * 0.35) continue;
+      if (side <= G.catchRadius && Math.abs(offY) <= G.catchHeight) return this.lockOn(r, t, Math.sign(along) * flat);
+      if (offY > 0 && offY < 8) {   // above it and a little to one side: slide over onto its line
+        const k = 1 - Math.exp(-G.pull * dt);
+        pos.x -= offX * k; pos.z -= offZ * k;
+        vel.x -= (vel.x - r.dx * along) * k; vel.z -= (vel.z - r.dz * along) * k;
+        return;
+      }
     }
   }
 
-  stepGrind(dt) {
+  // Onto the rail `r`, `t` metres along it, at `speed` (signed: which way along it).
+  lockOn(r, t, speed) {
+    const trick = this.resolveTricks(), fast = Math.abs(speed);
+    this.rail = r;
+    this.railT = t;
+    this.railSpeed = (speed < 0 ? -1 : 1) * (fast + (trick.ok ? Math.min(trick.boost, Math.max(0, config.skate.maxSpeed - fast)) : 0));
+    this.grindDistance = 0;
+    this.grindStyle = 0;
+    this.hop = null;
+    this.events.push({ type: 'grind', trick: trick.ok ? trick.name : '', boost: trick.ok ? trick.boost : 0 });
+    this.stepGrind(0);
+  }
+
+  // In the air after hopping off a rail: carry on along it (round its bends, on to the next piece) however you
+  // spin or flip, and land back on it. Returns true once you have. Off the end of the rail you are on your own.
+  followHop(dt) {
+    const H = this.hop, { vel } = this;
+    let r = H.rail;
+    H.v *= Math.max(0, 1 - config.skate.airDrag * dt);
+    H.t += H.v * dt;
+    while (H.t > r.len && r.next) { H.t -= r.len; r = r.next; }
+    while (H.t < 0 && r.prev) { r = r.prev; H.t += r.len; }
+    H.rail = r;
+    if (H.t < 0 || H.t > r.len) { this.hop = null; return false; }
+    const y = r.ay + r.dy * H.t;
+    newPos.x = r.ax + r.dx * H.t; newPos.z = r.az + r.dz * H.t;
+    vel.x = r.dx * H.v; vel.z = r.dz * H.v;
+    if (newPos.y > y || this.airTime < 0.12) return false;
+    this.pos.set(newPos.x, y, newPos.z);
+    this.lockOn(r, H.t, H.v);
+    return true;
+  }
+
+  stepGrind(dt, inp) {
     const G = config.grind, r = this.rail;
+    // Which grind: the movement keys choose (see GRINDS). Each one counts once it has been held a moment.
+    if (inp) {
+      const style = GRIND_KEYS[inp.push ? 1 : inp.brake ? 2 : 0][inp.steer > 0.3 ? 1 : inp.steer < -0.3 ? 2 : 0];
+      if (style !== this.grindStyle) { this.grindStyle = style; this.styleHeld = 0; }
+      else if (style && (this.styleHeld += dt) >= G.styleHold && !this.styleDone.has(style)) {
+        this.styleDone.add(style);
+        this.events.push({ type: 'grindStyle', name: GRINDS[style] });
+      }
+    }
     let v = this.railSpeed;
     const sign = v < 0 ? -1 : 1;
     v -= config.physics.gravity * stats.gravity * r.dy * dt;                    // sloped rails pull you downhill
@@ -604,6 +665,7 @@ export class Skater {
   leaveRail() {
     this.events.push({ type: 'grindEnd', distance: this.grindDistance });
     this.rail = null;
+    this.grindStyle = 0;
     this.railCooldown = 0.25;
     this.takeoff();
     this.sinceGround = 0;   // you can still ollie off the end

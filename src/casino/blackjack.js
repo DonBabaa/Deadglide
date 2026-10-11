@@ -186,7 +186,9 @@ export class Blackjack {
     this.onEvent({ type: 'card', seat: index });
   }
 
-  playing() { return this.state.seats.map((seat, i) => (seat && seat.bet > 0 && seat.ready ? i : -1)).filter((i) => i >= 0); }
+  // The seats in this hand, in the order they are dealt to and play: from the players' right to their left
+  // (the seats are numbered left to right, so that is from the highest number down).
+  playing() { return this.state.seats.map((seat, i) => (seat && seat.bet > 0 && seat.ready ? i : -1)).filter((i) => i >= 0).reverse(); }
 
   // Deal once everyone at the table is ready. If only some are, a countdown starts; when it
   // runs out (force), anyone with a bet down is in and the rest sit this hand out.
@@ -220,7 +222,7 @@ export class Blackjack {
 
   nextTurn() {
     const s = this.state, players = this.playing();
-    const next = players.find((i) => i > s.turn && s.seats[i].status === 'playing');
+    const next = players.find((i) => (s.turn < 0 || i < s.turn) && s.seats[i].status === 'playing');
     if (next !== undefined) { s.turn = next; s.turnLeft = TURN_TIME; return; }
     // Everyone has played: the dealer's turn.
     s.turn = -1;

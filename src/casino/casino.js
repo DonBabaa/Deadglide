@@ -11,6 +11,7 @@
 // Either way everything on screen comes through deliver(): the table as it now
 // stands, plus the things that just happened (a card, a result...). Each
 // player's own browser moves their own gold when it sees their own result.
+import { EMOTES } from '../player/emotes.js';
 import { config } from '../config.js';
 import { CasinoRoom } from './room.js';
 import { DRINKS } from './bar.js';
@@ -157,7 +158,7 @@ export function createCasino({ onLeave }) {
           refresh();
         } else if (m.t === 'here' && people.has(id)) {
           const whole = (n) => (Number.isInteger(n) ? n : -1);
-          Object.assign(people.get(id), { x: Number(m.x) || 0, z: Number(m.z) || 0, yaw: Number(m.yaw) || 0, bar: whole(m.bar), glass: whole(m.glass), sip: Number(m.sip) || 0, slot: whole(m.slot), spin: !!m.spin, win: !!m.win });
+          Object.assign(people.get(id), { x: Number(m.x) || 0, z: Number(m.z) || 0, yaw: Number(m.yaw) || 0, bar: whole(m.bar), glass: whole(m.glass), sip: Number(m.sip) || 0, slot: whole(m.slot), spin: !!m.spin, win: !!m.win, smoke: m.smoke === 1 || m.smoke === 2 ? m.smoke : 0, emote: Number.isInteger(m.emote) && m.emote > 0 && m.emote <= EMOTES.length ? m.emote : 0 });
         }
         else if (['sit', 'stand', 'act'].includes(m.t) && people.has(id)) request(id, m.t, m.arg, m.amount);
         else if (m.t === 'rbet' && people.has(id)) { wheelBets.set(id, cleanBets(m.bets)); shareWheel(); refresh(); }   // roulette: their chips...
@@ -176,6 +177,8 @@ export function createCasino({ onLeave }) {
     x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar,
     glass: room.glass && room.glass.ready && room.glass.level > 0 ? DRINKS.findIndex((d) => d.id === room.glass.drinkId) : -1, sip: +room.sip.toFixed(2),
     slot: room.slot, spin: !!spinning, win: room.slot >= 0 && room.win > 0,
+    smoke: room.smokeLeft > 0 ? room.puffing || 1 : 0,   // having a smoke at the table: 1 drawing on it, 2 blowing it out
+    emote: room.emoter.playing,
   });
   const me = () => ({ id: myId, name: myName(), look: myLook(), ...doing() });
 
@@ -469,6 +472,8 @@ export function createCasino({ onLeave }) {
     $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, profile.houseTake).toLocaleString()}`;
     $('casino-table').classList.toggle('hidden', !seated);
     $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.slot < 0 && !room.roulette);
+    $('casino-smoke').classList.toggle('hidden', !seated);
+    $('casino-view').textContent = room.firstPerson ? 'Third person' : 'First person';
     $('casino-stand').textContent = seated ? 'Leave table' : room.slot >= 0 || room.roulette ? 'Walk away' : 'Get up';
     refreshBar();
     refreshSlots();
@@ -541,6 +546,9 @@ export function createCasino({ onLeave }) {
   $('casino-double').addEventListener('click', () => play('double'));
   $('casino-split').addEventListener('click', () => play('split'));
   $('casino-stand').addEventListener('click', standUp);
+  const toggleView = () => { room.firstPerson = !room.firstPerson; refresh(); };
+  $('casino-view').addEventListener('click', toggleView);
+  $('casino-smoke').addEventListener('click', () => room.smoke());
   $('casino-leave').addEventListener('click', () => leave());
   $('casino-friends').addEventListener('click', () => $('casino-net').classList.toggle('hidden'));
   $('casino-host').addEventListener('click', () => connect(true));
@@ -590,8 +598,10 @@ export function createCasino({ onLeave }) {
     if (e.code === 'Escape') { seat >= 0 || room.bar >= 0 || room.slot >= 0 || room.roulette ? standUp() : leave(); return; }
     if (room.roulette && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); spinRoulette(); return; }
     if (room.slot >= 0 && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); pullLever(); return; }
+    if (e.code === 'KeyV') { toggleView(); return; }
     if (seat < 0) return;
     if (view.state.phase === 'betting' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); deal(); }
+    else if (e.code === 'KeyF') room.smoke();
     else if (e.code === 'KeyH') play('hit');
     else if (e.code === 'KeyS') play('stand');
     else if (e.code === 'KeyD') play('double');
@@ -612,6 +622,12 @@ export function createCasino({ onLeave }) {
     camera: room.camera,
     get active() { return active; },
     room,   // (handy in the browser console)
+    // Play an emote (see player/emotes.js). A smoke at the blackjack table gets the full cut-in.
+    emote(i) {
+      if (!active || room.smokeLeft > 0 || room.cine.on) return;
+      if (EMOTES[i]?.id === 'smoke' && seat >= 0) room.smoke();
+      else room.emoter.play(i);
+    },
     get table() { return engine; },
 
     enter() {

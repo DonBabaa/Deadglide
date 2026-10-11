@@ -38,6 +38,7 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 | Esc | Pause (controls, sound, mouse sensitivity) |
 | M / Backspace / ` | Music on or off / restart the run / tuning panel |
 | F3 | Frame rate, and how much is being drawn |
+| T (hold) | Emote wheel, in Free Ride and the casino: push the mouse toward one (or press its number) and let go. Wave, cheer, smoke, dance, laugh, bow; friends see them |
 
 ## A run
 - Pick a level from the menu (a nickname is required first). **Creative mode** lets you choose your starting guns, upgrades
@@ -52,7 +53,10 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 
 ## Skating
 - Speed is conserved: gravity speeds you up downhill and slows you uphill. Rolling tops out around 79 km/h, pushing around 122 km/h.
-- Ollies charge with how long you hold. Rails can be ground. Tricks, spins and flips in the air pay a speed boost on a clean landing.
+- Ollies charge with how long you hold. Rails can be ground, and are magnetic: come down along one within a few metres and you are drawn onto it.
+  On a rail the movement keys change the grind (50-50, nosegrind, 5-0, boardslide, tailslide, noseslide, crooked, smith, feeble). Space hops:
+  you stay over the rail, can trick, and land back on it. Shift + Space jumps clear.
+- Tricks, spins and flips in the air pay a speed boost on a clean landing.
 - A landing is clean if the board is roughly level and pointing the way you are going; otherwise it is sloppy and costs speed.
 
 ## Level 1: the Cemetery
@@ -131,6 +135,7 @@ You start with the pistol. Others are unlocked in the shop, then turn up in ches
 - Winning a power-up for the first time in a run pauses the game on a card explaining it, followed by a short smoking cut-in.
 
 ## Gold, shop and cosmetics
+- Gold picked up in a run is worth 30% of its face value (a coin 5, an elite 25, a boss 150), and 1.75 times that in the Catacombs.
 - **Permanent upgrades** (five levels each): max health, bullet damage, XP, pickup range, gold found, top speed.
 - **Unlocks:** Reroll (redraw the upgrade cards once per level-up), Head Start (begin with a random power-up), Second Chance (survive one killing blow).
 - **Guns:** pay once to put a gun in the chests, and again to be able to start a run holding it.
@@ -140,10 +145,12 @@ You start with the pistol. Others are unlocked in the shop, then turn up in ches
 ## The casino
 A Monte-Carlo style room reached from the menu, where you walk instead of skate. Up to five friends can share it.
 - **Blackjack:** five seats; six decks; the dealer (Babitus Goyitus, a zombie in a dinner suit) stands on 17; blackjack pays 3 to 2;
-  one split; bets from 10 to 500. The more the house takes, the more jewellery he wears.
+  one split; bets from 10 to 500. Play runs from the right-hand seat to the left. Every bet is written over its chips for the whole table to read.
+  F at the table has a smoke (a cut-in for you; the others see you do it). The more the house takes, the more jewellery he wears.
 - **Roulette:** one European wheel for the whole room, spun by a second Babitus. Anyone with a bet down can spin.
 - **Slot machines:** 5 gold a spin, gold prizes, and three skulls wins a casino-only cosmetic.
 - **The bar:** a skeleton barman mixes drinks. Three drinks make you tipsy, five make you sick and get you cut off for a while.
+- **First person:** a button (or V) switches between looking over Kirky's shoulder and out of his eyes.
 - Each player keeps their own gold; the host's browser runs the tables. Friends see where you are, your seat, your bets,
   your drink and the machine you are playing.
 
@@ -162,7 +169,7 @@ src/
   input.js           keys and mouse
   cutscenes.js       boss, mini-boss, portal and exit scenes, the kill cam, a costume found
   player/            skater.js (physics, the pipe), skaterModel.js, chaseCamera.js, weapon(s).js, gunModels.js,
-                     powerups.js, tricks.js, stats.js, costumes.js
+                     powerups.js, tricks.js, stats.js, costumes.js, emotes.js
   enemies/           types.js (the monsters' numbers), enemyModels.js, horde.js (spawning, moving, climbing, bosses)
   world/             level.js, terrain.js (the one place that answers "what is the ground here?"),
                      worldgen.js + noise.js (the Cemetery), catacombs.js (level 2), moon.js (Free Ride), features.js, chunkMesh.js, arena.js

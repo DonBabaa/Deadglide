@@ -85,8 +85,11 @@ export const config = {
   },
 
   grind: {
-    catchRadius: 0.8,     // how close (sideways) you must come down to a rail to lock on
-    catchHeight: 0.5,
+    catchRadius: 1.5,     // how close (sideways) you must come down to a rail to lock on
+    catchHeight: 0.8,
+    pullRadius: 3.4,      // within this, coming down along a rail, you are drawn sideways onto its line...
+    pull: 5,              // ...this quickly (per second)
+    styleHold: 0.2,       // seconds a grind has to be held before it counts
     minSpeed: 2,
     accel: 4,             // rails speed you up
     maxSpeed: 40,         // ...up to this
@@ -165,6 +168,7 @@ export const config = {
     // Sniping a target is worth its points (see freeride/targets.js), multiplied by everything that applies:
     headshot: 2.5,
     perHundredMetres: 1,  // +100% for every 100 m of range
+    grindStyle: 200,      // each different grind in a line (nosegrind, boardslide...)
     airborne: 1.5,        // fired in the air
     trickShot: 2,         // fired mid-spin, mid-flip or mid-trick
     noScope: 1.5,         // fired without looking down the scope
@@ -187,6 +191,8 @@ export const config = {
     bossGold: 150,
     overtimeBonus: 2,     // after the boss, ordinary monsters drop coins this many times as often
     lifetime: 90,         // seconds before an uncollected coin vanishes
+    scale: 0.3,           // everything picked up is worth this much of its face value
+    levelBonus: { 2: 1.75 },   // ...times this, by level (1 if not listed): the Catacombs pay better than the Cemetery
   },
 
   // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).

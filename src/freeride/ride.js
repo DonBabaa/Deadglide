@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { Net } from '../casino/net.js';
 import { SkaterModel } from '../player/skaterModel.js';
 import { TRICKS } from '../player/tricks.js';
+import { createEmoter } from '../player/emotes.js';
 import { WEAPONS } from '../player/weapons.js';
 
 export const MAX_RIDERS = 4;
@@ -26,23 +27,31 @@ const SEND_EVERY = 1 / 12, GONE_AFTER = 5000;   // seconds between updates; mill
 // flip: front / back flip so far (radians).  speed.  ground, grind: 1 or 0.  trick: its place in TRICKS (-1 = none), tp: how far through.
 // charge: ollie charge.  steer.  ax ay az: where the gun is aimed.  gun: 1 if it's up.  line: the line being built.  best: best line this session.
 // safe: seconds of safety left after being shot off the board (they blink, and can't be shot again).
-const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe'];
+const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe', 'emote'];
 const clean = (raw) => { const s = {}; for (const k of STATE) s[k] = Number.isFinite(raw?.[k]) ? raw[k] : 0; return s; };
 
 // A name floating over a rider's head.
+const TAG_W = 3.2, TAG_H = 1, TAG_NEAR = 10;   // a name tag's size in metres, and the distance beyond which it stops shrinking
 function nameTag(name) {
-  const c = Object.assign(document.createElement('canvas'), { width: 256, height: 64 }), g = c.getContext('2d');
-  g.fillStyle = 'rgba(12, 12, 14, 0.7)';
-  g.fillRect(0, 8, 256, 48);
-  g.font = '34px Anton, Impact, sans-serif';
+  // Yellow on black with a thick outline and a pointer underneath: it has to read as a speck across the arena.
+  const c = Object.assign(document.createElement('canvas'), { width: 512, height: 160 }), g = c.getContext('2d');
+  g.font = '84px Anton, Impact, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillStyle = '#f3efe4';
-  g.fillText(name.toUpperCase(), 128, 34, 240);
+  const text = name.toUpperCase(), wide = Math.min(480, g.measureText(text).width + 56), left = 256 - wide / 2;
+  g.fillStyle = '#0c0c0e';
+  g.fillRect(left, 8, wide, 112);
+  g.beginPath(); g.moveTo(232, 118); g.lineTo(280, 118); g.lineTo(256, 154); g.closePath(); g.fill();
+  g.lineWidth = 8; g.strokeStyle = '#ffd23a';
+  g.strokeRect(left + 4, 12, wide - 8, 104);
+  g.fillStyle = '#ffd23a';
+  g.fillText(text, 256, 68, 440);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
-  tag.scale.set(2.2, 0.55, 1);
+  // (Drawn over everything, so you can find a friend behind a hill.)
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false }));
+  tag.renderOrder = 20;
+  tag.scale.set(TAG_W, TAG_H, 1);
   return tag;
 }
 
@@ -201,7 +210,7 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
   ride.update = (dt) => {
     if (role === 'alone') return;
     if ((sinceSend += dt) >= SEND_EVERY) { sinceSend = 0; send(); }
-    const now = performance.now();
+    const now = performance.now(), mine = me();
     for (const g of ghosts.values()) {
       const s = g.last, k = g.skater, age = Math.min(0.25, (now - g.heard) / 1000), ease = 1 - Math.exp(-14 * dt);
       // Glide to where they said they were, carried on by how fast they said they were going.
@@ -213,11 +222,17 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
       k.up.lerp(v.set(s.ux, s.uy, s.uz), ease);
       if (k.up.lengthSq() < 1e-4) k.up.set(0, 1, 0);
       k.up.normalize();
-      k.flip = s.flip; k.speed = s.speed; k.grounded = !!s.ground; k.grinding = !!s.grind; k.steer = s.steer; k.charge = s.charge;
+      k.flip = s.flip; k.speed = s.speed; k.grounded = !!s.ground; k.grinding = !!s.grind; k.grindStyle = Math.max(0, Math.round(s.grind) - 1); k.steer = s.steer; k.charge = s.charge;
       k.trick = TRICKS[s.trick] || null; k.trickProgress = s.tp;
       g.aim.set(s.ax, s.ay, s.az);
       g.model.update(dt, k, g.pos, g.aim, !!s.gun, s.safe);   // (they blink while they can't be shot)
-      g.tag.position.copy(g.pos).addScaledVector(k.up, 2.45);
+      g.emoter ||= createEmoter(g.model);
+      g.emoter.match(Math.round(s.emote));
+      g.emoter.update(dt);
+      // The name: from far away it is kept the same size on screen, so it never shrinks to nothing.
+      const far = Math.max(1, Math.hypot(g.pos.x - mine.x, g.pos.y - mine.y, g.pos.z - mine.z) / TAG_NEAR);
+      g.tag.scale.set(TAG_W * far, TAG_H * far, 1);
+      g.tag.position.copy(g.pos).addScaledVector(k.up, 2.3 + 0.6 * far);
     }
   };
 

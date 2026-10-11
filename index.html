@@ -161,12 +161,17 @@
       <div id="menu-foot">Controls and sound are on the pause screen (Esc)</div>
     </div>
 
+    <!-- The emote wheel (hold T): see ui/emoteWheel.js. -->
+    <div id="emotes" class="hidden"><span id="emotes-name">Emote</span></div>
+
     <!-- The casino: buttons over the 3D room. -->
     <div id="casino" class="hidden">
       <div id="casino-top">
         <span id="casino-gold"></span>
         <span id="casino-house"></span>
         <button id="casino-friends" type="button">Play with friends</button>
+        <button id="casino-view" type="button">First person</button>
+        <button id="casino-smoke" class="hidden" type="button">Smoke <kbd data-key="KeyF">F</kbd></button>
         <button id="casino-stand" class="hidden" type="button">Leave table</button>
         <button id="casino-leave" type="button">Leave casino</button>
       </div>
@@ -183,7 +188,7 @@
         </div>
         <div id="casino-net-status"></div>
       </div>
-      <div id="casino-help"><span data-key="KeyW KeyS">W / S</span> walk &middot; <span data-key="KeyA KeyD">A / D</span> turn &middot; hold left mouse and drag to look around</div>
+      <div id="casino-help"><span data-key="KeyW KeyS">W / S</span> walk &middot; <span data-key="KeyA KeyD">A / D</span> turn &middot; hold left mouse and drag to look around &middot; <span data-key="KeyV">V</span> first person &middot; hold <span data-key="KeyT">T</span> for emotes</div>
       <div id="casino-prompt" class="hidden"><b data-key="KeyE">E</b> <span id="casino-prompt-text">Take a seat</span></div>
       <div id="casino-roulette" class="hidden">
         <div id="casino-roulette-top"><span id="casino-roulette-result">Place your bets</span><span id="casino-roulette-history"></span></div>
@@ -274,7 +279,8 @@
         <div><b>Shift</b> powerslide</div><div><b>Space</b> hold and release to ollie</div>
         <div><b data-key="KeyE">E</b> trick (in the air)</div><div><b data-key="KeyW KeyS">W / S</b> front / back flip (in the air)</div>
         <div><b>Right mouse</b> aim</div><div><b>Left mouse</b> fire</div>
-        <div>Land on a rail to grind</div><div>Aim for the head</div>
+        <div>Land on a rail to grind</div><div><b data-key="KeyW KeyA KeyS KeyD">W / A / S / D</b> on a rail: change the grind</div>
+        <div><b>Space</b> on a rail: hop, and land back on it</div><div><b data-key="KeyT">T</b> hold: emotes (Free Ride and the casino)</div><div><b>Shift + Space</b> on a rail: jump clear of it</div><div>Aim for the head</div>
         <div><b>1 - 9</b> switch gun</div><div><b>Mouse wheel</b> zoom in / out</div>
         <div><b data-key="KeyM">M</b> music on / off</div><div><b>Esc</b> pause</div>
         <div><b>Backspace</b> restart the run</div><div><b>F3</b> frame rate</div><div><b data-key="Backquote">`</b> tuning panel</div>

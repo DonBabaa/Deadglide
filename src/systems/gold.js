@@ -5,6 +5,7 @@ import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { stats } from '../player/stats.js';
+import { world } from '../world/level.js';
 
 const MAX_COINS = 240;
 const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -58,7 +59,7 @@ export class Gold {
       if (c.pulled) {
         const speed = Math.max(config.xp.pullSpeed, player.speed * 1.6);
         if (dist < 1.2 || dist < speed * dt) {
-          gained += c.amount * stats.goldGain;
+          gained += c.amount * stats.goldGain * G.scale * (G.levelBonus[world.level] ?? 1);
           this.coins.splice(i, 1);
           continue;
         }

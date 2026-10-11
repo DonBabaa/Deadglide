@@ -50,6 +50,20 @@ function weld(group, keep = []) {
   return group;
 }
 
+// How the board sits for each grind (in the order of GRINDS in skater.js): [turned across the rail, nose tipped
+// down (+) or up (-), how far he stands to one side of the rail], in radians and metres.
+const GRIND_POSES = [
+  [0, 0, 0],                 // 50-50: both trucks on
+  [0, 0.3, 0],               // nosegrind: front truck only
+  [0, -0.3, 0],              // 5-0: back truck only
+  [Math.PI / 2, 0, 0],       // boardslide: across the rail, on the middle of the deck
+  [Math.PI / 2, 0, 0.32],    // tailslide: across it, on the tail
+  [0.45, 0.3, 0],            // crooked: front truck, tail swung out
+  [Math.PI / 2, 0, -0.32],   // noseslide: across it, on the nose
+  [-0.4, 0.22, 0],           // smith: back truck, nose dipped down one side
+  [0.4, -0.2, 0],            // feeble: back truck, nose over the other side
+];
+
 const HAND = new THREE.Vector3(0, 0, 0.56);   // his gun hand, in the gun arm's space
 const FLIP_PIVOT = 0.85;   // he flips about this height (his middle)
 const X_AXIS = new THREE.Vector3(1, 0, 0), flipQ = new THREE.Quaternion(), pivot = new THREE.Vector3();
@@ -276,6 +290,7 @@ export class SkaterModel {
 
     scene.add(this.root);
     this.lean = 0;
+    this.grindPose = [0, 0, 0];   // the board's pose on a rail, eased toward one of GRIND_POSES
     this.crouch = 0;
     this.flip = 0;       // the flip angle being shown
     this.inhale = 0;     // 0..1: taking a long drag (the ember flares, no smoke escapes)
@@ -314,7 +329,12 @@ export class SkaterModel {
     // Board tricks: the board flips under the feet while the rider tucks up.
     const trick = skater.trick, p = ease(skater.trickProgress);
     if (trick) this.board.rotation.set(trick.pitch * TAU * p, trick.yaw * TAU * p, trick.roll * TAU * p);
-    else this.board.rotation.set(0, 0, 0);
+    else this.board.rotation.set(this.grindPose[1], this.grindPose[0], 0);
+    // On a rail: the grind he is holding.
+    const pose = GRIND_POSES[skater.grinding ? skater.grindStyle || 0 : 0], easing = 1 - Math.exp(-16 * dt);
+    for (let i = 0; i < 3; i++) this.grindPose[i] += (pose[i] - this.grindPose[i]) * easing;
+    this.tilt.position.x = this.grindPose[2];
+    this.gunArm.position.x = 0.05 + this.grindPose[2];
     const tuck = trick ? Math.sin(skater.trickProgress * Math.PI) : 0;
     this.board.position.y = 0.142 + tuck * 0.12;
     this.frontLeg.rotation.x = this.backLeg.rotation.x = -tuck * 0.5;

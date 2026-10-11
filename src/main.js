@@ -47,6 +47,8 @@ import { getName } from './ui/playerName.js';
 import { goldTally } from './ui/goldTally.js';
 import { createCutscenes } from './cutscenes.js';
 import { createCasino } from './casino/casino.js';
+import { createEmoter } from './player/emotes.js';
+import { createEmoteWheel } from './ui/emoteWheel.js';
 import { setMusicStyle } from './fx/music.js';
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
@@ -84,10 +86,10 @@ const ride = createRide({
   me: () => ({
     x: skater.pos.x, y: skater.pos.y, z: skater.pos.z, vx: skater.vel.x, vy: skater.vel.y, vz: skater.vel.z,
     fx: skater.fwd.x, fy: skater.fwd.y, fz: skater.fwd.z, ux: skater.up.x, uy: skater.up.y, uz: skater.up.z,
-    flip: skater.flip, speed: skater.speed, ground: skater.grounded ? 1 : 0, grind: skater.grinding ? 1 : 0,
+    flip: skater.flip, speed: skater.speed, ground: skater.grounded ? 1 : 0, grind: skater.grinding ? 1 + skater.grindStyle : 0,   // (0: not grinding; otherwise which grind, plus one)
     trick: skater.trick ? TRICKS.indexOf(skater.trick) : -1, tp: skater.trickProgress, charge: skater.charge, steer: skater.steer,
     ax: aimPoint.x, ay: aimPoint.y, az: aimPoint.z, gun: gunIsUp ? 1 : 0, line: lines.total, best: lines.session,
-    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0,
+    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0, emote: emoter.playing,
   }),
   onChange: () => {},
 });
@@ -408,6 +410,12 @@ function showMenu() {
 
 // The casino: its own 3D room, entered from the menu. Leaving it comes back to the menu.
 const casino = createCasino({ onLeave: showMenu });
+// Emotes (hold T): in the casino and in Free Ride.
+const emoter = createEmoter(model);
+const emoteWheel = createEmoteWheel({
+  canOpen: () => casino.active || (LEVELS[level].freeRide && !inMenu && !paused && !dead && !cutscenes.active),
+  onPick: (i) => (casino.active ? casino.emote(i) : emoter.play(i)),
+});
 document.getElementById('menu-casino-open').addEventListener('click', () => {
   menu.hide();
   if (unlockAudio()) startMusic();
@@ -548,6 +556,10 @@ function handleEvents() {
       hud.popup(e.trick ? `${e.trick} to grind  ${kmh(e.boost)}` : 'Grind', 'trick');
       if (e.trick) { playTrickLand(e.boost); trickLanded(); score.trick(e.boost); }
       if (freeRide() && e.trick) lines.add(e.trick, config.freeRide.trickBase + e.boost * 3.6 * config.freeRide.trickPerBoost);
+    } else if (e.type === 'grindStyle') {
+      hud.popup(e.name, 'trick');
+      playTrickLand(3);
+      if (freeRide()) lines.add(e.name, config.freeRide.grindStyle);
     } else if (e.type === 'grindEnd') {
       score.grind(e.distance);
       if (freeRide() && e.distance > 2) lines.add(`Grind ${Math.round(e.distance)} m`, e.distance * config.freeRide.grindPerMetre);
@@ -708,7 +720,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));   // (never backwards: `last` is sometimes reset to a moment after this frame began)
   last = now;
-  const [mouseDX, mouseDY] = input.takeMouse();
+  let [mouseDX, mouseDY] = input.takeMouse();
+  if (emoteWheel.open) mouseDX = mouseDY = 0;   // (the mouse is choosing an emote, not turning the camera)
   // F3: a readout of frames per second and how much was drawn last frame (for finding what makes it slow).
   if (perfOn) {
     perfFrames++;
@@ -801,6 +814,7 @@ function frame(now) {
     weapon.aimPoint(camera, aimPoint);
     gunIsUp = aiming || firing;
     model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
+    emoter.update(dt);
     trickBuff = Math.max(0, trickBuff - dt);
     const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1);
     if (weapon.update(dt, firing, aiming, model.muzzle, aimPoint, horde, damageMult)) {
