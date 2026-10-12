@@ -9,6 +9,7 @@ import { CHUNK, chunkBase, chunkHeight, chunkPaved } from './worldgen.js';
 import { seededRandom } from './random.js';
 import { MOON, moonHeight, daylight, lavaAt } from './moon.js';
 import { houseHeight, pocketAt } from './house.js';
+import { headstones as fineHeadstones, tree as fineTree, mausoleum as tombTrim, statues as fineStatues, chapel as chapelTrim, lamp as fineLamp, brazier as fineBrazier, decor as fineDecor, under as fineUnder, lunar as fineLunar, landerTrim, towerTrim, gantryTrim } from './scenery.js';
 import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture, regolithTexture, plateTexture, marbleTexture } from './textures.js';
 
 const CONCRETE = new THREE.Color(0x9c9b96), GRASS = new THREE.Color(0x35452a);
@@ -64,6 +65,9 @@ export function createChunkBuilder() {
     rock: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, roughness: 1, side: THREE.DoubleSide }),
     ember: new THREE.MeshBasicMaterial({ color: 0xff8a3a }),
     stone: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95 }),
+    carved: new THREE.MeshStandardMaterial({ map: stoneMap, vertexColors: true, roughness: 0.95 }),   // the sculpted scenery (scenery.js): its paint, over the stone
+    painted: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),                 // ...or its paint alone (bark)
+    wrought: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.35 }), // ...or as iron
     steel: new THREE.MeshStandardMaterial({ color: 0xb9bec4, roughness: 0.3, metalness: 0.55 }),
     iron: new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6, metalness: 0.4 }),
     bark: new THREE.MeshStandardMaterial({ color: 0x2a231d, roughness: 1 }),
@@ -78,9 +82,10 @@ export function createChunkBuilder() {
   under.ramp.color.set(0x7a7262);
   under.tomb.color.set(0x8c8474);
   const rand = seededRandom(11);
-  const headstones = headstoneGeometries().map(shared);
-  const trees = [0, 1, 2, 3].map(() => shared(treeGeometry(rand)));
-  const moundGeo = shared(new THREE.SphereGeometry(1, 10, 6));
+  const D = fineDecor(), U = fineUnder(), M = fineLunar();
+  const headstones = fineHeadstones().map(shared);
+  const trees = [0, 1, 2, 3].map(() => shared(fineTree(rand)));
+  const moundGeo = shared(D.mound);
   // The House: card tables in green baize, counters in dark wood, and every rail brass.
   const casino = { ...mat, ramp: new THREE.MeshStandardMaterial({ color: 0x0f5a35, roughness: 0.95, side: THREE.DoubleSide }), tomb: new THREE.MeshStandardMaterial({ color: 0x3a2116, roughness: 0.5, side: THREE.DoubleSide }),
     steel: new THREE.MeshStandardMaterial({ color: 0xc9a44a, roughness: 0.35, metalness: 0.5, emissive: 0x2a1c04 }) };
@@ -92,6 +97,8 @@ export function createChunkBuilder() {
   lunar.slab = new THREE.MeshStandardMaterial({ map: regolith, color: 0x9a999c, roughness: 1, side: THREE.DoubleSide });   // (slabs of rock are rock)
   // (Nothing here is shiny metal: with a black sky there is nothing for metal to reflect, and it draws as black.)
   const hull = new THREE.MeshStandardMaterial({ color: 0xd4d5da, roughness: 0.75 });
+  const gear = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });   // the sculpted fittings (scenery.js), in their own paint
+  const fitted = (g, geometry) => { const m = new THREE.Mesh(geometry, gear); m.castShadow = true; g.add(m); };
   const foil = new THREE.MeshStandardMaterial({ color: 0xd2a63a, roughness: 0.55, emissive: 0x2a1c04 });
   const panel = new THREE.MeshStandardMaterial({ color: 0x24408c, roughness: 0.5, emissive: 0x060c20 });
   const cloth = new THREE.MeshBasicMaterial({ color: 0xe8e4da, side: THREE.DoubleSide });
@@ -111,6 +118,7 @@ export function createChunkBuilder() {
       add(new THREE.SphereGeometry(0.8, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.4).rotateX(Math.PI), hull, 1.2, 5.9, -0.4);   // dish
       add(new THREE.CylinderGeometry(0.03, 0.03, 3.2, 5), hull, 6.5, 1.6, 2.5);                       // the flag: pole...
       add(new THREE.PlaneGeometry(1.5, 0.9), cloth, 7.25, 2.75, 2.5);                                      // ...and cloth
+      fitted(g, landerTrim());
     } else if (p.kind === 'habitat') {
       // A habitat module: a half-buried tube with ribs, its solar panels fallen alongside.
       const length = p.u1 - p.u0, top = p.localHeight(0, 0);
@@ -125,6 +133,7 @@ export function createChunkBuilder() {
       add(new THREE.BoxGeometry(6.2, 0.14, 6.2), hull, 0, top + 0.06, 0);                             // the deck's edge
       add(new THREE.SphereGeometry(1.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.4).rotateX(Math.PI * 0.75), hull, 0, top + 5, 1);
       add(new THREE.SphereGeometry(0.16, 8, 6), lit, 0, top + 7.2, 0);
+      fitted(g, towerTrim(top));
     } else if (p.kind === 'launchpad') {
       // The Launch Pad: a gantry standing beside the ramp, striped in warning colours.
       for (const side of [-1, 1]) {
@@ -133,6 +142,7 @@ export function createChunkBuilder() {
         add(new THREE.SphereGeometry(0.2, 8, 6), lit, p.lipU, p.lipY + 9.2, side * 7.5);
       }
       g.add(new THREE.Mesh(tubeGeometry(new THREE.Vector3(p.lipU, p.lipY + 9, -7.5), new THREE.Vector3(p.lipU, p.lipY + 9, 7.5), 0.12), hull));
+      fitted(g, gantryTrim(p.lipU, p.lipY));
     } else return null;
     g.position.set(p.x, p.y0, p.z);
     g.rotation.y = p.yaw;
@@ -140,58 +150,37 @@ export function createChunkBuilder() {
   }
 
   // Decor (the Cemetery): things that are only drawn. Nothing here is solid, so none of it changes how the place skates.
-  const tuftGeo = shared(mergeGeometries([[-0.07, 0.25], [0.06, -0.2], [0, 0.05], [0.1, 0.3]].map(([x, lean], i) =>
-    new THREE.ConeGeometry(0.035, 0.3 + i * 0.05, 4).translate(0, 0.15 + i * 0.025, 0).rotateZ(lean).translate(x, 0, (i - 1.5) * 0.05))));
-  const rockGeo = shared(new THREE.IcosahedronGeometry(1, 0));
-  const skullGeo = shared(mergeGeometries([
-    new THREE.SphereGeometry(0.13, 8, 6).scale(1, 1.05, 1.1).translate(0, 0.12, 0),
-    new THREE.BoxGeometry(0.14, 0.07, 0.1).translate(0, 0.03, 0.05),
-  ]));
+  const tuftGeo = shared(D.tuft);
+  const rockGeo = shared(D.rock);
+  const skullGeo = shared(D.skull);
   const puddleGeo = shared(new THREE.CircleGeometry(1, 18).rotateX(-Math.PI / 2));
-  const boneGeo = shared(mergeGeometries([
-    new THREE.CylinderGeometry(0.035, 0.035, 1, 6),
-    ...[-0.5, 0.5].flatMap((y) => [-0.035, 0.035].map((x) => new THREE.SphereGeometry(0.06, 6, 5).translate(x, y, 0))),
-  ]));
-  const leafGeo = shared(new THREE.CircleGeometry(0.11, 5).rotateX(-Math.PI / 2));
-  const shroomGeo = shared(mergeGeometries([
-    new THREE.CylinderGeometry(0.018, 0.024, 0.12, 5).translate(0, 0.06, 0),
-    new THREE.SphereGeometry(0.07, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.7, 1).translate(0, 0.11, 0),
-  ]));
-  const crossGeo = shared(mergeGeometries([new THREE.BoxGeometry(0.05, 1.1, 0.05).translate(0, 0.5, 0), new THREE.BoxGeometry(0.5, 0.05, 0.05).translate(0, 0.75, 0)]));
-  const pumpkinGeo = shared(mergeGeometries([
-    new THREE.SphereGeometry(0.24, 10, 8).scale(1, 0.8, 1).translate(0, 0.19, 0),
-    new THREE.CylinderGeometry(0.02, 0.03, 0.08, 5).translate(0, 0.41, 0),
-  ]));
-  const slabGeo = shared(new THREE.BoxGeometry(1, 0.1, 0.6).translate(0, 0.05, 0));
-  const crowGeo = shared(mergeGeometries([
-    new THREE.SphereGeometry(0.09, 8, 6).scale(1, 0.9, 1.7).translate(0, 0.12, 0),
-    new THREE.SphereGeometry(0.055, 8, 6).translate(0, 0.21, 0.13),
-    new THREE.ConeGeometry(0.018, 0.07, 4).rotateX(Math.PI / 2).translate(0, 0.2, 0.21),
-    new THREE.BoxGeometry(0.03, 0.02, 0.14).rotateX(-0.3).translate(0, 0.1, -0.2),
-  ]));
-  const flowerGeo = shared(new THREE.SphereGeometry(0.06, 6, 5).scale(1, 0.6, 1).translate(0, 0.05, 0));
-  const candleGeo = shared(mergeGeometries([new THREE.BoxGeometry(0.3, 0.04, 0.18), new THREE.CylinderGeometry(0.03, 0.035, 0.2, 6).translate(0, 0.12, 0)]));
-  const spikeGeo = shared(new THREE.ConeGeometry(1, 1, 6).rotateX(Math.PI).translate(0, -0.5, 0));     // (hangs down from where it is put)
-  const chainGeo = shared(new THREE.CylinderGeometry(0.025, 0.025, 1, 5).translate(0, -0.5, 0));       // (likewise)
-  const lanternGeo = shared(mergeGeometries([new THREE.BoxGeometry(0.26, 0.05, 0.26).translate(0, 0.2, 0), new THREE.BoxGeometry(0.26, 0.05, 0.26).translate(0, -0.2, 0),
-    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, z]) => new THREE.BoxGeometry(0.025, 0.4, 0.025).translate(x * 0.115, 0, z * 0.115))]));
+  const boneGeo = shared(D.bone);
+  const leafGeo = shared(D.leaf);
+  const shroomGeo = shared(D.shroom);
+  const crossGeo = shared(D.cross);
+  const pumpkinGeo = shared(D.pumpkin);
+  const slabGeo = shared(D.slab);
+  const crowGeo = shared(D.crow);
+  const flowerGeo = shared(D.flower);
   const tintOf = new THREE.Color();
   const underMat = {
     oldBone: new THREE.MeshStandardMaterial({ color: 0x9a927c, roughness: 0.85 }),
+    drip: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, vertexColors: true, roughness: 1, side: THREE.DoubleSide }),   // stalactites
     moss: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }),
-    wax: new THREE.MeshStandardMaterial({ color: 0xd9d2bf, roughness: 0.6 }),
+    wax: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x2a1c0a }),
     fungus: new THREE.PointsMaterial({ map: glow, color: 0x5ff0e0, size: 0.5, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
   };
   const moreMat = {
     leaf: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }),
-    shroom: new THREE.MeshStandardMaterial({ color: 0xcfc4a8, roughness: 0.8 }),
-    pumpkin: new THREE.MeshStandardMaterial({ color: 0xc8641c, roughness: 0.7, emissive: 0x5a2206 }),
-    crow: new THREE.MeshStandardMaterial({ color: 0x0c0c0f, roughness: 0.6 }),
-    flower: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }),
+    shroom: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
+    pumpkin: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, emissive: 0x5a2206 }),
+    crow: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }),
+    flower: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
+    skull: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }),
     firefly: new THREE.PointsMaterial({ map: glow, color: 0xf4e88a, size: 0.6, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }),
   };
   const decorMat = {
-    tuft: new THREE.MeshStandardMaterial({ color: 0x2f3f24, roughness: 1 }),
+    tuft: new THREE.MeshStandardMaterial({ color: 0x4f6a36, vertexColors: true, roughness: 1 }),
     bone: new THREE.MeshStandardMaterial({ color: 0xcfc8b2, roughness: 0.7 }),
     puddle: new THREE.MeshStandardMaterial({ color: 0x0c1016, roughness: 0.04, metalness: 0.6 }),
     wisp: new THREE.PointsMaterial({ map: glow, color: 0x8dffc8, size: 1.1, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }),
@@ -204,20 +193,14 @@ export function createChunkBuilder() {
   // ---- The Moon's decor: only drawn, like the Cemetery's. ----
   // Everywhere: rocks, big and small. Round the Base: crates, fuel tanks, cracked helmets, bones, a rover that
   // will never move again. On the night side: crystals that glow, and things that might be eggs.
-  const crystalGeo = shared(mergeGeometries([[0, 0, 0, 1], [0.22, 0.5, 0.3, 0.7], [-0.2, -0.4, -0.25, 0.55]].map(([x, lean, z, tall]) =>
-    new THREE.ConeGeometry(0.16, tall, 5).translate(0, tall / 2, 0).rotateZ(lean).translate(x, 0, z))));
-  const eggGeo = shared(new THREE.SphereGeometry(0.3, 10, 8).scale(1, 1.35, 1).translate(0, 0.32, 0));
-  const helmetGeo = shared(mergeGeometries([new THREE.SphereGeometry(0.22, 12, 9).translate(0, 0.2, 0), new THREE.CylinderGeometry(0.17, 0.2, 0.08, 10).translate(0, 0.03, 0)]));
   const visorGeo = shared(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0.5, 1.2).rotateX(Math.PI / 2).translate(0, 0.21, 0.07));
-  const crateGeo = shared(new THREE.BoxGeometry(1, 0.8, 0.8).translate(0, 0.4, 0));
-  const tankGeo = shared(new THREE.CapsuleGeometry(0.32, 1.1, 4, 10).rotateZ(Math.PI / 2).translate(0, 0.32, 0));
   const moonMat = {
     rock: new THREE.MeshStandardMaterial({ map: regolith, color: 0x8a898c, roughness: 1, flatShading: true }),
-    crate: new THREE.MeshStandardMaterial({ map: plates, color: 0xb9b08a, roughness: 0.8 }),
-    tank: new THREE.MeshStandardMaterial({ color: 0xc8c9ce, roughness: 0.6 }),
+    crate: new THREE.MeshStandardMaterial({ map: plates, color: 0xb9b08a, vertexColors: true, roughness: 0.8 }),
+    tank: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }),
     visor: new THREE.MeshStandardMaterial({ color: 0x2a1a08, roughness: 0.2, emissive: 0x241405 }),
-    crystal: new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
-    egg: new THREE.MeshStandardMaterial({ color: 0x3f5a3a, roughness: 0.4, emissive: 0x0f2a12 }),
+    crystal: new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, toneMapped: false }),
+    egg: new THREE.MeshStandardMaterial({ color: 0x5a8052, vertexColors: true, roughness: 0.4, emissive: 0x0f2a12 }),
     spark: new THREE.PointsMaterial({ map: glow, color: 0x8ff0ff, size: 1.2, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
   };
   function buildMoonDecor(c, group) {
@@ -262,12 +245,12 @@ export function createChunkBuilder() {
       else bones.push([s.x, s.y + 0.1, s.z, s.turn, 0.5 * BIG, 0.5 * BIG, 0.5 * BIG]);
     }
     put(rockGeo, moonMat.rock, rocks);
-    put(crystalGeo, moonMat.crystal, crystals, (k) => tintOf.setHSL(0.5 + k * 0.4, 0.9, 0.62));   // cyan through violet
-    put(eggGeo, moonMat.egg, eggs);
-    put(helmetGeo, moonMat.tank, helmets);
+    put(M.crystal, moonMat.crystal, crystals, (k) => tintOf.setHSL(0.5 + k * 0.4, 0.9, 0.62));   // cyan through violet
+    put(M.egg, moonMat.egg, eggs);
+    put(M.helmet, moonMat.tank, helmets);
     put(visorGeo, moonMat.visor, visors);
-    put(crateGeo, moonMat.crate, crates);
-    put(tankGeo, moonMat.tank, tanks);
+    put(M.crate, moonMat.crate, crates);
+    put(M.tank, moonMat.tank, tanks);
     if (bones.length) {
       const mesh = new THREE.InstancedMesh(boneGeo, decorMat.bone, bones.length);
       bones.forEach((d, i) => mesh.setMatrixAt(i, m.compose(v.set(d[0], d[1], d[2]), q.setFromAxisAngle(Y, d[3]).multiply(tilt.setFromAxisAngle(Z3, Math.PI / 2)), sc.set(d[4], d[5], d[6]))));
@@ -307,6 +290,7 @@ export function createChunkBuilder() {
         const here = new THREE.Vector3(at.x + n.x * (radius + 0.12), at.y + n.y * (radius + 0.12), z);
         if (last) iron.push(tubeGeometry(last, here, radius));
         if (radius > 0.2 && Math.round(z) % 8 === 0) iron.push(tubeGeometry(new THREE.Vector3(at.x, at.y, z), here, 0.06));   // a bracket
+        if (Math.round(z) % 4 === 2) iron.push(U.flange.clone().scale(radius, radius, radius).translate(here.x, here.y, here.z));   // where two lengths are bolted together
         last = here;
       }
     }
@@ -320,12 +304,12 @@ export function createChunkBuilder() {
     }
     for (let k = 0; k < 9; k++) {
       const z = c.z0 + dice() * CHUNK, r = route(z, seed), x = r.x + (dice() * 2 - 1) * (r.w - 0.5), long = 3 + dice() * 6, lit = dice() < 0.6;
-      chains.push([x, roof, z, spin(0), 1, long, 1]);
-      if (lit) { lanterns.push([x, roof - long - 0.2, z, spin(dice()), 1, 1, 1]); flames.push(x, roof - long - 0.2, z); }
+      chains.push([x, roof + 9.9 - long, z, spin(0), 1, 1, 1]);   // (the rest of it is above the roof)
+      if (lit) { lanterns.push([x, roof - long - 0.38, z, spin(dice()), 1.3, 1.3, 1.3]); flames.push(x, roof - long - 0.5, z); }
     }
-    place(spikeGeo, mat.rock, spikes);
-    place(chainGeo, mat.iron, chains);
-    place(lanternGeo, mat.iron, lanterns);
+    place(U.spike, underMat.drip, spikes);
+    place(U.chain, mat.wrought, chains);
+    place(U.lantern, mat.wrought, lanterns);
 
     // Bones on the floor.
     const bones = [];
@@ -336,6 +320,27 @@ export function createChunkBuilder() {
       bones.push([x, y + 0.05, z, spin(turn).multiply(new THREE.Quaternion().setFromAxisAngle(Zaxis, Math.PI / 2)), 0.35 + size * 0.3, 0.3 + size * 0.3, 0.35 + size * 0.3]);
     }
     place(boneGeo, underMat.oldBone, bones);
+    // The dead, stacked: a band of skulls set into each wall, well above where anyone rides. And here and there on the
+    // floor, a rib cage, or candles somebody lit.
+    const skulls = [], ribs = [], wax = [], out = new THREE.Vector3();
+    for (const side of [-1, 1]) {
+      const z0 = c.z0 + 2 + dice() * (CHUNK - 12), wide = 8 + Math.floor(dice() * 5);
+      for (let r = 0; r < 3; r++) for (let i = 0; i < wide - r; i++) {
+        const z = z0 + (i + r * 0.5) * 0.66;
+        wall(side, 6.4 + r * 0.6, z);
+        out.set(n.x, n.y, 0).normalize();
+        skulls.push([at.x + out.x * 0.1, at.y - 0.12, z, spin((out.x > 0 ? 1 : -1) * Math.PI / 2 + (dice() - 0.5) * 0.5), 2.3, 2.3, 2.3]);   // (looking out into the tunnel)
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      const z = c.z0 + 1 + dice() * (CHUNK - 2), r = route(z, seed), x = r.x + (dice() * 2 - 1) * (r.w - 0.6), turn = dice() * 6.28, y = chunkBase(c, x, z);
+      if (chunkHeight(c, x, z) - y > 0.05) continue;
+      if (k < 2) ribs.push([x, y - 0.04, z, spin(turn), 2, 2, 2]);
+      else { wax.push([x, y, z, spin(turn), 2, 2, 2]); flames.push(x, y + 0.66, z); }
+    }
+    place(U.skull, moreMat.skull, skulls);
+    place(D.ribs, underMat.oldBone, ribs);
+    place(U.candles, underMat.wax, wax);
     for (const [list, material] of [[flames, mat.flame]]) {
       if (!list.length) continue;
       const geo = new THREE.BufferGeometry();
@@ -372,6 +377,8 @@ export function createChunkBuilder() {
     scatter(more.slab, graves ? 14 : 6, false, 0.4);
     scatter(more.crow, 6, false);
     scatter(more.pebble, 30, true);
+    more.ribs = [];
+    scatter(more.ribs, graves ? 5 : 2, false, 0.4);
     const BIG = 2.2;   // how much larger than life the decor is drawn (so it reads from the chase camera, at speed)
     const instanced = (geometry, material, list, place, grow = BIG) => {
       if (!list.length) return;
@@ -381,9 +388,9 @@ export function createChunkBuilder() {
       group.add(mesh);
     };
     instanced(tuftGeo, decorMat.tuft, lists.tuft, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.8 + size * 1.1); });
-    instanced(rockGeo, mat.stone, lists.rock, ([x, y, z, turn, size]) => { v.set(x, y + 0.02, z); q.setFromAxisAngle(Y, turn); sc.set(0.14 + size * 0.3, 0.08 + size * 0.16, 0.12 + size * 0.24); });
-    instanced(trees[0], mat.bark, lists.shrub, ([x, y, z, turn, size]) => { v.set(x, y - 0.1, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.1 + size * 0.09); });
-    instanced(skullGeo, decorMat.bone, lists.skull, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.9 + size * 0.4); });
+    instanced(rockGeo, mat.carved, lists.rock, ([x, y, z, turn, size]) => { v.set(x, y + 0.02, z); q.setFromAxisAngle(Y, turn); sc.set(0.14 + size * 0.3, 0.08 + size * 0.16, 0.12 + size * 0.24); });
+    instanced(trees[0], mat.painted, lists.shrub, ([x, y, z, turn, size]) => { v.set(x, y - 0.1, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.1 + size * 0.09); });
+    instanced(skullGeo, moreMat.skull, lists.skull, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.9 + size * 0.4); });
     instanced(puddleGeo, decorMat.puddle, lists.puddle, ([x, y, z, turn, size]) => { v.set(x, y + 0.025, z); q.setFromAxisAngle(Y, turn); sc.set(0.7 + size * 1.3, 1, 0.5 + size * 0.9); }, 1);
     const tinted = (geometry, material, list, tint, place) => {
       if (!list.length) return;
@@ -397,11 +404,12 @@ export function createChunkBuilder() {
     tinted(leafGeo, moreMat.leaf, more.leafPaved, leafTint, ([x, y, z, turn, size]) => { v.set(x, y + 0.02, z); q.setFromAxisAngle(Y, turn); sc.set(0.8 + size, 1, 0.6 + size * 0.6); });
     instanced(shroomGeo, moreMat.shroom, more.shroom, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.7 + size * 1.4); });
     instanced(boneGeo, decorMat.bone, more.bone, ([x, y, z, turn, size]) => { v.set(x, y + 0.05, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, Math.PI / 2)); sc.setScalar(0.35 + size * 0.3); });
-    instanced(crossGeo, mat.iron, more.cross, ([x, y, z, turn, size]) => { v.set(x, y - 0.08, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, (size - 0.5) * 0.5)); sc.setScalar(0.8 + size * 0.5); });
+    instanced(crossGeo, mat.wrought, more.cross, ([x, y, z, turn, size]) => { v.set(x, y - 0.08, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, (size - 0.5) * 0.5)); sc.setScalar(0.8 + size * 0.5); });
     instanced(pumpkinGeo, moreMat.pumpkin, more.pumpkin, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.8 + size * 0.7); });
-    instanced(slabGeo, mat.stone, more.slab, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, (size - 0.5) * 0.25)); sc.set(0.5 + size * 0.8, 0.8 + size, 0.6 + size * 0.7); });
+    instanced(slabGeo, mat.carved, more.slab, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, (size - 0.5) * 0.25)); sc.set(0.5 + size * 0.8, 0.8 + size, 0.6 + size * 0.7); });
+    instanced(D.ribs, decorMat.bone, more.ribs, ([x, y, z, turn, size]) => { v.set(x, y - 0.03, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.8 + size * 0.5); });
     instanced(crowGeo, moreMat.crow, more.crow, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(1 + size * 0.5); });
-    instanced(rockGeo, mat.stone, more.pebble, ([x, y, z, turn, size]) => { v.set(x, y + 0.01, z); q.setFromAxisAngle(Y, turn); sc.set(0.05 + size * 0.07, 0.03 + size * 0.03, 0.05 + size * 0.06); });
+    instanced(rockGeo, mat.carved, more.pebble, ([x, y, z, turn, size]) => { v.set(x, y + 0.01, z); q.setFromAxisAngle(Y, turn); sc.set(0.05 + size * 0.07, 0.03 + size * 0.03, 0.05 + size * 0.06); });
     // Flowers left on the graves, a candle glowing in every pumpkin, and fireflies over the grass.
     const flowers = [], lights = [], flies = [];
     for (const plot of c.plots) for (let k = 0; k < 14; k++) {
@@ -452,7 +460,7 @@ export function createChunkBuilder() {
     for (const p of c.props) {
       if (p.type === 'headstone') stones[p.kind].push(p);
       else if (p.type === 'tree') {
-        const tree = new THREE.Mesh(trees[p.variant], mat.bark);
+        const tree = new THREE.Mesh(trees[p.variant], mat.painted);
         tree.position.set(p.x, p.y0 - 0.5, p.z);
         tree.rotation.y = p.variant * 1.7 + p.x;
         tree.scale.setScalar(p.scale);
@@ -474,7 +482,7 @@ export function createChunkBuilder() {
     // Headstones: one instanced mesh per shape.
     stones.forEach((list, kind) => {
       if (!list.length) return;
-      const mesh = new THREE.InstancedMesh(headstones[kind], mat.stone, list.length);
+      const mesh = new THREE.InstancedMesh(headstones[kind], mat.carved, list.length);
       list.forEach((p, i) => mesh.setMatrixAt(i, m.compose(v.set(p.x, p.y0 - 0.12, p.z), q.setFromAxisAngle(Y, p.yaw), sc.setScalar(p.scale))));
       mesh.castShadow = mesh.receiveShadow = true;
       group.add(mesh);
@@ -497,7 +505,7 @@ export function createChunkBuilder() {
     if (kerbs.length) group.add(new THREE.Mesh(mergeGeometries(kerbs), mat.stone));
     if (c.dirt.length) {
       const mounds = new THREE.InstancedMesh(moundGeo, mat.dirt, c.dirt.length);
-      c.dirt.forEach(([x, z, y], i) => mounds.setMatrixAt(i, m.compose(v.set(x, y, z), q.identity(), sc.set(0.5, 0.16, 0.95))));
+      c.dirt.forEach(([x, z, y], i) => mounds.setMatrixAt(i, m.compose(v.set(x, y, z), q.identity(), sc.set(0.5, 0.2, 0.95))));
       mounds.receiveShadow = true;
       group.add(mounds);
     }
@@ -618,11 +626,8 @@ function buildTunnelWalls(c, mat) {
 // A fire bowl on an iron stand.
 function buildBrazier(p, mat) {
   const g = new THREE.Group();
-  const stand = new THREE.Mesh(mergeGeometries([
-    new THREE.CylinderGeometry(0.07, 0.12, 1.0, 8).translate(0, 0.5, 0),
-    new THREE.CylinderGeometry(0.3, 0.36, 0.08, 10).translate(0, 0.04, 0),
-    new THREE.CylinderGeometry(0.5, 0.26, 0.36, 12).translate(0, 1.16, 0),
-  ]), mat.iron);
+  const stand = new THREE.Mesh(BRAZIER(), mat.wrought);
+  stand.castShadow = true;
   const embers = new THREE.Mesh(shared(EMBERS), mat.ember);
   embers.position.y = 1.33;
   const flare = new THREE.Sprite(mat.flare);
@@ -789,45 +794,10 @@ function placed(group, p) {
 
 // ---- Cemetery pieces -----------------------------------------------------------
 
-function headstoneGeometries() {
-  // Rounded-top slab
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.4, 0); shape.lineTo(-0.4, 0.9); shape.absarc(0, 0.9, 0.4, Math.PI, 0, true); shape.lineTo(0.4, 0); shape.closePath();
-  const slab = new THREE.ExtrudeGeometry(shape, { depth: 0.18, bevelEnabled: false });
-  slab.translate(0, 0, -0.09);
-  // Cross
-  const cross = mergeGeometries([
-    new THREE.BoxGeometry(0.22, 1.7, 0.2).translate(0, 0.85, 0),
-    new THREE.BoxGeometry(0.9, 0.22, 0.2).translate(0, 1.2, 0),
-    new THREE.BoxGeometry(0.6, 0.2, 0.5).translate(0, 0.1, 0),
-  ]);
-  // Obelisk
-  const obelisk = mergeGeometries([
-    new THREE.CylinderGeometry(0.16, 0.34, 2.4, 4).translate(0, 1.5, 0),
-    new THREE.ConeGeometry(0.23, 0.35, 4).translate(0, 2.87, 0),
-    new THREE.BoxGeometry(0.8, 0.3, 0.8).translate(0, 0.15, 0),
-  ]);
-  return [slab, cross, obelisk];
-}
-
-// A bare tree: a trunk that keeps forking.
-function treeGeometry(rand) {
-  const parts = [], q = new THREE.Quaternion();
-  const grow = (start, dir, len, radius, depth) => {
-    const end = start.clone().addScaledVector(dir, len);
-    const geo = new THREE.CylinderGeometry(radius * 0.65, radius, len, 5, 1, true);
-    geo.translate(0, len / 2, 0).applyQuaternion(q.setFromUnitVectors(Y, dir)).translate(start.x, start.y, start.z);
-    parts.push(geo);
-    if (depth === 0) return;
-    const forks = depth > 2 ? 2 : 2 + Math.floor(rand() * 2);
-    for (let i = 0; i < forks; i++) {
-      const bend = new THREE.Vector3(rand() - 0.5, rand() * 0.5 + 0.1, rand() - 0.5).normalize();
-      grow(end, dir.clone().lerp(bend, 0.55).normalize(), len * (0.62 + rand() * 0.15), radius * 0.62, depth - 1);
-    }
-  };
-  grow(new THREE.Vector3(), new THREE.Vector3((rand() - 0.5) * 0.15, 1, (rand() - 0.5) * 0.15).normalize(), 3.6, 0.32, 4);
-  return mergeGeometries(parts);
-}
+// The sculpted ones are made the first time they are wanted, and shared from then on.
+const once = (make) => { let made = null; return () => made || (made = make()); };
+const sharedAll = (o) => { for (const g of Array.isArray(o) ? o : Object.values(o)) g.userData.shared = true; return o; };
+const STATUES = once(() => sharedAll(fineStatues())), CHAPEL = once(() => sharedAll(chapelTrim())), LAMP = once(() => shared(fineLamp())), BRAZIER = once(() => shared(fineBrazier()));
 
 // Flat-roofed tomb house: matches its solid box exactly, plus trim.
 function buildMausoleum(p, mat) {
@@ -842,20 +812,10 @@ function buildMausoleum(p, mat) {
   const footing = texturedBox(l + 0.8, 3, w + 0.8, mat.stone, 3);
   footing.position.y = -1.5;
   house.add(body, cornice, step, footing);
-  // Front (+u side): door, columns, a cross on the roof.
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.7), mat.iron);
-  door.position.set(l / 2 + 0.02, 1.35, 0);
-  door.rotation.y = Math.PI / 2;
-  house.add(door);
-  for (const s of [-1, 1]) {
-    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, h - 0.5, 10), mat.stone);
-    column.position.set(l / 2 + 0.3, (h - 0.5) / 2, s * 1.5);
-    column.castShadow = true;
-    house.add(column);
-  }
-  const cross = new THREE.Mesh(mergeGeometries([new THREE.BoxGeometry(0.12, 0.9, 0.12), new THREE.BoxGeometry(0.12, 0.12, 0.6).translate(0, 0.15, 0)]), mat.stone);
-  cross.position.set(l / 2 - 0.3, h + 0.45, 0);
-  house.add(cross);
+  // Everything else (the porch and its columns, the iron doors, steps, urns, ivy) is sculpted: see scenery.js.
+  const trim = new THREE.Mesh(tombTrim(l, w, h), mat.carved);
+  trim.castShadow = trim.receiveShadow = true;
+  house.add(trim);
   return placed(house, p);
 }
 
@@ -869,26 +829,9 @@ function buildMonument(p, mat) {
   const footing = texturedBox(1.9, 2, 1.9, mat.stone, 2);
   footing.position.y = -1;
   monument.add(base, pedestal, footing);
-  const add = (geo, x, y, z, rz = 0) => {
-    const mesh = new THREE.Mesh(geo, mat.stone);
-    mesh.position.set(x, y, z);
-    mesh.rotation.z = rz;
-    mesh.castShadow = true;
-    monument.add(mesh);
-  };
-  if (p.statue === 0) {          // angel
-    add(new THREE.ConeGeometry(0.5, 1.9, 10), 0, 2.55, 0);
-    add(new THREE.SphereGeometry(0.22, 12, 8), 0, 3.6, 0);
-    add(new THREE.ConeGeometry(0.28, 1.5, 3), -0.42, 3.0, -0.22, 2.75);   // folded wings
-    add(new THREE.ConeGeometry(0.28, 1.5, 3), 0.42, 3.0, -0.22, -2.75);
-  } else if (p.statue === 1) {   // tall cross
-    add(new THREE.BoxGeometry(0.3, 2.8, 0.3), 0, 3.0, 0);
-    add(new THREE.BoxGeometry(1.5, 0.3, 0.3), 0, 3.6, 0);
-  } else {                       // urn
-    add(new THREE.CylinderGeometry(0.2, 0.35, 0.5, 10), 0, 1.85, 0);
-    add(new THREE.SphereGeometry(0.55, 14, 10), 0, 2.55, 0);
-    add(new THREE.CylinderGeometry(0.3, 0.2, 0.25, 10), 0, 3.1, 0);
-  }
+  const statue = new THREE.Mesh(STATUES()[p.statue], mat.carved);   // (an angel, a cross or an urn, and the pedestal's mouldings: see scenery.js)
+  statue.castShadow = statue.receiveShadow = true;
+  monument.add(statue);
   return placed(monument, p);
 }
 
@@ -904,31 +847,19 @@ function buildChapel(p, mat) {
   roof.castShadow = true;
   const tower = texturedBox(6, 22, 6, mat.wall);
   tower.position.set(0, 11, 9);
-  const spire = new THREE.Mesh(new THREE.ConeGeometry(4.6, 12, 4), mat.stone);
-  spire.position.set(0, 28, 9);
-  spire.rotation.y = Math.PI / 4;
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 4), mat.iron);
-  door.position.set(0, 2, 12.03);
   const footing = texturedBox(13.6, 5, 24.6, mat.stone);
   footing.position.y = -2.5;
-  chapel.add(nave, roof, tower, spire, door, footing);
-  for (const [x, y, z, ry] of [[0, 17, 12.03, 0], [6.53, 5, -6, Math.PI / 2], [6.53, 5, 0, Math.PI / 2], [-6.53, 5, -6, -Math.PI / 2], [-6.53, 5, 0, -Math.PI / 2]]) {
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.8), mat.window);
-    win.position.set(x, y, z);
-    win.rotation.y = ry;
-    chapel.add(win);
-  }
+  // The rest (buttresses, windows, the slates, the belfry, the spire, the door) is sculpted: see scenery.js.
+  const trim = CHAPEL(), carved = new THREE.Mesh(trim.stone, mat.carved), glass = new THREE.Mesh(trim.glass, mat.window);
+  carved.castShadow = carved.receiveShadow = true;
+  chapel.add(nave, roof, tower, footing, carved, glass);
   return placed(chapel, p);
 }
 
 // Street lamp. The real lights are a small pool moved between the nearest lamps (see arena.js).
 function buildLamp(p, mat) {
   const lamp = new THREE.Group();
-  const pole = new THREE.Mesh(mergeGeometries([
-    tubeGeometry(new THREE.Vector3(0, -1.5, 0), new THREE.Vector3(0, 7, 0), 0.09),
-    tubeGeometry(new THREE.Vector3(0, 7, 0), new THREE.Vector3(-1.6, 6.8, -1.6), 0.06),
-    new THREE.CylinderGeometry(0.2, 0.26, 0.5, 8).translate(0, 0.25, 0),
-  ]), mat.iron);
+  const pole = new THREE.Mesh(LAMP(), mat.wrought);
   pole.castShadow = true;
   const bulb = new THREE.Mesh(shared(BULB), mat.bulb);
   bulb.position.set(-1.6, 6.7, -1.6);

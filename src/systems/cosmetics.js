@@ -70,7 +70,7 @@ export const SLOTS = [
     { id: 'jackpot', name: 'Jackpot gold', color: '#ffd23a', casino: true },
   ] },
   { id: 'smoke', name: 'In his mouth', price: 150, options: [
-    { id: 'cigarette', name: 'Cigarette' },
+    { id: 'cigarette', name: 'Boof' },
     { id: 'lollipop', name: 'Lollipop' },
     { id: 'toothpick', name: 'Toothpick' },
     { id: 'pipe', name: 'Pipe' },
@@ -78,7 +78,7 @@ export const SLOTS = [
     { id: 'bone', name: 'Finger bone' },
     { id: 'nothing', name: 'Nothing' },
     { id: 'cigar', name: 'Cigar', casino: true },
-    { id: 'goldbroken', name: 'Gold broken cigarette', ending: true },   // (the prize for finishing the game)
+    { id: 'goldbroken', name: 'The Golden BOOF', ending: true },   // (the prize for finishing the game)
   ] },
   // Costumes (player/costumes.js). They can't be bought: each is found on the Moon, in Free Ride, and shows
   // as "???" until you have. Each comes in two pieces, the body and the head, to wear together or apart.

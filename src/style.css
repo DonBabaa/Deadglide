@@ -134,9 +134,34 @@ body.cut-wait #caption small { color: #ffc233; opacity: 1; animation: cut-wait 0
 #menu-cinema { width: min(560px, 50vw); max-height: 100vh; overflow-y: auto; padding: 24px 0; }
 #cinema-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px; }
 #cinema-list button { text-align: left; padding: 9px 12px; font-size: 14px; }
-#cinema-list small { display: block; opacity: 0.6; font-size: 11px; }
+#cinema-list small, #music-list small { display: block; opacity: 0.6; font-size: 11px; }
+#music-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 18px; }
+#music-list button { text-align: left; padding: 9px 12px; font-size: 14px; }
+#music-list button.on { border-color: #ffc233; color: #ffc233; }
+#editor-tabs { margin: 10px 0 14px; }
+.editor-tab.hidden { display: none; }
+#model-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 18px; }
+#model-list button { text-align: left; padding: 7px 10px; font-size: 13px; }
+#model-list button.on { border-color: #ffc233; color: #ffc233; }
+#model-list h3 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: #ffc233; }
+#model-info { margin: 10px 0 4px; font-size: 13px; opacity: 0.85; min-height: 18px; }
+body.model-view #menu { background: linear-gradient(90deg, rgba(6, 8, 12, 0.92) 0%, rgba(6, 8, 12, 0.75) 36%, rgba(6, 8, 12, 0) 52%); cursor: grab; }
+#sound-stop, #sound-stop-2 { position: sticky; top: 0; z-index: 2; width: 100%; padding: 10px; border-color: #ff5a4a; color: #ff5a4a; background: #17181c; }
+#sound-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 10px 0 18px; }
+#sound-list button { text-align: left; padding: 6px 9px; font-size: 12px; }
+#sound-list h3 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: #ffc233; }
 #cinema { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: rgba(8, 9, 12, 0.88); font: 13px var(--text); color: #e8e4d8; }
 #cinema.hidden { display: none; }
+#spectate { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 12px; background: rgba(8, 9, 12, 0.88); font: 13px var(--text); color: #e8e4d8; }
+#spectate.hidden { display: none; }
+#spectate-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px; }
+#spectate-list button { text-align: left; padding: 9px 12px; font-size: 14px; }
+#spectate-list small { display: block; opacity: 0.6; font-size: 11px; }
+#spectate b { color: #ffc233; margin-right: 6px; }
+#spectate span { opacity: 0.8; }
+#spectate #spectate-where { margin-left: auto; font-variant-numeric: tabular-nums; }
+#spectate button { padding: 4px 10px; font-size: 12px; }
+body.spectating #hud { display: none; }
 #cinema b { color: #ffc233; margin-right: 6px; }
 #cinema input { flex: 1 1 160px; }
 #cinema button { padding: 4px 10px; font-size: 12px; }

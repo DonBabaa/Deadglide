@@ -106,7 +106,7 @@
         <div class="menu-row">
           <button id="menu-shop-open" type="button">Shop <span id="menu-gold"></span></button>
           <button id="menu-casino-open" type="button">Casino</button>
-          <button id="menu-cinema-open" class="hidden" type="button">Cinematics</button>
+          <button id="menu-cinema-open" class="hidden" type="button">Editor</button>
         </div>
         <div class="menu-label">Leaderboard</div>
         <ol id="menu-board" class="board"></ol>
@@ -137,9 +137,42 @@
         <button id="levels-back" type="button">Back</button>
       </div>
       <div id="menu-cinema" class="hidden">
-        <h2>Cinematics</h2>
-        <p class="tagline">Every scene in the game, on its own. (Here because the address has ?editor in it.)</p>
-        <div id="cinema-list"></div>
+        <h2>Editor</h2>
+        <div id="editor-tabs" class="chips">
+          <button class="chip on" type="button" data-tab="scenes">Scenes</button>
+          <button class="chip" type="button" data-tab="music">Music</button>
+          <button class="chip" type="button" data-tab="sounds">Sounds</button>
+          <button class="chip" type="button" data-tab="models">Models</button>
+          <button class="chip" type="button" data-tab="levels">Levels</button>
+        </div>
+        <div class="editor-tab" data-tab="scenes">
+          <p class="tagline">Every scene in the game, on its own. (Here because the address has ?editor in it.)</p>
+          <div id="cinema-list"></div>
+        </div>
+        <div class="editor-tab hidden" data-tab="music">
+          <p class="tagline">Each level's music, and each story soundtrack.</p>
+          <button id="sound-stop" type="button">Stop all sounds</button>
+          <div id="music-list"></div>
+        </div>
+        <div class="editor-tab hidden" data-tab="sounds">
+          <p class="tagline">Every sound in the game. Click one to hear it.</p>
+          <button id="sound-stop-2" type="button">Stop all sounds</button>
+          <div id="sound-list"></div>
+        </div>
+        <div class="editor-tab hidden" data-tab="models">
+          <p class="tagline">Every model. Drag to turn it, scroll to move in and out.</p>
+          <div class="menu-row">
+            <button id="model-spin" type="button">Spin: on</button>
+            <button id="model-animate" type="button">Animate: on</button>
+            <button id="model-reset" type="button">Reset view</button>
+          </div>
+          <div id="model-info"></div>
+          <div id="model-list"></div>
+        </div>
+        <div class="editor-tab hidden" data-tab="levels">
+          <p class="tagline">Every level, empty, to fly round. Click the view to take the mouse.</p>
+          <div id="spectate-list"></div>
+        </div>
         <button id="cinema-back" type="button">Back</button>
       </div>
       <div id="menu-shop" class="hidden">
@@ -281,6 +314,15 @@
       <button id="levelup-reroll" class="hidden" type="button">Reroll (R)</button>
     </div>
 
+    <div id="spectate" class="hidden">
+      <b id="spectate-name"></b>
+      <span>Click to look &middot; <kbd data-key="KeyW">W</kbd><kbd data-key="KeyA">A</kbd><kbd data-key="KeyS">S</kbd><kbd data-key="KeyD">D</kbd> fly &middot; <kbd>Space</kbd> up &middot; <kbd data-key="KeyC">C</kbd> down &middot; <kbd>Shift</kbd> fast &middot; wheel: speed &middot; <kbd>Esc</kbd> twice to leave</span>
+      <span id="spectate-where"></span>
+      <button id="spectate-light" type="button">Lights: as in the game</button>
+      <button id="spectate-prev" type="button">&lsaquo; Level</button>
+      <button id="spectate-next" type="button">Level &rsaquo;</button>
+      <button id="spectate-close" type="button">List</button>
+    </div>
     <div id="cinema" class="hidden">
       <b id="cinema-name"></b>
       <span id="cinema-time">0.0 / 0.0</span>

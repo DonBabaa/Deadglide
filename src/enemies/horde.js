@@ -21,8 +21,9 @@ import { HOUSE, houseSpot } from '../world/house.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
-import { ENEMY_PARTS } from './enemyModels.js';
+import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
 
+const NEAR = 20, NEAR_MOST = 28;   // a monster this close to the camera (m) is drawn in detail: at most this many of a kind at once
 const MAX = 320;          // hard cap on monsters alive (and instances per type)
 const CELL = 2.5;         // spatial hash cell size
 const CLIMB = 1.3;        // monsters step up anything lower than this
@@ -68,6 +69,8 @@ export class Horde {
 
     // Each monster type is a few parts (body, arms, legs...), each one instanced mesh.
     this.meshes = {};
+    this.fine = {};
+    this.eye = new THREE.Vector3();   // where they are being looked at from (main.js keeps it up to date): what is near it is drawn in detail
     for (const name of Object.keys(ENEMY_TYPES)) {
       const T = ENEMY_TYPES[name];
       const material = new THREE.MeshStandardMaterial({
@@ -75,8 +78,8 @@ export class Horde {
         transparent: !!T.opacity, opacity: T.opacity || 1,
       });
       const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });   // eyes: lit from within
-      this.meshes[name] = ENEMY_PARTS[name]().map((p) => {
-        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, T.boss || T.miniboss ? 1 : MAX);
+      const build = (parts, most) => parts.map((p) => {
+        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, most);
         mesh.castShadow = !p.glow;
         mesh.frustumCulled = false;
         mesh.count = 0;
@@ -84,6 +87,11 @@ export class Horde {
         scene.add(mesh);
         return { mesh, pivot: new THREE.Vector3(...p.pivot), swing: p.swing, phase: p.phase };
       });
+      // A monster with a plain version (ENEMY_LITE) is drawn in detail only when it is close: at most NEAR_MOST of them
+      // at once. `meshes` is what the rest are drawn with; `fine` is the detailed set.
+      const lite = ENEMY_LITE[name];
+      this.meshes[name] = build(lite ? lite() : ENEMY_PARTS[name](), T.boss || T.miniboss ? 1 : MAX);
+      if (lite) this.fine[name] = build(ENEMY_PARTS[name](), NEAR_MOST);
     }
 
     // Chunks of monster that fly off when one dies.
@@ -895,10 +903,11 @@ export class Horde {
   // ---- Drawing ---------------------------------------------------------------------
 
   draw(dt) {
-    const counts = {};
-    for (const name in this.meshes) counts[name] = 0;
+    const counts = {}, close = {};
+    for (const name in this.meshes) counts[name] = close[name] = 0;
     for (const e of this.corpse ? [...this.enemies, this.corpse] : this.enemies) {
-      const parts = this.meshes[e.name], i = counts[e.name]++;
+      const near = this.fine[e.name] && close[e.name] < NEAR_MOST && (e.x - this.eye.x) ** 2 + (e.z - this.eye.z) ** 2 < NEAR * NEAR;
+      const parts = near ? this.fine[e.name] : this.meshes[e.name], i = near ? close[e.name]++ : counts[e.name]++;
       const walk = this.time * e.speed * e.T.stride + e.phase;
       // Lurching walk (fliers lean into the chase and bob); sinking below ground while still rising.
       const roar = e.roar || 0;   // the boss, bellowing: he rears back, arms up, shuddering
@@ -923,6 +932,13 @@ export class Horde {
         limb.makeRotationFromEuler(e3.set(p.swing[0] * s, p.swing[1] * s, p.swing[2] * s)).setPosition(p.pivot);
         p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
         p.mesh.setColorAt(i, color);
+      }
+    }
+    for (const name in this.fine) {
+      for (const { mesh } of this.fine[name]) {
+        mesh.count = close[name];
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       }
     }
     for (const name in this.meshes) {

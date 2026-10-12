@@ -2,6 +2,8 @@
 // turns to hard rock (same tempo, same key) when the final boss arrives.
 // The casino has its own: a slow swing trio (brushes, walking bass, piano).
 // So does the Moon (Free Ride): the same tempo at half speed, wide open and weightless.
+// And each of the other levels: the Catacombs (a slow, heavy dub in the dark), the House (a big band playing a minor
+// swing as fast as it can) and the Long Way Down (a chase: four on the floor, octave bass, an arpeggio that will not stop).
 // Nothing is recorded. A small sequencer schedules synthesized drums and sub
 // bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
 // a wailing ghost voice, a broken music box and gusts of wind.
@@ -62,7 +64,10 @@ const LICKS = [[76, 79, 81, 79], [84, 81, 79, 76], [72, 74, 76, 79, 81], [81, 79
 
 let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null, lick = null;
 
-// 'dnb' (the usual music), 'rock' (the boss fight), 'casino' or 'moon'. The new groove starts from bar one, at once.
+// 'dnb' (the cemetery, and the menu), 'catacombs', 'house', 'hill', 'moon', 'casino', or 'rock' (a boss fight).
+// The new groove starts from bar one, at once.
+export const MUSIC_STYLES = ['dnb', 'catacombs', 'rock', 'house', 'hill', 'moon', 'casino'];
+export const musicStyle = () => style;
 export function setMusicStyle(next) {
   if (next === style) return;
   style = next;
@@ -94,7 +99,7 @@ export function startMusic() {
     if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;   // fell behind (tab was asleep)
     while (nextTime < horizon) {
       schedule(step++, nextTime);
-      nextTime += style === 'casino' ? SWING_STEP : STEP;
+      nextTime += style === 'casino' ? SWING_STEP : style === 'house' ? HOUSE_STEP : STEP;
     }
   }, 60);
 }
@@ -103,6 +108,9 @@ function schedule(index, t) {
   if (style === 'rock') return rock(index, t);
   if (style === 'casino') return lounge(index, t);
   if (style === 'moon') return moon(index, t);
+  if (style === 'catacombs') return catacombs(index, t);
+  if (style === 'house') return house(index, t);
+  if (style === 'hill') return hill(index, t);
   const bar = Math.floor(index / 16), s = index % 16;
   const chord = CHORDS[Math.floor(bar / 2) % CHORDS.length];
   const intro = bar < 4;                          // atmosphere and hats only
@@ -154,6 +162,82 @@ function moon(index, t) {
   if (s === 10) bass(t, STEP * 5, chord.root + (bar % 2 ? 7 : 0));
 }
 
+// The Catacombs: half-time and heavy. A kick and a snare with a long tail, a sub bass that holds, ticks like something
+// dripping or something with too many legs, a low chord that changes every four bars, and now and then the voice.
+const CAVE_CHORDS = [
+  { root: 26, notes: [50, 53, 57, 60] },   // D minor 7
+  { root: 27, notes: [51, 54, 58, 63] },   // Eb minor: a half-step up, and wrong
+  { root: 22, notes: [46, 53, 56, 60] },   // Bb 9
+  { root: 25, notes: [49, 52, 56, 61] },   // Db minor
+];
+function catacombs(index, t) {
+  const bar = Math.floor(index / 16), s = index % 16, chord = CAVE_CHORDS[Math.floor(bar / 4) % CAVE_CHORDS.length];
+  const intro = bar < 2, hollow = !intro && bar % 16 >= 14;   // every so often the drums stop and it is just the dark
+  if (s === 0 && bar % 4 === 0) pad(t, BAR * 4, chord.notes);
+  if (s === 0 && bar % 8 === 2) wind(t, BAR * 2);
+  if (s === 0 && bar % 8 === 6) wail(t, pick(WAILS).map((n) => n - 3));
+  if (Math.random() < (hollow ? 0.16 : 0.06)) pluck(t, pick(chord.notes) + pick([24, 31, 36]), 0.5);   // a drip
+  if (s % 4 === 2) noiseBurst(t, 0.03, 0.05, 'highpass', 5200);
+  if (s % 4 === 3 && bar % 2 && Math.random() < 0.5) noiseBurst(t, 0.02, 0.035, 'highpass', 6500);
+  if (intro || hollow) return;
+  if (s === 0) drumKick(t, 1);
+  if (s === 11 && bar % 2) drumKick(t, 0.6);
+  if (s === 8) { drumSnare(t, 0.9); noiseBurst(t, 0.7, 0.045, 'bandpass', 900, 0.6); }
+  if (s === 4 || s === 12) hat(t, 0.25, false);
+  if (s === 0) bass(t, STEP * 7, chord.root);
+  if (s === 10) bass(t, STEP * 4, chord.root + (bar % 2 ? 3 : 0));
+  if (s === 14 && bar % 4 === 3) bass(t, STEP * 2, chord.root + 1);
+}
+
+// The House: swing, in a minor key, at 152. Each beat is three steps, so a bar is twelve. The bass walks (doubled an
+// octave down), the drums swing hard with a fill every fourth bar, and a brass section punches the chords.
+const HOUSE_STEP = 60 / 152 / 3;
+const SHOWDOWN = [
+  { walk: [36, 39, 43, 45, 48, 45, 43, 39], chord: [60, 63, 67, 69] },   // C minor 6
+  { walk: [41, 44, 48, 51, 53, 51, 48, 44], chord: [60, 63, 65, 68] },   // F minor 7
+  { walk: [44, 48, 51, 54, 56, 54, 51, 48], chord: [60, 63, 66, 68] },   // Ab 7
+  { walk: [43, 47, 50, 53, 55, 53, 50, 47], chord: [59, 62, 65, 68] },   // G 7 (b9), pulling back to C
+];
+function house(index, t) {
+  const S = HOUSE_STEP, bar = Math.floor(index / 12), s = index % 12, beat = Math.floor(s / 3), on = s % 3 === 0;
+  const { walk, chord } = SHOWDOWN[Math.floor(bar / 2) % SHOWDOWN.length], second = bar % 2, fill = bar % 4 === 3 && s >= 9;
+  if (on) noiseBurst(t, 0.16, 0.08, 'highpass', 7000);                    // the ride...
+  if (s % 3 === 2) noiseBurst(t, 0.08, 0.05, 'highpass', 7500);           // ...and its skip
+  if (s === 0 && bar % 4 === 0) noiseBurst(t, 1.2, 0.13, 'highpass', 4500);
+  if (on && beat % 2 === 0) drumKick(t, 0.9);
+  if (fill) drumSnare(t, 0.5 + 0.17 * (s - 9));
+  else if (on && beat % 2 === 1) drumSnare(t, 0.95);
+  if (on) { const note = walk[second * 4 + beat]; upright(t, S * 2.7, note); bass(t, S * 2.2, note - 12); }
+  if (s === 0 && bar % 2 === 0) brass(t, S * 4, chord, 1);                // a held hit on the one...
+  if (s === 5 || s === 9) brass(t, S * 1.4, chord, 0.75);                 // ...and two punches
+  if (s === 11 && second) brass(t, S * 1.2, chord.map((n) => n + 1), 0.6);   // (a push into the next chord, a half-step sharp)
+  if (bar % 4 === 1 && on) keys(t, S * 2, [chord[3] + 12, chord[1] + 12], 1);
+}
+
+// The Long Way Down: a chase. Four on the floor, the bass jumping octaves on the off-beats, a sixteenth-note
+// arpeggio over four chords that never settle, a snare on two and four, and a rush of noise into every eighth bar.
+const CHASE = [
+  { root: 28, notes: [64, 67, 71, 76] },   // E minor
+  { root: 24, notes: [64, 67, 72, 76] },   // C
+  { root: 31, notes: [62, 67, 71, 74] },   // G
+  { root: 26, notes: [62, 66, 69, 74] },   // D
+];
+const CHASE_ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+function hill(index, t) {
+  const bar = Math.floor(index / 16), s = index % 16, chord = CHASE[Math.floor(bar / 2) % CHASE.length];
+  const intro = bar < 2, lift = !intro && bar % 32 >= 30;   // two bars with the drums out, before it all comes back
+  if (s === 0 && bar % 2 === 0) pad(t, BAR * 2, chord.notes.map((n) => n - 12));
+  pluck(t, chord.notes[CHASE_ARP[s % 8]] + (bar % 4 === 3 && s >= 8 ? 12 : 0), s % 4 === 0 ? 1 : 0.7);
+  if (s === 0 && bar % 8 === 7) noiseBurst(t, BAR, 0.05, 'bandpass', 2400, 1.4);   // the rush into the next phrase
+  if (intro || lift) return;
+  if (s === 0 && bar % 8 === 0) noiseBurst(t, 1.4, 0.16, 'highpass', 4500);
+  if (s % 4 === 0) drumKick(t, 1);
+  if (s === 4 || s === 12) drumSnare(t, 1);
+  if (bar % 8 === 7 && s >= 12) drumSnare(t, 0.5 + 0.15 * (s - 12));
+  hat(t, s % 4 === 2 ? 0.5 : 0.2, s % 4 === 2 && bar % 2 === 1);
+  if (s % 2 === 0) bass(t, STEP * 1.6, chord.root + (s % 4 === 2 ? 12 : 0));
+}
+
 function rock(index, t) {
   const bar = Math.floor(index / 16), s = index % 16, riff = RIFFS[bar % 4], roll = bar % 4 === 3 && s >= 10;
   if (s === 0 && bar % 4 === 0) noiseBurst(t, 1.5, 0.2, 'highpass', 4500);   // crash cymbal
@@ -195,6 +279,45 @@ function lounge(index, t) {
     vibes(t, lick.notes[lick.at++]);
     if (lick.at >= lick.notes.length) lick = null;
   }
+}
+
+// A brass section: saws through a filter that opens as they blow. notes: the chord. loud: 0..1.
+function brass(t, time, notes, loud) {
+  const ctx = audio.ctx, end = t + time, out = ctx.createGain(), filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 2;
+  filter.frequency.setValueAtTime(500, t);
+  filter.frequency.exponentialRampToValueAtTime(2600, t + 0.05);
+  filter.frequency.exponentialRampToValueAtTime(900, end);
+  envelope(out, t, 0.05 * loud, 0.02, end + 0.06);
+  filter.connect(out);
+  out.connect(audio.music);
+  for (const note of notes) for (const detune of [-8, 7]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = midi(note);
+    osc.detune.value = detune;
+    osc.connect(filter);
+    osc.start(t);
+    osc.stop(end + 0.1);
+  }
+}
+
+// A plucked synth note, short and bright, with the long echo on it. loud: 0..1.
+function pluck(t, note, loud) {
+  const ctx = audio.ctx, osc = ctx.createOscillator(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.value = midi(note);
+  filter.type = 'lowpass';
+  filter.Q.value = 4;
+  filter.frequency.setValueAtTime(3200, t);
+  filter.frequency.exponentialRampToValueAtTime(500, t + 0.14);
+  envelope(gain, t, 0.045 * loud, 0.004, t + 0.18);
+  osc.connect(filter).connect(gain);
+  gain.connect(audio.music);
+  gain.connect(echo);
+  osc.start(t);
+  osc.stop(t + 0.2);
 }
 
 // Upright bass: a round, woody pluck.

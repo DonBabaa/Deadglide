@@ -12,9 +12,11 @@ import { hud } from './ui/hud.js';
 import { ENEMY_TYPES } from './enemies/types.js';
 import { FLIGHT } from './systems/descent.js';
 import { SkaterModel } from './player/skaterModel.js';
-import { playJackpot } from './fx/audio.js';
+import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playVoid, playMoonLand, playSnap, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
 import { playBones, playDread, playThunder, playHeadshot, playPowerup, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop, playRumble, playWhoosh, playLighter, playCoin } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
+import { holdMusic, sceneBoost } from './fx/audio.js';
+import { playCue, stopCue } from './fx/score.js';
 
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const UP = new THREE.Vector3(0, 1, 0);
@@ -98,6 +100,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     home.fov = camera.fov;
     scene = { time: 0, duration, step, done, marks: {}, holds: [], waiting: false };   // holds: see next()
     document.body.classList.add('cutscene');
+    holdMusic(0.14);   // (the level's music steps back for as long as a scene is up)
   }
 
   function finish(completed) {
@@ -116,6 +119,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     if (horde.boss) { horde.boss.rise = 1; horde.boss.roar = 0; }
     horde.corpse = null;
     if (completed) done?.();
+    if (!scene) { stopCue(); holdMusic(null); sceneBoost(1); }   // (unless what followed was another scene)
+  }
+  // A story scene's own music (fx/score.js): the level's music goes right down under it.
+  function score(name) {
+    holdMusic(0.02);
+    sceneBoost(2);   // (and what happens in it is twice as loud)
+    playCue(name);
   }
 
   // Put the camera at `eye` looking at `target`, shaking by up to `shake` metres.
@@ -185,6 +195,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       if (!scene || !scene.holds.length) return;
       scene.time = Math.max(scene.time, scene.holds.shift()) + 0.05;
       scene.waiting = false;
+      playNext();
     },
     // Cut a scene short and go straight to what follows it, if it is one that allows that.
     skip() { if (scene?.skippable) finish(true); },
@@ -196,7 +207,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // shots: [{ for: seconds, line: the caption, cam(k, t): place `eye` and `target` (k: 0..1 through the shot, t:
     // seconds into it) and return { fov, shake, lines }, at(): runs once as the shot starts }]
     // glow: how bright the camera's lamp is (for somewhere dark).
-    story(shots, done, glow = 0) {
+    story(shots, done, glow = 0, cue = null) {
       const starts = [];
       let total = 0;
       for (const sh of shots) { starts.push(total); total += sh.for; }
@@ -220,20 +231,22 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (t >= total) { model.inhale = 0; goHome(); }
       }, () => { model.inhale = 0; done?.(); });
       scene.skippable = true;
+      if (cue) score(cue);
       scene.holds = shots.map((sh, i) => starts[i] + sh.for - (i === shots.length - 1 ? 0.2 : 0.03));   // (at the end of every line)
     },
 
     // The start of it all (level 1). It gives very little away: who took what from him comes out a boss at a time.
     intro(done) {
       const p = skater.pos, y = heightAt(p.x, p.z);
-      playDread();
+      playWind(11);
+      playBell();
       this.story([
         { for: 2.6, line: 'Kirky has nothing left to lose.', cam: (k) => {   // from high over the graves, coming down
           eye.set(p.x + 26 - 10 * k, y + 34 - 20 * k, p.z + 30 - 10 * k);
           target.set(p.x, y + 1, p.z);
           return { fov: 52 };
         } },
-        { for: 2.4, line: 'Somebody took it all. Fair and square, they say.', at: () => playThunder(), cam: (k) => {   // low between the headstones, tracking past him
+        { for: 2.4, line: 'Somebody took it all. Fair and square, they say.', at: () => playCrow(), cam: (k) => {   // low between the headstones, tracking past him
           eye.set(p.x - 9 + 5 * k, y + 0.5, p.z - 7);
           target.set(p.x, y + 1.3, p.z);
           return { fov: 40, lines: 0.5 };
@@ -243,18 +256,19 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           target.set(p.x - 4, y + 3, p.z - 60);
           return { fov: 58 - 26 * smooth(k / 0.12), shake: 0.01 };
         } },
-        { for: 2.2, line: 'He brought a board, a gun and a cigarette. Something keeps the cemetery.', at: () => playPowerup(), cam: (k, t) => {   // his face: one long drag
+        { for: 2.2, line: 'He brought a board, a gun and a boof. Something keeps the cemetery.', at: () => playInhale(1.4), cam: (k, t) => {   // his face: one long drag
           eye.set(p.x + 0.5, y + 1.72, p.z - 1.5 + 0.2 * k);
           target.set(p.x, y + 1.66, p.z);
           return { fov: 30 - 6 * smooth(t / 0.15), drag: smooth((t - 0.4) / 0.5) * (1 - smooth((t - 1.7) / 0.3)), lines: 0.4 };
         } },
-      ], done);
+      ], done, 0, 'grave');
     },
 
     // Arriving in level 2: what the Catacombs are.
     under(done) {
       const p = skater.pos, y = heightAt(p.x, p.z);
-      playDread();
+      playCaveAir(9);
+      playDrips(8.5);
       this.story([
         { for: 2.4, line: 'The portal comes out under the graves.', cam: (k) => {   // his face, as the lamp comes on
           eye.set(p.x + 0.6, y + 1.7, p.z - 1.7);
@@ -266,12 +280,12 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           target.set(p.x + 1, y + 2.5, p.z - 40);
           return { fov: 62, lines: 0.3 };
         } },
-        { for: 2.6, line: 'Something has been built out of them.', at: () => playThunder(), cam: (k) => {   // from the roof, straight down on him: how small he is
+        { for: 2.6, line: 'Something has been built out of them.', at: () => { playBones(1.3); playCreak(1.6); }, cam: (k) => {   // from the roof, straight down on him: how small he is
           eye.set(p.x + 0.5, y + 16 - 4 * k, p.z + 0.5);
           target.set(p.x, y, p.z);
           return { fov: 48, shake: 0.02 };
         } },
-      ], done, 260);
+      ], done, 260, 'deep');
     },
 
     // A boss was carrying a casino chip: it is thrown clear of what is left of him and lands at Kirky's feet.
@@ -284,7 +298,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       start.y = Math.max(start.y, heightAt(start.x, start.z) + 1);
       stage.visible = chip.visible = true;
       lamp.color.set(0xffe2b0);
-      playPowerup();
+      playChipFlip(1.9);
       begin(4.6, (t, dt) => {
         const f = smooth(t / 1.9), k = (a, len) => smooth((t - a) / len);
         chip.position.copy(start).lerp(rest, f);
@@ -311,9 +325,10 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         const dark = blink(t, 4.3);
         if (dark > 0.02) hud.flash('#000', dark);
         else hud.flash('#ffffff', 0.85 * Math.max(Math.exp(-t * 8), t >= 1.9 ? Math.exp(-(t - 1.9) * 8) : 0));
-        once('land', t, 1.9, () => playHeadshot());
+        once('land', t, 1.9, () => playChipLand());
         if (t >= 4.3) goHome();
       }, done);
+      score('grave');
       scene.skippable = true;
       scene.holds = [1.87, 4.1];
     },
@@ -325,7 +340,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // descent: systems/descent.js (its stage() puts the dust and the ghosts where each shot wants them).
     collapse(descent, done) {
       const p = skater.pos, y = heightAt(p.x, p.z);
-      playDread();
+      playWind(7, 0.7);
       this.story([
         { for: 3.0, line: 'The DeadSlide Casino, at the top of the hill.', cam: (k, t) => {   // from over its roof: the street, the city and everything below
           descent.stage(-95, t, 0, 0);
@@ -333,43 +348,43 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           target.set(p.x, y - 30, p.z - 330);
           return { fov: 58 };
         } },
-        { for: 2.8, line: 'Babitus is dead. The house is bust.', cam: (k, t) => {   // low, down the steps from him: the whole front over his head
+        { for: 2.8, line: 'Babitus is dead. The house is bust.', at: () => playCreak(2.6), cam: (k, t) => {   // low, down the steps from him: the whole front over his head
           descent.stage(-95, t, 0, 0.05 * k);
           eye.set(p.x - 7 + 3 * k, y + 0.6, p.z - 26 - 3 * k);
           target.set(p.x, y + 21, p.z + 12);
           return { fov: 66, shake: 0.01 + 0.07 * k };
         } },
-        { for: 1.6, line: 'Nothing is holding it up now.', at: () => playThunder(), cam: (k, t) => {   // up one tower as it starts to go
+        { for: 1.6, line: 'Nothing is holding it up now.', at: () => { playCreak(1.6); playGlass(); }, cam: (k, t) => {   // up one tower as it starts to go
           descent.stage(-95, t + 3, 0, 0.05 + 0.2 * k);
           eye.set(p.x - 9, y + 1.2, p.z - 6);
           target.set(p.x - 19, y + 44 - 6 * k, p.z + 14);
           return { fov: 58 - 12 * smooth(k / 0.12), shake: 0.12, lines: 0.4 };
         } },
-        { for: 4.0, line: 'And the hill it stood on is coming down with it.', at: () => { playBossBurst(); playRumble(); }, cam: (k, t) => {   // from down the hill: all of it goes, and the dust comes over where it stood
+        { for: 4.0, line: 'And the hill it stood on is coming down with it.', at: () => { playBossBurst(); playRumble(); playDustWave(3.8); }, cam: (k, t) => {   // from down the hill: all of it goes, and the dust comes over where it stood
           descent.stage(-70 + 58 * smooth((k - 0.4) / 0.6), t + 5, 0, 0.25 + 0.75 * smooth(k / 0.6));
           eye.set(p.x + 16, heightAt(p.x + 16, p.z - 84) + 2.5, p.z - 84 - 8 * k);
           target.set(p.x, y + 20, p.z + 14);
           return { fov: 66 - 10 * smooth(k / 0.1), shake: 0.25, lines: 0.5 };
         } },
-        { for: 2.6, line: 'All three brothers are coming down with it.', at: () => { playBossIntro(); playBones(0.8); }, cam: (k, t) => {   // from the ground, past him, up at the three of them rising
+        { for: 2.6, line: 'All three brothers are coming down with it.', at: () => { playGhosts(); playBones(0.8); }, cam: (k, t) => {   // from the ground, past him, up at the three of them rising
           descent.stage(-14, t + 6, k / 0.6);
           eye.set(p.x + 1.6 - 0.8 * k, y + 0.35, p.z - 10.5);
           target.set(p.x, y + 5.5 + 1.5 * k, p.z + 12);
           return { fov: 66, shake: 0.1 };
         } },
-        { for: 1.5, line: 'Kirky does not look back.', cam: (k, t) => {   // his face: a snap zoom, and a drag
+        { for: 1.5, line: 'Kirky does not look back.', at: () => playInhale(0.9), cam: (k, t) => {   // his face: a snap zoom, and a drag
           descent.stage(-12, t + 9, 1);
           eye.set(p.x + 0.45, y + 1.72, p.z - 1.5);
           target.set(p.x, y + 1.66, p.z);
           return { fov: 34 - 10 * smooth(t / 0.12), shake: 0.03, drag: smooth((t - 0.2) / 0.4) * (1 - smooth((t - 1.1) / 0.3)) };
         } },
-        { for: 2.2, line: 'Three kilometres to the bottom.', at: () => { playThunder(); hud.bossIntro('Run', 'The Long Way Down'); }, cam: (k, t) => {   // over his shoulder, down the hill, pushing in
+        { for: 2.2, line: 'Three kilometres to the bottom.', at: () => { playTitleSting(); hud.bossIntro('Run', 'The Long Way Down'); }, cam: (k, t) => {   // over his shoulder, down the hill, pushing in
           descent.stage(-44, t + 11, 1);   // (behind the camera now: it is all over this shot otherwise)
           eye.set(p.x + 1.3, y + 2.3 + 0.6 * k, p.z + 4 - 2.4 * smooth(k));
           target.set(p.x, y - 6, p.z - 70);
           return { fov: 72 - 16 * smooth(t / 0.15), shake: 0.12, lines: 1 };
         } },
-      ], () => { hud.hideBossIntro(); done?.(); }, 28);
+      ], () => { hud.hideBossIntro(); done?.(); }, 28, 'collapse');
     },
 
     // ---- The last cigarette: the ending -----------------------------------------------------
@@ -408,10 +423,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       model.setVisible(false);
       //            Earth  fall  behind  face  broken  lights  round  last
       const CUTS = [0,     4.0,  8.0,    11.5, 14.5,   17.5,   23.5,  30.0], END = 50, FALL = CUTS[1] + 1.1, HIT = FALL + 1.3, LIGHT = CUTS[5] + 1.0;
-      const LINES = ['The Moon.', 'No tables. No dealers. No brothers.', 'He never did get his money back.', 'One cigarette left.', 'Broken in the fall.', 'It still smokes.', 'Down there, a hill is missing.'];
+      const LINES = ['The Moon.', 'No tables. No dealers. No brothers.', 'He never did get his money back.', 'One boof left.', 'Broken in the fall.', 'It still smokes.', 'Down there, a hill is missing.'];
       const LAST = [[1.5, 'The house always wins.'], [4.5, 'Not tonight.'], [10, `Down the hill in ${time}.`], [13, 'A game by Babitus & Clauditus.'], [16, 'Thanks for playing.']];
       lamp.color.set(0xfff2dc);
-      playDread();
       begin(END + 0.5, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len);
         let shot = 0;
@@ -421,9 +435,12 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         const drop = t < FALL ? 1 : Math.max(0, 1 - ((t - FALL) / (HIT - FALL)) ** 2);
         kirky.root.position.set(p.x, y + 170 * drop, p.z);
         kirky.root.visible = t >= FALL;
-        once('land', t, HIT, () => { playBossPop(); playThunder(); });
-        once('snapped', t, CUTS[4], () => { dress('broken'); kirky.smoking = kirky.ember.visible = false; playHeadshot(); });   // (not lit yet)
+        once('land', t, HIT, () => playMoonLand());
+        once('snapped', t, CUTS[4], () => { dress('broken'); kirky.smoking = kirky.ember.visible = false; playSnap(); });   // (not lit yet)
         once('lit', t, LIGHT, () => { kirky.smoking = kirky.ember.visible = true; playLighter(); });
+        once('drag', t, LIGHT + 0.5, () => playInhale(2.2));
+        once('breath', t, LIGHT + 3.1, () => playExhale(2.4));
+        LAST.forEach(([at], i) => once(`credit${i}`, t, CUTS[7] + at, () => playCredit()));
         const lit = t >= LIGHT ? Math.exp(-(t - LIGHT) * 5) : 0;   // the lighter
         kirky.inhale = shot === 5 ? k(LIGHT + 0.5, 0.6) * (1 - k(LIGHT + 2.6, 0.4)) : 0;
         kirky.updateSmoke(dt);
@@ -472,7 +489,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           eye.set(p.x, y + 1.1 + 0.3 * f, p.z).addScaledVector(toEarth, -7 - 2 * f).addScaledVector(right, 1.5 - 1.5 * f);   // (the Earth has to stay in the top of the frame)
           target.copy(eye).addScaledVector(toEarth, 30).y += 8.9;
           fov = 72;
-          once('title', t, CUTS[7] + 7, () => { playBossIntro(); hud.bossIntro('DeadSlide', 'The End'); });
+          once('title', t, CUTS[7] + 7, () => { playEndChord(); hud.bossIntro('DeadSlide', 'The End'); });
         }
         view(fov, shake);
         lamp.position.copy(eye).y += 1;
@@ -489,6 +506,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (dark > 0.02) hud.flash('#000', dark);
         else hud.flash('#ffffff', pop * 0.85);
       }, () => { hud.hideBossIntro(); done?.(); });
+      score('moon');
       scene.skippable = true;
       scene.keep = true;   // (the ending plays even with the story scenes switched off)
       scene.holds = [...CUTS.slice(1).map((c) => c - 0.2), ...LAST.slice(1).map(([at]) => CUTS[7] + at - 0.05), END - 2.6];
@@ -515,6 +533,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       const LINES = ['Every coin Kirky ever lost.', 'The floor takes it back.', 'Nothing left to collect. Time to go.'];
       stage.visible = coins.visible = true;
       hud.hideBossIntro();
+      playCoinsPour(2.8);
       dir.set(p.x - at.x, 0, p.z - at.z).normalize();
       const toKirky = dir.clone(), across = new THREE.Vector3(toKirky.z, 0, -toKirky.x);
       begin(END + 0.3, (t, dt) => {
@@ -531,6 +550,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           coins.setMatrixAt(i, m.compose(c.pos, q.setFromEuler(e.set(flat ? 0 : c.spin + t * 9, c.spin, flat ? 0 : t * 7)), one));
         });
         coins.instanceMatrix.needsUpdate = true;
+        once('crack', t, CUTS[1] + 0.2, () => playFloorCrack());
         hole.visible = rim.visible = open > 0;
         hole.position.set(at.x, floor + 0.04, at.z);
         rim.position.copy(hole.position).y += 0.01;
@@ -564,6 +584,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         else hud.flash('#ffc233', pop * 0.6);
         if (t >= END) goHome();
       }, done);
+      score('house');
       scene.skippable = true;
       scene.holds = [CUTS[1] - 0.03, CUTS[2] - 0.03, END - 0.2];
     },
@@ -576,7 +597,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       const LINES = ['Babitus owed him everything. Babitus cannot pay.', 'So Kirky takes the only thing left in the place.', 'The way out. He left the doors open on the way in.'];
       dir.set(p.x - from.x, 0, p.z - from.z).normalize();
       const toDoors = dir.clone(), across = new THREE.Vector3(toDoors.z, 0, -toDoors.x);
-      playDread();
+      playCreak(2.5);
       begin(END + 0.2, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : 2, go = k(CUTS[2] + 0.2, 1.5);
         centre.set(p.x, WALL_TOP + 6, p.z + 5);   // the middle of the doorway
@@ -607,8 +628,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         let pop = 0;
         for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
         hud.flash('#ffffff', Math.max(pop * 0.85, k(CUTS[2] + 1.3, 0.6)));
-        once('gone', t, CUTS[2] + 0.2, () => playWhoosh());
+        once('gone', t, CUTS[2] + 0.2, () => { playPushOff(1.5); playWhoosh(); });
       }, () => { model.root.visible = false; done?.(); });
+      score('house');
       scene.skippable = true;
       scene.holds = [CUTS[1] - 0.03, CUTS[2] - 0.03, CUTS[2] + 0.15];
     },
@@ -617,7 +639,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // chandelier, the two of them, as the title lands. b: Babitus.
     houseWins(b, done) {
       const p = skater.pos, tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.8, 3.2], END = 5.4;
-      playDread();
+      playCreak(1.6);
       begin(END + 0.2, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), ground = heightAt(b.x, b.z), floor = heightAt(p.x, p.z);
         dir.set(p.x - b.x, 0, p.z - b.z).normalize();
@@ -647,10 +669,11 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         const dark = blink(t, END);
         if (dark > 0.02) hud.flash('#000', dark);
         else hud.flash('#ffffff', pop * 0.85);
-        once('laugh', t, CUTS[1], () => playThunder());
-        once('title', t, CUTS[2], () => { playBossIntro(); hud.bossIntro('The house wins', b.T.title); });
+        once('laugh', t, CUTS[1], () => playLaugh());
+        once('title', t, CUTS[2], () => { playTitleSting(); hud.bossIntro('The house wins', b.T.title); });
         if (t >= END) goHome();
       }, () => { hud.hideBossIntro(); done?.(); });
+      score('house');
       say(CUTS[2] + 0.6, END - 0.3, 'It always does. Almost always.');
     },
 
@@ -687,12 +710,12 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         spot.needsUpdate = true;
         sparks.material.opacity = 1 - k(1.6, 1.6);
         hud.lines(0.5 * (1 - k(1.2, 1)));
-        hud.caption(t > 1.6 && t < END - 0.2 ? 'The gold broken cigarette. Yours to keep: he is wearing it now.' : null, NEXT);
+        hud.caption(t > 1.6 && t < END - 0.2 ? 'The Golden BOOF. Yours to keep: he is wearing it now.' : null, NEXT);
         const dim = blink(t, END);
         if (dim > 0.02) hud.flash('#000', dim);
         else hud.flash('#fff2c0', t < 0.45 ? 0.3 * k(0.2, 0.25) : Math.exp(-into * 5));
-        once('ta-da', t, 0.45, () => { playJackpot(); playThunder(); });
-        once('name', t, 0.9, () => hud.place('Gold Broken Cigarette', 'You finished DeadSlide', true));
+        once('ta-da', t, 0.45, () => playFanfare());
+        once('name', t, 0.9, () => hud.place('The Golden BOOF', 'You finished DeadSlide', true));
         if (t >= END) { hud.hideBossIntro(); goHome(); }
       }, () => { hud.hideBossIntro(); done?.(); });
       scene.skippable = true;
@@ -706,7 +729,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // descent: systems/descent.js (its bury() puts the dust where each shot wants it).
     buried(descent, done) {
       const p = skater.pos, s = 48 - p.z, head = new THREE.Vector3(), CUTS = [0, 1.4, 2.4], END = 4.0, DUST = '#5c4d3c';
-      playThunder();
+      playBuried();
       begin(END + 0.2, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : 2;
         // The dust: well back, then on his heels (in slow motion), then over him and on down the hill.
@@ -736,7 +759,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         const under = shot === 2 ? k(CUTS[2] + 0.55, 0.6) : 0;
         if (under > 0.02) hud.flash(t > END - 0.5 ? '#000' : DUST, Math.min(1, under * 1.1));
         else hud.flash('#ffffff', pop * 0.85);
-        once('hit', t, CUTS[2] + 0.6, () => { playBossBurst(); hud.bossIntro('Buried', 'The Long Way Down'); });
+        once('hit', t, CUTS[2] + 0.6, () => hud.bossIntro('Buried', 'The Long Way Down'));
         if (t >= END) { hud.hideBossIntro(); goHome(); }
       }, () => { hud.hideBossIntro(); done?.(); });
       scene.skippable = true;
@@ -747,10 +770,10 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // descent: systems/descent.js (its launch() clears the hill of ghosts and hangs the Moon).
     launch(descent, done) {
       const from = skater.pos.clone(), at = new THREE.Vector3(), head = new THREE.Vector3(), moon = new THREE.Vector3(), post = new THREE.Vector3();
-      const CUTS = [0, 2.3, 4.5, 6.6], LINES = ['The hill ends.', 'Kirky does not.', 'He has one cigarette left.', 'And somewhere quiet to smoke it.'], END = 9.6;
+      const CUTS = [0, 2.3, 4.5, 6.6], LINES = ['The hill ends.', 'Kirky does not.', 'He has one boof left.', 'And somewhere quiet to smoke it.'], END = 9.6;
       lamp.color.set(0xdfe8ff);
-      playExit();
       playWhoosh();
+      playHush(END);
       begin(END + 0.3, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : 3;
         // Where he is: barely moving through the first shot (slow motion), then away.
@@ -791,10 +814,12 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         let pop = 0;
         for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
         hud.flash('#ffffff', Math.max(pop * 0.85, k(END - 0.7, 0.7)));
-        once('title', t, CUTS[1], () => { playBossIntro(); hud.bossIntro('Launch', 'The Long Way Down'); });
+        once('title', t, CUTS[1], () => { playTitleSting(); hud.bossIntro('Launch', 'The Long Way Down'); });
+        once('drag', t, CUTS[2] + 0.3, () => playInhale(1.3));
         once('untitle', t, CUTS[2], () => hud.hideBossIntro());
         if (t >= END) { model.inhale = 0; hud.hideBossIntro(); goHome(); }
       }, () => { model.inhale = 0; hud.hideBossIntro(); done?.(); });
+      score('air');
       scene.skippable = true;
       scene.holds = [CUTS[1] - 0.03, CUTS[2] - 0.03, CUTS[3] - 0.03, END - 0.75];
     },
@@ -827,7 +852,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           body.flash = Math.random() < 0.15 + 0.5 * k(0, 2.4) ? 1 : 0;
           if (t >= nextPop) { nextPop = t + 0.4 - 0.25 * k(0, 2.4); horde.gore(body, 8, 1); playBossPop(); }
         }
-        once('burst', t, CUTS[1], () => { horde.gore(body, 200, 2.4); horde.corpse = null; playBossBurst(); });
+        once('burst', t, CUTS[1], () => { horde.gore(body, 200, 2.4); horde.corpse = null; playBossBurst(); playChipFlip(1.4); });
 
         // The chip: thrown clear as he bursts, spinning, down to the floor in front of Kirky.
         if (t >= CUTS[1]) {
@@ -886,9 +911,11 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         let pop = 0;
         for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
         hud.flash('#ffffff', Math.max(pop * 0.85, k(END - 0.7, 0.7)));
-        once('chip', t, CUTS[2], () => playPowerup());
-        once('light', t, CUTS[3] + 0.2, () => playPortalOpen());
+        once('chip', t, CUTS[1] + 1.35, () => playChipLand());
+        once('light', t, CUTS[3] + 0.2, () => playHatch());
+        once('climb', t, CUTS[4] + 0.5, () => playLadder(2.4));
       }, done);
+      score('deep');
       scene.skippable = true;
       scene.holds = [...CUTS.slice(1).map((c) => c - 0.03), END - 0.75];
     },
@@ -904,9 +931,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       hole.position.set(P.x, y0 + 0.03, P.z);
       hole.scale.setScalar(0.8);
       lamp.color.set(0xffe2b0);
-      playDread();
+      playCity(END);
+      playManhole();
       begin(END + 0.3, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : t < CUTS[4] ? 3 : 4;
+        once('seen', t, CUTS[1] + 0.3, () => playReveal());
+        once('drag', t, CUTS[2] + 0.2, () => playInhale(1.1));
+        once('push', t, CUTS[3], () => playPushOff(2.6));
         descent.stage(-95, t, 0, 0);
         const burst = k(BURST, 0.22);
         descent.doors(burst);
@@ -951,7 +982,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           lines = 0.8;
         }
         once('top', t, CUTS[4], () => prime(door));   // (the ground up there)
-        once('burst', t, BURST, () => { playBossBurst(); playThunder(); hud.bossIntro('The House', 'B.G.'); });
+        once('burst', t, BURST, () => { playDoorsBurst(); hud.bossIntro('The House', 'B.G.'); });
         lamp.position.copy(eye).y += 1.2;
         lamp.intensity = shot === 2 ? 14 : shot === 3 ? 0 : 30;
         hud.lines(lines);
@@ -960,6 +991,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
         hud.flash('#ffffff', Math.max(pop * 0.85, k(END - 0.8, 0.8)));
       }, () => { model.root.visible = true; hud.hideBossIntro(); done?.(); });
+      score('city');
       scene.skippable = true;
       scene.holds = CUTS.slice(1).map((c) => c - 0.03);
       scene.cleanup = () => { model.root.visible = true; };
@@ -975,6 +1007,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.0, 2.3, 3.3];
       b.rise = 1;
       playDread();
+      playChandelier();
       begin(5.2, (t, dt) => {
         dir.set(skater.pos.x - b.x, 0, skater.pos.z - b.z).normalize();   // (from him, toward you)
         side.set(dir.z, 0, -dir.x);
@@ -1015,7 +1048,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         once('name', t, CUTS[3], () => {
           playBossIntro();
           hud.bossIntro(b.T.title, 'The House');
-          setMusicStyle('rock');
+          setMusicStyle('house');
         });
         if (t >= 4.9) goHome();
       });
@@ -1054,7 +1087,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (dark > 0.02) hud.flash('#000', dark);
         else if (reels > pop * 0.85) hud.flash('#ffc233', reels);
         else hud.flash('#ffffff', pop * 0.85);
-        once('reels', t, CUTS[1], () => playPowerup());
+        once('cards', t, 0.05, () => playShuffle());
+        once('reels', t, CUTS[1], () => playReelsStop());
         once('roar', t, CUTS[2], () => { playBossIntro(); playThunder(); hud.bossIntro('All in', b.T.title); });
         if (t >= 3.95) goHome();
       });
@@ -1116,7 +1150,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         else if (zero > pop * 0.9) hud.flash('#3dff7a', zero);
         else hud.flash('#ffffff', pop * 0.9);
         once('wheel', t, CUTS[1], () => playThunder());
-        once('doors', t, CUTS[3] + 0.5, () => playPortalOpen());
+        once('doors', t, CUTS[3] + 0.5, () => playCreak(1.4));
         if (t >= 5.3) goHome();
       }, done);
     },

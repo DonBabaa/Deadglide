@@ -24,7 +24,7 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, setSpace, holdMusic, playGhostTell, playGhostThrow, playZone, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
@@ -54,7 +54,10 @@ import { createDescent } from './systems/descent.js';
 import { runTime as hillTime } from './ui/leaderboard.js';
 import { createEmoter } from './player/emotes.js';
 import { createEmoteWheel } from './ui/emoteWheel.js';
-import { setMusicStyle } from './fx/music.js';
+import { setMusicStyle, MUSIC_STYLES } from './fx/music.js';
+import * as SOUNDS from './fx/audio.js';
+import { createModelViewer } from './ui/modelViewer.js';
+import { playCue, stopCue } from './fx/score.js';
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
 
@@ -156,6 +159,7 @@ let level = 1;            // the level the world is built for: 1 = the Cemetery,
 function setWorld(n) {
   if (n === level) return;
   level = n;
+  setSpace({ 2: 'cave', 3: 'moon', 4: 'hall' }[n] || 'open');   // (what the place sounds like)
   setLevel(n);
   arena.setLevel(n);
 }
@@ -219,7 +223,7 @@ function restart(carry = false) {
   if (drag) endDrag(false);
   cutscenes.cancel();
   goldTally.hide();
-  setMusicStyle('dnb');
+  setMusicStyle({ 2: 'catacombs', 3: 'moon', 4: 'house', 5: 'hill' }[level] || 'dnb');   // (each level has its own: fx/music.js)
   model.root.scale.setScalar(1);
   leaderboard.hideEnd();
   levelUp.hide();
@@ -261,7 +265,6 @@ function restart(carry = false) {
   if (LEVELS[level].descent) {
     config.horde.enabled = false;
     hotbox.wait = Infinity;
-    setMusicStyle('rock');
   }
   overLava = false;
   if (LEVELS[level].freeRide) {
@@ -272,7 +275,6 @@ function restart(carry = false) {
     weapon.owned = ['sniper'];
     config.horde.enabled = false;
     hotbox.wait = Infinity;
-    setMusicStyle('moon');
   }
   // The House, come to cold (from the menu, or after dying there): there are no waves to level up on, so you are
   // dealt a hand first: two more guns, a power-up, and eight upgrades of your choosing.
@@ -416,7 +418,7 @@ function finale(time, record) {
     document.exitPointerLock?.();
     playPortal();
     hud.showOverlay('The End', `Down the hill in ${hillTime(time)}  ·  ${record ? 'your fastest yet' : `your best is ${hillTime(descent.best)}`}
-${first ? 'Yours to keep: the gold broken cigarette (Shop, Style)\n' : ''}Click to return to the menu`);
+${first ? 'Yours to keep: the Golden BOOF (Shop, Style)\n' : ''}Click to return to the menu`);
   }
 }
 
@@ -425,6 +427,190 @@ ${first ? 'Yours to keep: the gold broken cigarette (Shop, Style)\n' : ''}Click 
   const button = document.getElementById('story-toggle'), show = () => { button.textContent = `Story scenes: ${load('story') === 'off' ? 'off' : 'on'}`; };
   button.addEventListener('click', (e) => { e.stopPropagation(); store('story', load('story') === 'off' ? 'on' : 'off'); show(); });
   show();
+}
+
+// The editor's jukebox: a button for each level's music and each story soundtrack, to listen to on its own.
+{
+  const list = document.getElementById('music-list');
+  const NAMES = { dnb: 'The Cemetery (and the menu)', catacombs: 'The Catacombs', rock: 'A boss fight', house: 'The House', hill: 'The Long Way Down', moon: 'The Moon', casino: 'The casino' };
+  const CUE_NAMES = { grave: 'Story: the cemetery', deep: 'Story: the Catacombs', city: 'Story: the city', house: 'Story: the House', collapse: 'Story: the collapse', air: 'Story: the launch', moon: 'Story: the Moon' };
+  const button = (label, small, play) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `${label}<small>${small}</small>`;
+    b.addEventListener('click', () => {
+      if (unlockAudio()) startMusic();
+      for (const other of list.children) other.classList.remove('on');
+      b.classList.add('on');
+      play();
+    });
+    list.append(b);
+  };
+  for (const id of MUSIC_STYLES) button(NAMES[id], 'Level music', () => { stopCue(); holdMusic(null); setMusicStyle(id); });
+  for (const id in CUE_NAMES) button(CUE_NAMES[id], 'Scene soundtrack (loops)', () => { holdMusic(0.02); stopCue(0.2); setTimeout(() => playCue(id), 60); });
+  button('Menu music', 'What the menu normally plays', () => { stopCue(); holdMusic(null); setMusicStyle(finished() || moonMenu ? 'moon' : 'dnb'); });
+  // Silence: every effect cut off, the soundtrack stopped, the level's music held at nothing (any music button brings it back).
+  for (const id of ['sound-stop', 'sound-stop-2']) document.getElementById(id).addEventListener('click', () => {
+    SOUNDS.stopAllSounds();
+    stopCue(0.1);
+    holdMusic(0);
+    for (const other of list.children) other.classList.remove('on');
+  });
+}
+
+// The editor's tabs (Scenes, Music, Sounds, Models), and its model library (ui/modelViewer.js): every monster, boss,
+// costume and gun on a turntable, in place of the menu's scene while the Models tab is open.
+const viewer = createModelViewer({ renderer, look: currentLook });
+{
+  const tabs = [...document.querySelectorAll('#editor-tabs button')], pages = [...document.querySelectorAll('.editor-tab')];
+  const list = document.getElementById('model-list'), info = document.getElementById('model-info');
+  let last = 0;
+  const pick = (i) => {
+    last = i;
+    viewer.show(i);
+    info.textContent = viewer.info;
+    [...list.querySelectorAll('button')].forEach((b, n) => b.classList.toggle('on', n === i));
+  };
+  const open = (name) => {
+    for (const t of tabs) t.classList.toggle('on', t.dataset.tab === name);
+    for (const p of pages) p.classList.toggle('hidden', p.dataset.tab !== name);
+    const models = name === 'models';
+    document.body.classList.toggle('model-view', models);
+    if (models) pick(last); else viewer.hide();
+  };
+  for (const t of tabs) t.addEventListener('click', () => open(t.dataset.tab));
+  document.getElementById('cinema-back').addEventListener('click', () => open('scenes'));
+  let group = '';
+  viewer.MODELS.forEach((m, i) => {
+    if (m.group !== group) { group = m.group; list.append(Object.assign(document.createElement('h3'), { textContent: group })); }
+    const b = Object.assign(document.createElement('button'), { type: 'button', textContent: m.name });
+    b.addEventListener('click', () => pick(i));
+    list.append(b);
+  });
+  const toggle = (id, key, label) => document.getElementById(id).addEventListener('click', (e) => { viewer[key] = !viewer[key]; e.target.textContent = `${label}: ${viewer[key] ? 'on' : 'off'}`; });
+  toggle('model-spin', 'spin', 'Spin');
+  toggle('model-animate', 'animate', 'Animate');
+  document.getElementById('model-reset').addEventListener('click', () => viewer.resetView());
+  // Drag anywhere that is not a button to turn it; scroll over the right-hand half of the screen to move in and out.
+  const menuEl = document.getElementById('menu');
+  let dragging = false;
+  menuEl.addEventListener('mousedown', (e) => { if (viewer.active && !e.target.closest('button, input')) dragging = true; });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mousemove', (e) => { if (dragging && viewer.active) viewer.turn(e.movementX, e.movementY); });
+  menuEl.addEventListener('wheel', (e) => { if (viewer.active && e.clientX > window.innerWidth * 0.5) { e.preventDefault(); viewer.zoomBy(e.deltaY > 0 ? 1.12 : 0.89); } }, { passive: false });
+}
+
+// The editor's sound library: every sound the game can make, sorted, each on a button.
+{
+  const list = document.getElementById('sound-list');
+  const heading = (text) => list.append(Object.assign(document.createElement('h3'), { textContent: text }));
+  const button = (label, play) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', () => { if (unlockAudio()) startMusic(); holdMusic(0.05); play(); });
+    list.append(b);
+  };
+  const words = (name) => name.replace(/^play/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  // Where each belongs. Anything not named here turns up under "Other", so a new sound is never missing.
+  const GROUPS = {
+    'Player': ['playHurt', 'playHeal', 'playShieldHit', 'playTrickLand', 'playSwitch', 'playPickup', 'playLevelUp', 'playChest', 'playPowerup', 'playCoin', 'playCashIn', 'playVent'],
+    'Combat': ['playHit', 'playKill', 'playHeadshot', 'playSplat', 'playClang', 'playSniper', 'playBossThrow', 'playBossPop', 'playBossBurst', 'playBossIntro', 'playBossDeath', 'playBones', 'playLaugh', 'playDread', 'playThunder'],
+    'Portals and titles': ['playPortalOpen', 'playPortal', 'playExit', 'playTitleSting', 'playZone', 'playNext', 'playFanfare'],
+    'Story: cemetery and Catacombs': ['playWind', 'playBell', 'playCrow', 'playInhale', 'playExhale', 'playChipFlip', 'playChipLand', 'playDrips', 'playCaveAir', 'playHatch', 'playLadder'],
+    'Story: the city and the House': ['playManhole', 'playCity', 'playReveal', 'playPushOff', 'playDoorsBurst', 'playChandelier', 'playShuffle', 'playReelsStop', 'playCoinsPour', 'playFloorCrack'],
+    'Story: the hill': ['playCreak', 'playGlass', 'playRumble', 'playDustWave', 'playGhosts', 'playGhostTell', 'playGhostThrow', 'playBuried', 'playWhoosh', 'playHush'],
+    'Story: the Moon': ['playVoid', 'playMoonLand', 'playSnap', 'playLighter', 'playEndChord', 'playCredit', 'playSaucer', 'playRadio', 'playAlien', 'playGolden'],
+    'Casino': ['playCard', 'playChip', 'playLose', 'playLever', 'playReel', 'playReelStop', 'playJackpot', 'playWheel', 'playShake', 'playPour', 'playClink', 'playCork', 'playGlassDown', 'playGulp', 'playHic', 'playWoozy', 'playGurgle', 'playRetch', 'playCough', 'playSplash', 'playDrag'],
+  };
+  heading('Guns');
+  for (const w of Object.values(WEAPONS)) button(w.name, () => (w.id === 'sniper' ? SOUNDS.playSniper() : w.flame ? (SOUNDS.setFlame(true), setTimeout(() => SOUNDS.setFlame(false), 1500)) : SOUNDS.playShot(w.id, 1)));
+  button('Machine gun, flat out', () => { for (let i = 0; i < 60; i++) setTimeout(() => SOUNDS.playShot('machineGun', 105), i * 16); });
+  const placed = new Set(['playShot', ...Object.values(GROUPS).flat()]);
+  GROUPS.Other = Object.keys(SOUNDS).filter((k) => /^play[A-Z]/.test(k) && !placed.has(k));
+  for (const [group, names] of Object.entries(GROUPS)) {
+    const have = names.filter((k) => typeof SOUNDS[k] === 'function');
+    if (!have.length) continue;
+    heading(group);
+    for (const k of have) button(words(k), () => SOUNDS[k]());
+  }
+}
+
+// ---- The spectator (the editor's Levels tab) --------------------------------------------------
+// Any level, built as a run would find it but with nothing happening in it, and a camera that flies: the mouse looks,
+// W A S D (the physical keys) fly, Space and C go up and down, Shift is fast, the wheel sets how fast. 'Lights' turns
+// on a plain white light and takes the fog away, to see what the dark is hiding.
+const SPECTATE = [1, 2, 4, 5, 3];   // (in the order the story visits them)
+const SPECTATE_NAMES = { 1: 'The Cemetery', 2: 'The Catacombs', 3: 'The Moon', 4: 'The House', 5: 'The Long Way Down' };
+const spec = (id) => document.getElementById(id);
+let spectate = null;   // { level, yaw, pitch, speed, bright, fill, fog } while flying
+const spectateLook = new THREE.Euler(0, 0, 0, 'YXZ'), spectateMove = new THREE.Vector3();
+function startSpectate(n) {
+  if (spectate) stopSpectate(false);
+  viewer.hide();
+  document.body.classList.remove('model-view');
+  cutscenes.cancel();
+  preview = null;
+  creative = { weapons: [], upgrades: {}, powers: {}, monsters: false, noDamage: true };   // (nothing counts, nothing comes)
+  setWorld(n);
+  restart();
+  if (LEVELS[n].descent) { onHill(60); arena.prime(skater.pos); }
+  cutscenes.cancel();
+  inMenu = false;
+  paused = true;   // (the run itself never starts)
+  menu.hide();
+  menuScene.setVisible(false);
+  model.setVisible(true);
+  hud.hideOverlay();
+  document.body.classList.add('spectating');
+  spectate = { level: n, yaw: 0, pitch: -0.2, speed: 18, bright: false, fill: new THREE.AmbientLight(0xffffff, 2.4), fog: null };
+  camera.position.set(skater.pos.x, skater.pos.y + 5, skater.pos.z + 12);
+  spec('spectate-name').textContent = SPECTATE_NAMES[n];
+  spec('spectate-light').textContent = 'Lights: as in the game';
+  spec('spectate').classList.remove('hidden');
+  last = performance.now();
+}
+function spectateLights(on) {
+  if (!spectate || spectate.bright === on) return;
+  spectate.bright = on;
+  if (on) { scene.add(spectate.fill); spectate.fog = scene.fog; scene.fog = null; }
+  else { scene.remove(spectate.fill); scene.fog = spectate.fog; }
+  spec('spectate-light').textContent = `Lights: ${on ? 'everything lit' : 'as in the game'}`;
+}
+function stopSpectate(toList = true) {
+  if (!spectate) return;
+  spectateLights(false);
+  spectate = null;
+  creative = null;
+  document.body.classList.remove('spectating');
+  spec('spectate').classList.add('hidden');
+  document.exitPointerLock?.();
+  if (toList) { showMenu(); menu.showCinema(); }
+}
+// One frame of it. dx, dy: how far the mouse has moved.
+function updateSpectate(dt, dx, dy) {
+  const s = spectate;
+  if (document.pointerLockElement) { s.yaw -= dx * 0.0022; s.pitch = Math.max(-1.5, Math.min(1.5, s.pitch - dy * 0.0022)); }
+  camera.quaternion.setFromEuler(spectateLook.set(s.pitch, s.yaw, 0));
+  spectateMove.set((input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0), 0, (input.down('KeyS') ? 1 : 0) - (input.down('KeyW') ? 1 : 0)).applyQuaternion(camera.quaternion);
+  spectateMove.y += (input.down('Space') ? 1 : 0) - (input.down('KeyC') || input.down('ControlLeft') ? 1 : 0);
+  camera.position.addScaledVector(spectateMove, s.speed * (input.down('ShiftLeft') ? 4 : 1) * dt);
+  spec('spectate-where').textContent = `${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)}  \u00b7  ${s.speed.toFixed(0)} m/s`;
+  if (s.bright && scene.fog) { s.fog = scene.fog; scene.fog = null; }   // (a level that puts its fog back)
+}
+{
+  for (const n of SPECTATE) {
+    const b = Object.assign(document.createElement('button'), { type: 'button' });
+    b.innerHTML = `${SPECTATE_NAMES[n]}<small>${LEVELS[n].name}</small>`;
+    b.addEventListener('click', () => startSpectate(n));
+    spec('spectate-list').append(b);
+  }
+  const step = (by) => startSpectate(SPECTATE[(SPECTATE.indexOf(spectate.level) + by + SPECTATE.length) % SPECTATE.length]);
+  spec('spectate-light').addEventListener('click', (e) => { spectateLights(!spectate.bright); e.target.blur(); });
+  spec('spectate-prev').addEventListener('click', () => step(-1));
+  spec('spectate-next').addEventListener('click', () => step(1));
+  spec('spectate-close').addEventListener('click', () => stopSpectate());
+  window.addEventListener('wheel', (e) => { if (spectate) spectate.speed = Math.max(2, Math.min(200, spectate.speed * (e.deltaY > 0 ? 0.8 : 1.25))); }, { passive: true });
 }
 
 // ---- The cinematics editor (?editor in the address) ---------------------------------------------
@@ -464,9 +650,9 @@ const CINEMATICS = [
   { name: 'Run: the casino comes down', where: 'The Long Way Down', run: () => { at(5); cutscenes.collapse(descent, () => descent.reset()); } },
   { name: 'Buried', where: 'The Long Way Down', run: () => { at(5); onHill(700); descent.state.wall = 690; cutscenes.buried(descent); } },
   { name: 'Launch', where: 'The Long Way Down', run: () => { at(5); onHill(DESCENT.ramp[1] - 0.5, 45); cutscenes.launch(descent); } },
-  { name: 'The last cigarette', where: 'The Moon, with the costumes you own', run: ending(false) },
-  { name: 'The last cigarette (everyone)', where: 'The Moon, with every costume', run: ending(true) },
-  { name: 'The reward: the gold cigarette', where: 'After the ending', run: () => { at(3); cutscenes.reward(); } },
+  { name: 'The last boof', where: 'The Moon, with the costumes you own', run: ending(false) },
+  { name: 'The last boof (everyone)', where: 'The Moon, with every costume', run: ending(true) },
+  { name: 'The reward: the Golden BOOF', where: 'After the ending', run: () => { at(3); cutscenes.reward(); } },
   { name: 'Costume found', where: 'The Moon', run: () => { at(3); cutscenes.found({ name: 'A costume', wear() {} }); } },
   { name: 'The main menu, after the ending', where: 'The Moon (stays until you pick the one below)', run: () => { moonMenu = true; stopPreview(false); } },
   { name: 'The main menu, before the ending', where: 'The cemetery', run: () => { moonMenu = false; stopPreview(false); } },
@@ -474,6 +660,8 @@ const CINEMATICS = [
 ];
 const cine = (id) => document.getElementById(id);
 function playCinematic(i) {
+  viewer.hide();
+  document.body.classList.remove('model-view');
   const item = CINEMATICS[(i + CINEMATICS.length) % CINEMATICS.length], keep = preview || { speed: 1, wait: true };
   cutscenes.cancel();
   preview = { item, started: false, idle: 0, speed: keep.speed, wait: keep.wait, paused: false, replace: item.replace || null };
@@ -636,7 +824,7 @@ function showMenu() {
   if (drag) endDrag(false);
   cutscenes.cancel();
   goldTally.hide();
-  setMusicStyle('dnb');
+  setMusicStyle(finished() || moonMenu ? 'moon' : 'dnb');
   leaderboard.hideEnd();
   levelUp.hide();
   horde.reset();
@@ -768,7 +956,7 @@ document.getElementById('to-menu').addEventListener('click', (e) => {
   e.stopPropagation();   // not a "click to resume"
   showMenu();
 });
-canvas.addEventListener('click', () => { if (!paused && !preview) lockPointer(); });
+canvas.addEventListener('click', () => { if (spectate || (!paused && !preview)) lockPointer(); });
 canvas.addEventListener('mousedown', () => { if (!paused && cutscenes.active) cutscenes.next(); });   // (a click also moves the story on)
 // Esc releases the pointer (browser behaviour); treat that as pause.
 document.addEventListener('pointerlockchange', () => {
@@ -776,6 +964,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 window.addEventListener('keydown', (e) => {
   if (inMenu) return;
+  if (spectate) { if (e.code === 'Escape' && !document.pointerLockElement) stopSpectate(); else if (e.code === 'KeyL') spectateLights(!spectate.bright); return; }
   if (e.code === 'Backquote') {
     panel.toggle();
     if (panel.open) document.exitPointerLock?.();   // free the mouse for the sliders; the game keeps running
@@ -1074,6 +1263,18 @@ function frame(now) {
     renderer.render(casino.scene, casino.camera);
     return;
   }
+  horde.eye.copy(camera.position);   // (monsters near the camera are drawn in detail)
+  if (spectate) {   // (the editor's spectator has the screen: nothing runs but the world)
+    updateSpectate(dt, mouseDX, mouseDY);
+    arena.update(dt, camera.position);
+    renderer.render(scene, camera);
+    return;
+  }
+  if (inMenu && viewer.active) {   // (the editor's model library has the screen)
+    viewer.update(dt);
+    viewer.render();
+    return;
+  }
   if (inMenu) {
     menuScene.update(dt);
     arena.update(dt, menuScene.origin);
@@ -1180,7 +1381,7 @@ function frame(now) {
             else hud.popup(`Tagged ${rider.name}`, 'trick');
           }
         }
-      } else if (!weapon.def.flame) playShot(weapon.def.id);   // (the flamethrower roars for as long as it's held: see below)
+      } else if (!weapon.def.flame) playShot(weapon.def.id, weapon.def.fireRate * stats.fireRate * (stats.frenzy > 0 ? 2 : 1));   // (the flamethrower roars for as long as it's held: see below)
     }
     setFlame(firing && !!weapon.def.flame);
     if (weapon.clangs) { weapon.clangs = 0; playClang(); }   // a sawblade bounced
@@ -1208,9 +1409,9 @@ function frame(now) {
     if (LEVELS[level].descent && !dead && !won) {
       const d = descent.update(dt);
       hud.run(hillTime(descent.state.time), d.gap);
-      if (d.tell) { hud.popup(d.tell < 0 ? '◀  Incoming' : d.tell === 1 ? 'Incoming  ▶' : '▲  Incoming  ▲', 'alert'); playSwitch(); }
-      if (d.thrown) playBossThrow();
-      if (d.zone) hud.place(d.zone, 'The Long Way Down');
+      if (d.tell) { hud.popup(d.tell < 0 ? '◀  Incoming' : d.tell === 1 ? 'Incoming  ▶' : '▲  Incoming  ▲', 'alert'); playGhostTell(d.tell < 0 ? -1 : d.tell === 1 ? 1 : 0); }
+      if (d.thrown) playGhostThrow();
+      if (d.zone) { hud.place(d.zone, 'The Long Way Down'); playZone(); }
       if (d.hit) { hurt(d.hit); hud.popup('Hit', 'sloppy'); }
       if (d.caught) { if (d.fell) buried(true); else cutscenes.buried(descent, () => buried()); }   // (it catches him: see it happen, then the end screen)
       else if (d.finished) cutscenes.launch(descent, () => finale(d.finished, d.record));   // (off the last ramp, toward the Moon)
@@ -1283,4 +1484,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

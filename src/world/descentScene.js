@@ -12,6 +12,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DESCENT, descentHeight } from './descent.js';
 import { seededRandom } from './random.js';
 import { glowTexture } from './textures.js';
+import { street } from './scenery.js';
 
 const X0 = 48, Z0 = 48, D = DESCENT;
 const H = (x, s) => descentHeight(X0 + x, Z0 - s);            // the ground, `x` from the middle of the course, `s` down it
@@ -55,6 +56,14 @@ function wallTextures(cols, rows, rand) {
 function skylineTexture(rand) {
   return textured(canvas(2048, 512, (g, w, h) => {
     const horizon = h * 0.3;   // (from the top)
+    // Behind everything: mountains, with snow on the tops of them.
+    const peak = (x) => horizon - 70 - 46 * Math.abs(Math.sin((x / w) * Math.PI * 5 + 0.7)) - 24 * Math.abs(Math.sin((x / w) * Math.PI * 13 + 2)) - 8 * Math.sin((x / w) * Math.PI * 54);
+    g.fillStyle = '#111a2a';
+    g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x += 6) g.lineTo(x, peak(x));
+    g.lineTo(w, h); g.fill();
+    g.fillStyle = '#2b3852';
+    for (let x = 0; x <= w; x += 6) { const y = peak(x); if (y < horizon - 112) g.fillRect(x, y, 6, Math.min(16, (horizon - 112 - y) * 0.6)); }
     g.fillStyle = '#0d1420';
     g.beginPath(); g.moveTo(0, h);
     for (let x = 0; x <= w; x += 16) g.lineTo(x, horizon - 26 - 22 * Math.sin((x / w) * Math.PI * 6) - 14 * Math.sin((x / w) * Math.PI * 22 + 1));
@@ -70,6 +79,19 @@ function skylineTexture(rand) {
       }
       x += bw + rand() * 8;
     }
+    // Along the front of it: a big wheel, a bridge on two towers, cranes at the docks, masts with a red light on each.
+    { const cx = w * 0.18, cy = horizon - 30, R = 26;
+      g.strokeStyle = '#1a2334'; g.lineWidth = 1.5; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+      for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke(); g.fillStyle = ['#ff5a9a', '#4fd8ff', '#ffd24f'][k % 3]; g.fillRect(cx + Math.cos(a) * R - 1.5, cy + Math.sin(a) * R - 1.5, 3, 3); }
+      g.beginPath(); g.moveTo(cx - 14, horizon + 2); g.lineTo(cx, cy); g.lineTo(cx + 14, horizon + 2); g.stroke(); }
+    { const x0 = w * 0.52, x1 = w * 0.66, deck = horizon - 10;
+      g.fillStyle = '#080c14'; g.fillRect(x0, deck, x1 - x0, 3);
+      for (const tx of [x0 + (x1 - x0) * 0.28, x0 + (x1 - x0) * 0.72]) { g.fillRect(tx - 2, deck - 46, 4, 58); g.fillStyle = '#ff3a2a'; g.fillRect(tx - 1.5, deck - 49, 3, 3); g.fillStyle = '#080c14'; }
+      g.strokeStyle = '#141c2a'; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(x0, deck); g.quadraticCurveTo(x0 + (x1 - x0) * 0.14, deck - 4, x0 + (x1 - x0) * 0.28, deck - 46); g.quadraticCurveTo((x0 + x1) / 2, deck + 6, x0 + (x1 - x0) * 0.72, deck - 46); g.quadraticCurveTo(x0 + (x1 - x0) * 0.86, deck - 4, x1, deck); g.stroke();
+      for (let x = x0 + 6; x < x1; x += 7) { g.fillStyle = 'rgba(255,207,122,0.8)'; g.fillRect(x, deck - 1.5, 1.6, 1.6); } }
+    for (let k = 0; k < 5; k++) { const x = w * 0.8 + k * 30; g.strokeStyle = '#0a0f18'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, horizon + 2); g.lineTo(x, horizon - 42); g.lineTo(x + 26, horizon - 50); g.moveTo(x, horizon - 42); g.lineTo(x - 10, horizon - 38); g.stroke(); g.fillStyle = '#ff3a2a'; g.fillRect(x - 1, horizon - 45, 2.4, 2.4); }
+    for (let k = 0; k < 7; k++) { const x = (w * (0.07 + k * 0.137)) % w, tall = 60 + (k % 3) * 22; g.fillStyle = '#0a0f18'; g.fillRect(x, horizon - tall, 1.6, tall); g.fillStyle = '#ff3a2a'; g.fillRect(x - 1, horizon - tall - 2, 3.4, 3); g.fillRect(x - 0.6, horizon - tall * 0.55, 2.6, 2); }
     for (let i = 0; i < 2600; i++) {   // the town below: thick near the horizon, thinning out
       const y = horizon + 4 + rand() * rand() * (h - horizon - 60), bright = 0.25 + rand() * 0.75;
       g.fillStyle = rand() < 0.12 ? `rgba(168,204,255,${bright})` : rand() < 0.1 ? `rgba(255,90,70,${bright})` : `rgba(255,207,122,${bright})`;
@@ -85,6 +107,7 @@ export function buildDescentScene() {
   const glowing = (color = 0xffffff) => new THREE.MeshBasicMaterial({ color, toneMapped: false });
   const box = new THREE.BoxGeometry(1, 1, 1), post = new THREE.CylinderGeometry(1, 1, 1, 7);
   const add = (...things) => group.add(...things);
+  const K = street(), painted = () => matt(0xffffff, { vertexColors: true });   // the sculpted pieces (scenery.js), in their own paint
   // Lights you can see from a long way off (lamps, lanterns, beacons): two sizes of soft dot.
   const dots = { small: [], big: [] };
   const dot = (kind, x, y, s, color) => dots[kind].push(X0 + x, y, Z0 - s, ...tint.set(color).toArray());
@@ -94,13 +117,15 @@ export function buildDescentScene() {
     const PAVE = 4.86, LANE = D.lane, [from, to] = D.city;   // (the pavement is this far above the road)
     const kinds = [wallTextures(5, 10, rand), wallTextures(5, 6, rand), wallTextures(8, 5, rand), wallTextures(6, 12, rand)];
     const roof = matt(0x23262b);
-    const lists = kinds.map(() => []), signs = [], poles = [], arms = [], bodies = [], cabins = [], tails = [], cables = [], trunks = [], crowns = [];
+    const lists = kinds.map(() => []), tops = [], fronts = [], signs = [], poles = [], bodies = [], tails = [], cables = [], trunks = [];
     const WALLS = [0xd9cdb4, 0xc9b7a0, 0xb8a58c, 0xd4b89c, 0xa9a39a, 0xc2a48c, 0xbfc4c8], NEON = [0xff4f9a, 0x4fd8ff, 0xffd24f, 0xff7a3d, 0x7dff8a, 0xc084ff];
     for (const side of [-1, 1]) {
       // The row on the street: shoulder to shoulder, doors on the pavement.
       for (let s = from - 6; s < to - 14;) {
         const w = 13 + rand() * 10, h = 15 + rand() * rand() * 30, base = H(0, s + w) + PAVE - 2.5;
         lists[h > 30 ? 0 : w > 19 ? 2 : 1].push({ x: side * (LANE + D.terrace + 8), y: base + h / 2, s: s + w / 2, sx: 16, sy: h, sz: w, color: pick(WALLS) });
+        tops.push({ x: side * (LANE + D.terrace + 8), y: base + h, s: s + w / 2, ry: side > 0 ? 0 : Math.PI });                                   // what is on its roof
+        fronts.push({ x: side * (LANE + D.terrace), y: H(0, s + w / 2) + PAVE, s: s + w / 2 + 1.5, ry: -side * Math.PI / 2 });                     // and at its foot
         if (rand() < 0.7) signs.push({ x: side * (LANE + D.terrace - 0.25), y: H(0, s + w / 2) + PAVE + 3.4 + rand() * 1.5, s: s + w / 2, sx: 0.3, sy: 0.9 + rand() * 0.6, sz: w * (0.35 + rand() * 0.3), color: pick(NEON) });
         s += w;
       }
@@ -113,21 +138,18 @@ export function buildDescentScene() {
       // Street lamps along the buildings, cars at the kerb, palms between them.
       for (let s = from + 14; s < to - 10; s += 30) {
         const x = side * (LANE + 12.3), y = H(x, s);
-        poles.push({ x, y: y + 3.5, s, sx: 0.12, sy: 7, sz: 0.12 });
-        arms.push({ x: x - side * 1, y: y + 6.9, s, sx: 2, sy: 0.12, sz: 0.12 });
+        poles.push({ x, y: y + 3.5, s, ry: side > 0 ? 0 : Math.PI });   // (its arm reaches out over the street)
         dot('big', x - side * 2, y + 6.7, s, 0xffc978);
       }
       for (let s = from + 6; s < to - 8; s += 7.5) {
         if (rand() > 0.42) continue;
         const x = side * (LANE + 10.4), y = H(x, s), rx = tilt(x, s), color = pick([0xb3261e, 0x1f4f9a, 0xd9d9d9, 0x23262b, 0xd9a52a, 0x2f7a4a, 0x8a8f92]);
-        bodies.push({ x, y: y + 0.62, s, sx: 1.9, sy: 0.75, sz: 4.3, rx, color });
-        cabins.push({ x, y: y + 1.28, s: s + 0.2, sx: 1.7, sy: 0.6, sz: 2.2, rx });
+        bodies.push({ x, y, s, rx, color });
         tails.push({ x, y: y + 0.75, s: s - 2.17, sx: 1.6, sy: 0.14, sz: 0.06, rx });   // (its tail lights, toward you as you come down)
       }
       for (let s = from + 30; s < to - 10; s += 38) {
         const x = side * (LANE + 9.6), y = H(x, s + side * 9), lean = (rand() - 0.5) * 0.2;
-        trunks.push({ x, y: y + 4, s: s + side * 9, sx: 0.22, sy: 8.4, sz: 0.22, rz: lean });
-        crowns.push({ x: x - lean * 4, y: y + 8.3, s: s + side * 9, sx: 3.4, sy: 0.9, sz: 3.4, ry: rand() * 3 }, { x: x - lean * 4, y: y + 8.9, s: s + side * 9, sx: 2, sy: 0.8, sz: 2, ry: rand() * 3 });
+        trunks.push({ x, y: y + 4, s: s + side * 9, rz: lean, ry: rand() * 3 + rand() * 3 });
       }
     }
     // Strings of lights across the street.
@@ -141,17 +163,21 @@ export function buildDescentScene() {
       add(instanced(box, [wall, wall, roof, roof, wall, wall], lists[i]));
     });
     const metal = matt(0x2a2d31);
-    add(instanced(box, glowing(), signs), instanced(post, metal, poles), instanced(box, metal, arms), instanced(box, metal, cables));
-    add(instanced(box, matt(0xffffff), bodies), instanced(box, matt(0x15181c), cabins), instanced(box, glowing(0xff2a1a), tails));
-    add(instanced(post, matt(0x5a4a38), trunks), instanced(new THREE.SphereGeometry(1, 7, 4), matt(0x24502c), crowns));
+    add(instanced(box, glowing(), signs), instanced(K.lamp, painted(), poles), instanced(box, metal, cables));
+    add(instanced(K.car, painted(), bodies), instanced(box, glowing(0xff2a1a), tails));
+    add(instanced(K.palm, painted(), trunks));
+    add(instanced(K.roof, painted(), tops), instanced(K.front, painted(), fronts), instanced(K.frontGlow, glowing(0xffd9a0), fronts));
   }
 
   // ---- The cemetery ---------------------------------------------------------------------------
   {
     const from = D.city[1] + 10, to = D.sewer[0] - 14, LANE = D.lane, TOP = 15.5;   // (TOP: the top of the bank, where the fence runs)
     const stone = matt(0x8b877c), dark = matt(0x14110f), iron = matt(0x1b1d20);
-    const cross = mergeGeometries([new THREE.BoxGeometry(0.32, 2.1, 0.26).translate(0, 1.05, 0), new THREE.BoxGeometry(1.2, 0.32, 0.26).translate(0, 1.45, 0)]);
-    const slab = new THREE.BoxGeometry(1.05, 1.5, 0.3).translate(0, 0.75, 0);
+    // (There are over a thousand graves on this slope, all drawn at once: so a light cross and a light slab, not scenery.js's.)
+    const cross = mergeGeometries([new THREE.BoxGeometry(0.3, 2.1, 0.24, 1, 4, 1).translate(0, 1.2, 0), new THREE.BoxGeometry(1.2, 0.3, 0.24, 3, 1, 1).translate(0, 1.6, 0), new THREE.TorusGeometry(0.42, 0.07, 4, 12).translate(0, 1.6, 0),
+      new THREE.BoxGeometry(0.8, 0.22, 0.6).translate(0, 0.25, 0), new THREE.BoxGeometry(1.1, 0.16, 0.86).translate(0, 0.08, 0)]);
+    const slab = mergeGeometries([new THREE.BoxGeometry(1.0, 1.1, 0.26).translate(0, 0.7, 0), new THREE.CylinderGeometry(0.5, 0.5, 0.26, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(-Math.PI / 2).translate(0, 1.25, 0),
+      new THREE.BoxGeometry(1.3, 0.16, 0.5).translate(0, 0.08, 0), new THREE.BoxGeometry(0.6, 0.5, 0.02).translate(0, 0.8, 0.14)]);
     const crosses = [], slabs = [], tombs = [], roofs = [], doors = [], trees = [], posts = [], rails = [], blocks = [];
     for (const side of [-1, 1]) {
       for (let e = 18.5; e < 70; e += 5.2) for (let s = from + 14; s < to; s += 4.2) {
@@ -197,10 +223,8 @@ export function buildDescentScene() {
       add(instanced(box, glowing(0xffc46a), [-5, 0, 5].map((o) => ({ x: x + 5.05, y: y + 5, s: s + o, sx: 0.15, sy: 4, sz: 1.5 }))));
       dot('big', x + 7, y + 5, s, 0xffb04a);
     }
-    const branch = (len, r, y, ry, lean) => new THREE.CylinderGeometry(r * 0.4, r, len, 5).translate(0, len / 2, 0).rotateZ(lean).rotateY(ry).translate(0, y, 0);
-    const tree = mergeGeometries([branch(6.2, 0.36, 0, 0, 0.06), branch(3.4, 0.16, 3, 0.4, 0.9), branch(3, 0.15, 3.8, 2.5, 0.8), branch(2.6, 0.13, 4.6, 4.4, 0.95), branch(2.2, 0.11, 5.3, 1.4, 0.6), branch(1.9, 0.08, 4.2, 5.6, 1.2)]);
     add(instanced(cross, matt(0xffffff), crosses), instanced(slab, matt(0xffffff), slabs), instanced(box, stone, tombs), instanced(new THREE.ConeGeometry(1, 1, 4), dark, roofs), instanced(box, dark, doors));
-    add(instanced(tree, matt(0x1d1a17), trees), instanced(box, iron, posts), instanced(box, iron, rails), instanced(box, stone, blocks));
+    add(instanced(K.tree(seededRandom(77)).scale(0.8, 0.8, 0.8), painted(), trees), instanced(box, iron, posts), instanced(box, iron, rails), instanced(box, stone, blocks));
   }
 
   // ---- The storm drain ------------------------------------------------------------------------
@@ -257,13 +281,6 @@ export function buildDescentScene() {
   // ---- The hillside ---------------------------------------------------------------------------
   {
     const from = D.sewer[1] + 14, to = D.edge[0], LANE = D.lane;
-    const paint = (geometry, color) => { const c = tint.set(color), n = geometry.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3); geometry.setAttribute('color', new THREE.BufferAttribute(a, 3)); return geometry.toNonIndexed(); };
-    const pine = mergeGeometries([
-      paint(new THREE.CylinderGeometry(0.25, 0.36, 2.2, 6).translate(0, 1.1, 0), 0x3a2c20),
-      paint(new THREE.ConeGeometry(2.3, 4.2, 7).translate(0, 3.9, 0), 0x1f3d2a),
-      paint(new THREE.ConeGeometry(1.7, 3.6, 7).translate(0, 6.1, 0), 0x25472f),
-      paint(new THREE.ConeGeometry(1.05, 2.8, 7).translate(0, 8, 0), 0x2b5236),
-    ]);
     const pines = [], rocks = [], markers = [], caps = [], legs = [], spars = [], wires = [];
     for (const side of [-1, 1]) {
       for (let i = 0; i < 170; i++) {
@@ -290,7 +307,7 @@ export function buildDescentScene() {
       if (last) for (const off of [-7, 7]) wires.push({ x: x + off, y: (y + last.y) / 2 + 27, s: s - 75, sx: 0.06, sy: 0.06, sz: Math.hypot(150, y - last.y), rx: Math.atan((y - last.y) / 150) });
       last = { y };
     }
-    add(instanced(pine, matt(0xffffff, { vertexColors: true }), pines), instanced(new THREE.IcosahedronGeometry(1, 0), matt(0xffffff, { flatShading: true }), rocks));
+    add(instanced(K.pine, painted(), pines), instanced(K.boulder, painted(), rocks));
     add(instanced(box, matt(0xd8d8d2), markers), instanced(box, glowing(0xff3a2a), caps));
     add(instanced(new THREE.ConeGeometry(5, 34, 4, 4, true), new THREE.MeshBasicMaterial({ color: 0x4a545e, wireframe: true }), legs), instanced(box, matt(0x4a545e), spars), instanced(box, matt(0x15181c), wires));
   }

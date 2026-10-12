@@ -13,9 +13,30 @@ friends, with no damage and no clock. Everything is made in code: there are no a
 ## Tech
 - Three.js, Vite, plain JavaScript modules. No framework, no TypeScript.
 - All models, textures, sounds and music are procedural. (Optional recorded sounds can be dropped into `src/assets/sounds/`.)
+- **How sound is mixed** (`src/fx/audio.js`): effects and music each go through a gentle compressor, then together through a
+  limiter and a soft clip, so the output can never go over full scale however much is playing. Effects are placed across the
+  stereo field (near or far) and share one reverb whose character follows the level: open air (the cemetery, the hill), a cave
+  (the Catacombs), a hall (the House), almost none (the Moon). A gun never makes more than 18 shot sounds a second: a faster gun
+  sounds a little higher and each shot a little quieter. Small sounds (hits, kills, pickups) give way first when a lot is
+  playing. `renderOffline()` plays any sound into a context that is not connected to the speakers, for measuring levels.
+- **Each level has its own music** (`src/fx/music.js`): the Cemetery and the menu, haunted drum and bass; the Catacombs, a slow
+  heavy dub; the House, a fast minor swing with a brass section; the Long Way Down, a four-on-the-floor chase; the Moon, half-time
+  and weightless (also the menu's, once the game is finished); the casino, a lounge trio. A boss turns the Cemetery's or the
+  Catacombs' music to hard rock. The editor (?editor) has a button for each, and for each story soundtrack.
+- **The story has its own music** (`src/fx/score.js`): while any scene plays, the level's music is held right down; story scenes
+  play one of seven quiet looping cues in its place (the cemetery, the Catacombs, the city, the House, the collapse, the launch,
+  the Moon), which fades out when the scene ends and the level's music comes back.
+- **The story has its own sounds** (the last section of `audio.js`, 39 of them): night wind, a far-off bell and a crow for the
+  cemetery; a drone and dripping water for the Catacombs; a chip spinning in the air and ringing to a stop; an iron hatch and a
+  ladder; a manhole lid, the city's hum with a distant siren, a chord as the casino is seen, wheels pushing off, the doors
+  bursting; a chandelier, a riffled deck, three reels stopping; chips pouring and a marble floor cracking; a building groaning,
+  glass going, the roar of the dust, three ghost voices rising; a ghost winding up and throwing (from its own side); a soft
+  swell for each stretch of the hill; being buried; the hush after the last ramp; a near-silent pad, a muffled landing, a dry
+  snap, a drag and a breath out, a chord for the end and a note for each credit on the Moon; a fanfare for the reward; a hit for
+  each title card; a saucer's wobble on the Moon menu; and a tick each time a line of story moves on.
 - A custom skating controller over a ground height function, stepped at 240 Hz; rendering runs at the display's rate.
-- Hosted on Netlify from the `main` branch. One Netlify Function (`netlify/functions/leaderboard.mjs`) stores the shared leaderboards
-  (run scores, and Free Ride's best lines).
+- Hosted on Cloudflare Pages from the `main` branch (see HOSTING.md). One Pages Function (`functions/api/leaderboard.js`) stores the
+  shared leaderboards (run scores, Free Ride's best lines, fastest times down the hill) in Cloudflare KV.
 - Multiplayer (the casino and Free Ride) is browser to browser (PeerJS): one player hosts, the others join with a five-character code.
 - Progress (gold, upgrades, cosmetics, name, best score, sound settings) is saved in the browser, under `deadslide.*`.
 - Run it with `npm install` then `npm run dev`. Add `?seed=1234` to the address to revisit a world.
@@ -140,6 +161,8 @@ watches ("Nothing left to collect"). Leaving the House has its own scene: there 
 On the hill a title card names each stretch as you reach it (The Cemetery, Storm Drain 7, The Hillside, The Edge), and at the
 Edge the three ghosts drop back and fade.
 
+**The editor's tabs** (with ?editor in the address, the menu's Editor button): Scenes (every cinematic), Music (each level's track and each story soundtrack), Sounds (every sound on a button, and Stop all sounds), and Models (every monster, boss, costume and gun, and a few set pieces, on a turntable: drag to turn, scroll to zoom, Spin and Animate switches, with its size and triangle count).
+
 **The cinematics editor.** With ?editor in the address the menu has a Cinematics button: a list of every scene (20), each
 playable on its own. A bar across the top shows the time and has a slider to drag through it, Pause, Restart, Speed (1x, 0.5x,
 0.25x, 2x), Wait on lines on/off, Next line, previous and next scene, and back to the list. Nothing done there counts.
@@ -151,18 +174,18 @@ finished it, and Free Ride. Every player starts with only the Cemetery. At the e
 "Go deeper" (on to the next level, carrying everything) or "End the run here" (the score can be posted, then back to the menu).
 Gold is banked either way. (Adding ?all to the address lists every level, for testing.)
 
-**The ending.** After "Launch" the game moves to the Moon and plays the last scene, "The last cigarette":
+**The ending.** After "Launch" the game moves to the Moon and plays the last scene, "The last boof":
 the Earth on its own; from high up, something falls out of the sky and hits the plain; Kirky from behind, looking up at it; his
-face; his last cigarette, snapped in the fall; he lights it anyway and takes a long drag; the camera goes slowly round him (anyone
+face; his last boof, snapped in the fall; he lights it anyway and takes a long drag; the camera goes slowly round him (anyone
 else up there, one for each Moon costume you have found, sits on the big ramp behind him in the distance, unremarked); then all of it from behind under the
 Earth, the last two lines, the title and the credits (which include your time down the hill). About 45 seconds. Then "The End".
 - **Credits:** "A game by Babitus & Clauditus."
-- **The reward's reveal:** the first time you finish, before "The End", everything goes dark and the gold broken cigarette drops in out of a burst of light, turning, with sparks and its name.
-- **Afterwards**, in Free Ride, the stub of the last cigarette lies on the Moon near where you arrive.
+- **The reward's reveal:** the first time you finish, before "The End", everything goes dark and the Golden BOOF (a gold broken boof) drops in out of a burst of light, turning, with sparks and its name.
+- **Afterwards**, in Free Ride, the stub of the last boof lies on the Moon near where you arrive.
 - **The main menu moves to the Moon** once you have finished: Kirky leans on a supply crate out on the plain with the lander behind him, his board beside him as ever, a sniper rifle in his hand that he fires now and then, and every so often a saucer crosses the sky in the distance.
-- **What you get** (not in Creative mode): the gold broken cigarette (Shop, Style, "In his mouth": shown as "???" until then), put
+- **What you get** (not in Creative mode): the Golden BOOF (a gold broken boof) (Shop, Style, "In his mouth": shown as "???" until then), put
   straight in his mouth; the title on the main menu turns gold; and the first time back at the menu the title screen plays its
-  own cut-in (the cigarette up close, Kirky from the ground with "The house lost", then back).
+  own cut-in (the boof up close, Kirky from the ground with "The house lost", then back).
 
 **The story** is told in short scenes with a caption under them. Each line stays up until you press Enter, Space or the mouse button; Tab skips the whole scene. They are: the start of level 1 (who Kirky is up
 against), the first boss's death (he was carrying a casino chip marked B.G.), arriving in level 2 (what the Catacombs are), and
@@ -232,7 +255,7 @@ A Monte-Carlo style room reached from the menu, where you walk instead of skate.
 - **Blackjack:** five seats; six decks; the dealer (Babitus Goyitus, a zombie in a dinner suit) stands on 17; blackjack pays 3 to 2;
   one split; bets from 10 to 500. Play runs from the right-hand seat to the left. Every bet is written over its chips for the whole table to read.
   F at the table (or the bar) has a smoke: a cut-in for you; the others see you do it. Smoke hangs over the table, and
-  after three cigarettes' worth the dealer has a coughing fit and waves it away. The more the house takes, the more jewellery he wears.
+  after three boofs' worth the dealer has a coughing fit and waves it away. The more the house takes, the more jewellery he wears.
 - **Roulette:** one European wheel for the whole room, spun by a second Babitus. Anyone with a bet down can spin.
 - **Slot machines:** 5 gold a spin, gold prizes, and three skulls wins a casino-only cosmetic.
 - **The bar:** a skeleton barman mixes drinks. Three drinks make you tipsy, five make you sick and get you cut off for a while.
@@ -266,7 +289,7 @@ src/
   menu/              menu.js, menuScene.js, shop.js
   ui/                hud, levelUp, leaderboard, goldTally, playerName, audioControls, keys (key names for your keyboard), tweakPanel
   fx/                audio.js (every sound), music.js
-netlify/functions/   leaderboard.mjs
+functions/api/       leaderboard.js
 ```
 
 ## Known gaps

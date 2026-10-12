@@ -6,10 +6,11 @@ import { getChunk, groundAt } from './terrain.js';
 import { CHUNK } from './worldgen.js';
 import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
-import { glowTexture, regolithTexture, strataTexture, lavaTexture } from './textures.js';
+import { glowTexture, regolithTexture, lavaTexture } from './textures.js';
+import { buildCemeteryBackdrop, buildMoonOutside } from './backdrop.js';
 import { CATA, floorAt } from './catacombs.js';
 import { buildHouseScene } from './houseScene.js';
-import { MOON, WALL_AT, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE } from './moon.js';
+import { MOON, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE } from './moon.js';
 
 const HORIZON = 0x1c2535;
 const MOON_DIR = new THREE.Vector3(-0.6, 0.62, -0.4).normalize();
@@ -35,7 +36,8 @@ export function buildArena(scene) {
   const sky = buildSky();
   const mist = buildMist();
   const far = buildFarGround();
-  scene.add(sky, mist.group, far);
+  const backdrop = buildCemeteryBackdrop(HORIZON);   // the Cemetery's horizon: what is painted round it, far off
+  scene.add(sky, mist.group, far, backdrop);
 
   // The Catacombs: a roof (only drawn; nothing can reach it), a lamp on Kirky's head pointing where he
   // aims, and a little glow round him. They stay switched off in the Cemetery.
@@ -130,7 +132,7 @@ export function buildArena(scene) {
       sky.userData.dome.material.uniforms.top.value.set(lunar ? 0x000000 : 0x04060c);
       for (const o of sky.userData.moon) o.visible = !lunar && n !== 5;   // (...and the Long Way Down has its own, dead ahead)   // (you're standing on it)
       sky.userData.earth.visible = lunar;
-      far.visible = n === 1;
+      far.visible = backdrop.visible = n === 1;
       mist.group.visible = !lunar && !casino;
       roof.visible = under;
       headlamp.intensity = under ? 2400 : 0;
@@ -150,6 +152,7 @@ export function buildArena(scene) {
     prime(pos) {
       stream(pos, Infinity);
       sky.position.copy(pos);   // (a scene may play here before the first update)
+      backdrop.position.copy(pos);
       assignLampLights(pos);
     },
     // aim: the point the player is aiming at (the Catacombs' headlamp points there).
@@ -163,6 +166,7 @@ export function buildArena(scene) {
       moon.target.position.copy(playerPos);
       moon.position.copy(playerPos).addScaledVector(MOON_DIR, 150);
       sky.position.copy(playerPos);
+      backdrop.position.copy(playerPos);
       mist.update(dt, playerPos);
       if (level === 2) roof.position.set(playerPos.x, floorAt(playerPos.z) + CATA.ceiling, playerPos.z);
       if (level === 3) {
@@ -212,19 +216,8 @@ function buildMoonFar() {
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: regolithTexture(), color: 0x9b9a9c, roughness: 1, vertexColors: true }));
   mesh.frustumCulled = false;
-  // The crater wall itself: a ring of sheer rock standing on the lip, all the way round.
-  const strata = strataTexture();
-  strata.repeat.set(70, 3);
-  const wall = new THREE.Mesh(new THREE.CylinderGeometry(WALL_AT + 10, WALL_AT, 80, 120, 4, true), new THREE.MeshStandardMaterial({ map: strata, color: 0xa8a7ac, roughness: 1, side: THREE.BackSide, flatShading: true }));
-  const p = wall.geometry.attributes.position;
-  for (let i = 0; i < p.count; i++) {   // roughen it: push each point in or out a little
-    const k = Math.sin(p.getX(i) * 0.37 + p.getY(i) * 0.9) * Math.cos(p.getZ(i) * 0.41 + p.getY(i) * 0.5);
-    p.setXYZ(i, p.getX(i) * (1 + 0.012 * k), p.getY(i), p.getZ(i) * (1 + 0.012 * k));
-  }
-  wall.geometry.computeVertexNormals();
-  wall.position.set(MOON.x, 22, MOON.z);
-  wall.frustumCulled = false;
-  mesh.add(wall);
+  // Beyond the lip there is no wall to see (only one to stop you): the plain the crater sits in, and what is out on it.
+  mesh.add(buildMoonOutside());
   // The lava in the Lava Pit: a glowing lake (it creeps: see update), and the light it throws.
   const lava = new THREE.Mesh(new THREE.PlaneGeometry(LAVA_LAKE.length, LAVA_LAKE.width).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: lavaTexture(), toneMapped: false }));
   lava.material.map.repeat.set(LAVA_LAKE.length / 14, LAVA_LAKE.width / 14);

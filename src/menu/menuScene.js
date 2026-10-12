@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { SkaterModel } from '../player/skaterModel.js';
 import { heightAt, SPAWN } from '../world/terrain.js';
 import { stoneTexture } from '../world/textures.js';
-import { playShot, playSniper, playBossIntro, playThunder } from '../fx/audio.js';
+import { playShot, playSniper, playTitleSting, playSaucer } from '../fx/audio.js';
 import { WEAPONS } from '../player/weapons.js';
 import { hud } from '../ui/hud.js';
 
@@ -197,7 +197,7 @@ export class MenuScene {
 
     // The Moon: every so often a saucer crosses the sky behind him, bobbing, its lights going round.
     if (this.moon && this.visible) {
-      if (this.saucerT < 0 && (this.saucerWait -= dt) <= 0) { this.saucerT = 0; this.saucerSide = Math.random() < 0.5 ? -1 : 1; this.saucerHigh = 8 + Math.random() * 9; }
+      if (this.saucerT < 0 && (this.saucerWait -= dt) <= 0) { this.saucerT = 0; playSaucer(11); this.saucerSide = Math.random() < 0.5 ? -1 : 1; this.saucerHigh = 8 + Math.random() * 9; }
       if (this.saucerT >= 0) {
         this.saucerT += dt / 11;
         const back = v.set(-Math.sin(FACING), 0, -Math.cos(FACING)), across = (this.saucerT - 0.5) * 2 * this.saucerSide * 90 + 35;   // (centred a little to his right: the lander is in the way on the left)
@@ -243,8 +243,7 @@ export class MenuScene {
         this.camera.lookAt(v.copy(this.origin).setY(this.origin.y + 1));
         this.camera.fov = 40;
       }
-      once('thunder', 0, () => playThunder());
-      once('title', CUTS[1], () => { playBossIntro(); hud.bossIntro('The house lost', 'DeadSlide'); });
+      once('title', CUTS[1], () => { playTitleSting(); hud.bossIntro('The house lost', 'DeadSlide'); });
       let pop = 0;
       for (const at of CUTS) if (t >= at) pop = Math.max(pop, Math.exp(-(t - at) * 8));
       hud.flash('#ffffff', pop * 0.85);

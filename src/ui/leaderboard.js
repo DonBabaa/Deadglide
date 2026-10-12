@@ -1,6 +1,6 @@
 // The shared leaderboard: the list on the main menu, and the "post your score"
 // box on the end-of-run screen. Scores are kept by a small function on the
-// site that hosts the game (netlify/functions/leaderboard.mjs), so the board
+// site that hosts the game (functions/api/leaderboard.js), so the board
 // only works on the deployed site, not under `npm run dev`.
 import { getName, setName } from './playerName.js';
 
@@ -22,7 +22,7 @@ async function call(body, board = '') {
 // Fill a list element with rows. `mine` is highlighted.
 // how(row): the text in the third column.
 const runHow = (r) => (r.won ? `Escaped ${clock(r.time)}` : `Wave ${r.wave}`), lineHow = (r) => `${r.wave} trick${r.wave === 1 ? '' : 's'}`;
-// A time down the hill, from the score it is stored as (see netlify/functions/leaderboard.mjs).
+// A time down the hill, from the score it is stored as (see functions/api/leaderboard.js).
 const RUN_BASE = 1_000_000;
 export const runTime = (seconds) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 function draw(list, rows, count, mine = '', how = runHow, points = (r) => r.score.toLocaleString()) {
