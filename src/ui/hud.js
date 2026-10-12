@@ -27,6 +27,7 @@ export const hud = {
     speedFill.classList.toggle('hot', speed > config.skate.pushMaxSpeed);
     speedText.textContent = Math.round(speed * 3.6);
     chargeFill.style.width = `${skater.charge * 100}%`;
+    chargeFill.classList.toggle('sweet', skater.popWindow);
     state.textContent = skater.grinding ? 'Grind' : !skater.grounded && skater.airTime > 0.1 ? 'Air' : skater.drifting && skater.speed > 3 ? 'Slide' : '';
   },
 
@@ -283,6 +284,28 @@ export const hud = {
   },
 
   // Red flash round the edges when you take a hit.
+  // Balance on a rail: -1..1 (null: not on one). The marker runs left when he tips left.
+  balance(value) {
+    const el = $('balance');
+    el.classList.toggle('hidden', value === null);
+    if (value === null) return;
+    el.classList.toggle('danger', Math.abs(value) > 0.7);
+    el.firstElementChild.style.left = `${50 - value * 50}%`;
+  },
+  // Points, floating up from a place on the screen (x, y: 0..1). kind: '', 'head' or 'trick'.
+  float(x, y, text, kind = '') {
+    const box = $('floats');
+    if (box.childElementCount > 14) box.firstElementChild.remove();
+    const el = document.createElement('div');
+    el.className = kind;
+    el.textContent = text;
+    el.style.left = `${x * 100}%`;
+    el.style.top = `${y * 100}%`;
+    box.append(el);
+    el.addEventListener('animationend', () => el.remove());
+  },
+  // Streaks at the edge of the screen (0 = none): how fast he is going.
+  speedLines(amount) { $('rushlines').style.opacity = amount; },
   flashHurt() {
     hurtEl.classList.remove('on');
     void hurtEl.offsetWidth;   // restart the animation

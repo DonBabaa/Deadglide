@@ -135,7 +135,9 @@ $('menu-play').addEventListener('click', () => {
 export const menu = {
   onStart(callback) { onStart = callback; },
   show(best) {
-    for (const n in LEVELS) $(`level-${n}`).classList.toggle('hidden', !(ALL || +n === 1 || LEVELS[n].freeRide || profile.cleared.includes(+n)));
+    // On the list: the first level, Free Ride, every level you have finished; and the Long Way Down as soon as the House
+    // is beaten (so that falling on the hill does not mean killing Babitus all over again).
+    for (const n in LEVELS) $(`level-${n}`).classList.toggle('hidden', !(ALL || +n === 1 || LEVELS[n].freeRide || profile.cleared.includes(+n) || (LEVELS[n].descent && profile.cleared.includes(4))));
     const done = [1, 2, 4, 5].filter((n) => profile.cleared.includes(n)).length;
     $('menu-start-desc').textContent = done ? `Start a run \u00b7 or go back to a level you have finished (${done} of 4)` : 'Start a run \u00b7 the cemetery';
     levels.classList.add('hidden');

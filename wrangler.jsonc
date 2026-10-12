@@ -1,0 +1,11 @@
+// Cloudflare Workers: `npm run build`, then `npx wrangler deploy` (the dashboard's Git set-up runs both on every push).
+{
+  "name": "deadglide",
+  "main": "worker.js",
+  "compatibility_date": "2026-01-01",
+  // The built game. Only /api/* goes through worker.js; every other address is a file from dist/.
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  // The leaderboard's storage. With no "id" here, wrangler creates the KV namespace on the first deploy; if it asks
+  // for one instead, create a namespace in the dashboard (Storage & Database > KV) and add its "id" to this entry.
+  "kv_namespaces": [{ "binding": "LEADERBOARD" }]
+}

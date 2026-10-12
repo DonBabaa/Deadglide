@@ -195,9 +195,13 @@ export function boneThrower() {
 export function hamzitus() {
   const skin = 0x8a9468, rot = 0x5c6648, pale = 0xa3a97c, vest = 0x3d3a31, vestDark = 0x2a2822, trousers = 0x26262b, blood = 0x6a1512, gut = 0x8c3a34, filth = 0x4a2a12, bone = 0xd8d2bf, dark = 0x121110, eye = 0xffb347, mud = 0x3a3226;
   const flesh = (g, stains = []) => dirty(rough(g, 0.006, 22), { mottle: 0.4, freq: 8, under: 0.45, stains });
+  // What is inside him, and coming out: raw meat, the wet of it, fat, old blood gone black.
+  const meat = 0x7a1f1a, wet = 0xa3271f, clot = 0x3d0b09, fat = 0xc9b56a, steel = 0x8e9298, grub = 0xe6dfc0;
+  const raw = (g) => dirty(rough(g, 0.008, 30), { mottle: 0.5, freq: 22, under: 0.3 });
+  const link = (at, turn) => paint(new THREE.TorusGeometry(0.035, 0.01, 4, 7).scale(0.65, 1, 1).rotateY(turn).translate(...at), 0x2a2b2e);
   const body = part([
     flesh(sculpt(lump(0.6, skin, [0, 0.98, 0.1], [1.05, 0.95, 1], 28), (v) => { const k = 1 + 0.03 * Math.sin(v.y * 22); v.x *= k; v.z = 0.1 + (v.z - 0.1) * k; dent(v, [0, 0.86, 0.7], 0.07, 0.05); }),
-      [[-0.28, 0.72, 0.5, 0.2, filth], [0.3, 1.02, 0.52, 0.14, filth], [0.05, 0.98, 0.66, 0.22, blood, 0.7]]),                         // the belly, in rolls
+      [[-0.28, 0.72, 0.5, 0.2, filth], [0.3, 1.02, 0.52, 0.14, filth], [0.05, 0.9, 0.66, 0.44, blood, 0.88], [-0.22, 0.62, 0.56, 0.26, blood, 0.75], [0.3, 0.7, 0.5, 0.2, clot, 0.7], [0, 1.2, -0.5, 0.3, blood, 0.8]]),   // the belly, in rolls, and what has run down it
     flesh(lump(0.5, pale, [0, 0.8, 0.16], [1.02, 0.9, 0.95], 22)),                                                                     // ...sagging over where a belt was
     flesh(lump(0.46, skin, [0, 1.36, 0], [1.1, 0.85, 0.9], 22)),
     flesh(lump(0.2, pale, [-0.22, 1.34, 0.3], [1.1, 0.9, 0.7], 12)), flesh(lump(0.2, pale, [0.22, 1.34, 0.3], [1.1, 0.9, 0.7], 12)),
@@ -220,13 +224,40 @@ export function hamzitus() {
     lump(0.05, skin, [-0.2, 1.76, 0.1], [0.4, 1, 0.8], 8), lump(0.05, skin, [0.2, 1.76, 0.1], [0.4, 1, 0.8], 8),
     lump(0.045, rot, [0, 1.74, 0.36], [1.2, 0.8, 0.8], 8),
     ...spikes(9, (i) => { const a = (i / 8) * PI - PI / 2; return [[Math.sin(a) * 0.15, 1.92, 0.1 + Math.cos(a) * 0.06], [Math.sin(a) * 0.2, 2.0 + 0.03 * (i % 2), 0.04], 0.012]; }, 0x1d1a16),   // a few hairs
+    // ---- The wound, properly: the skin peeled back off it in flaps, fat under the skin, what was inside hanging out ----
+    ...[[-1, 1.2], [-1, 1.0], [-1, 0.8], [1, 1.22], [1, 1.02], [1, 0.82], [1, 0.66]].map(([s, y], i) => flesh(tube([[0.05 + s * 0.12, y, 0.66], [0.05 + s * 0.24, y + 0.03, 0.78], [0.05 + s * 0.34, y - 0.08 - 0.03 * (i % 2), 0.7]], [0.09, 0.075, 0.015], i % 2 ? pale : skin, { sides: 7, steps: 4, squash: 0.3 }))),
+    ...[[-1, 1.1], [-1, 0.9], [1, 1.12], [1, 0.92], [1, 0.74]].map(([s, y]) => raw(lump(0.08, fat, [0.05 + s * 0.15, y, 0.68], [0.7, 1.3, 0.5], 8))),
+    raw(lump(0.26, meat, [0.05, 0.98, 0.56], [0.75, 1.45, 0.6], 14)), raw(lump(0.13, clot, [-0.03, 1.1, 0.66], [1.2, 0.8, 0.6], 10)), raw(lump(0.1, 0x5a1420, [0.12, 0.88, 0.7], [1, 1.2, 0.7], 10)),   // the meat of him; a liver; something else
+    raw(tube([[-0.06, 0.82, 0.72], [-0.24, 0.6, 0.72], [-0.3, 0.4, 0.62], [-0.16, 0.22, 0.7], [0.06, 0.1, 0.82], [0.3, 0.04, 0.95], [0.5, 0.03, 0.9]], [0.065, 0.07, 0.065, 0.06, 0.055, 0.05, 0.03], gut, { sides: 10, steps: 4 })),   // a length of gut right down to the floor, dragging
+    raw(tube([[0.14, 0.8, 0.72], [0.3, 0.62, 0.66], [0.2, 0.44, 0.7], [0.32, 0.3, 0.62]], [0.05, 0.055, 0.05, 0.02], 0x9a4a3c, { sides: 8, steps: 4 })),
+    raw(tube([[-0.02, 0.9, 0.74], [0.02, 0.76, 0.82], [-0.06, 0.62, 0.8], [0.04, 0.5, 0.76]], [0.04, 0.045, 0.04, 0.015], wet, { sides: 7, steps: 4 })),
+    ...spikes(18, (i) => { const x = -0.26 + (i * 0.37) % 0.62, y = 0.64 + ((i * 0.53) % 0.5); return [[x, y, 0.62 + 0.08 * Math.cos(x * 3)], [x + 0.01, y - 0.14 - 0.16 * ((i * 0.31) % 1), 0.64 + 0.08 * Math.cos(x * 3)], 0.022]; }, wet),   // blood, running
+    ...Array.from({ length: 16 }, (_, i) => lump(0.016, grub, [-0.1 + ((i * 0.29) % 0.34), 0.8 + ((i * 0.43) % 0.42), 0.74 + 0.03 * Math.sin(i)], [1, 0.6, 1.8], 5)),                                   // and what has moved in
+    // ---- His face: a cheek torn off the teeth, one eye out on its string, the top of his skull open ----
+    raw(lump(0.085, meat, [0.15, 1.69, 0.25], [0.6, 1.1, 0.8], 10)), ...[0, 1, 2, 3].map((i) => slab(0.02, 0.035, 0.022, bone, [0.14 + i * 0.012, 1.685 - i * 0.004, 0.3 - i * 0.03], [0, 0.9, 0])),
+    raw(lump(0.05, clot, [-0.08, 1.79, 0.29], [1, 1, 0.5], 8)), tube([[-0.08, 1.78, 0.31], [-0.1, 1.7, 0.37], [-0.09, 1.63, 0.38]], [0.012, 0.008, 0.008], wet, { sides: 5, steps: 3 }), lump(0.036, 0xe8e2c8, [-0.09, 1.6, 0.385], [1, 1, 1], 8), lump(0.016, 0x1a1512, [-0.09, 1.59, 0.415], [1, 1, 0.5], 6),
+    raw(lump(0.11, bone, [0.07, 1.9, 0.1], [1, 0.45, 1], 10)), raw(lump(0.09, 0xb8686a, [0.08, 1.93, 0.09], [1, 0.6, 1.1], 10)), ...spikes(6, (i) => [[0.02 + i * 0.03, 1.88, 0.2], [0.02 + i * 0.032, 1.76 - 0.03 * (i % 3), 0.26], 0.016], wet),
+    ...spikes(7, (i) => [[-0.06 + i * 0.022, 1.63, 0.33], [-0.06 + i * 0.022, 1.5 - 0.05 * (i % 2), 0.36], 0.014], wet),                                                                                 // down his chin
+    // ---- Things in him: a butcher's hook through each shoulder on its chain, a cleaver left in his back ----
+    ...[-1, 1].flatMap((s) => [
+      tube([[s * 0.5, 1.82, -0.1], [s * 0.54, 1.66, 0.0], [s * 0.5, 1.5, 0.2], [s * 0.42, 1.56, 0.3], [s * 0.4, 1.66, 0.3]], [0.028, 0.028, 0.026, 0.02, 0.006], steel, { sides: 6, steps: 4 }),
+      ...Array.from({ length: 9 }, (_, i) => link([s * (0.5 + 0.012 * i), 1.84 - i * 0.075, -0.12 - i * 0.04], i % 2 ? PI / 2 : 0)),
+      raw(lump(0.07, wet, [s * 0.5, 1.52, 0.2], [1, 1, 1], 8)), ...spikes(5, (i) => [[s * 0.5 + (i - 2) * 0.02, 1.5, 0.22], [s * 0.5 + (i - 2) * 0.024, 1.3 - 0.06 * (i % 2), 0.3], 0.016], wet),
+    ]),
+    slab(0.02, 0.3, 0.42, steel, [-0.22, 1.72, -0.38], [0.5, 0.2, 0.3]), tube([[-0.25, 1.86, -0.52], [-0.3, 2.06, -0.72]], [0.03, 0.035], 0x4a3220, { sides: 6 }), raw(lump(0.09, wet, [-0.2, 1.62, -0.3], [1, 1, 0.6], 8)),
+    // ---- His back, where the skin has gone: the spine showing, in a trench of meat ----
+    raw(lump(0.2, meat, [0, 1.28, -0.4], [0.6, 2.0, 0.5], 12)), ...Array.from({ length: 8 }, (_, i) => lump(0.045, bone, [0, 0.98 + i * 0.085, -0.5 - 0.03 * Math.sin(i * 0.5)], [1.3, 0.6, 1], 7)),
+    ...[1.05, 1.22, 1.39, 1.56].flatMap((y) => [-1, 1].map((s) => tube([[s * 0.04, y, -0.5], [s * 0.2, y - 0.03, -0.47]], [0.022, 0.012], bone, { sides: 5 }))),
   ]);
-  const eyes = lit(part([lump(0.026, eye, [-0.08, 1.79, 0.305], [1, 1, 1], 7), lump(0.026, eye, [0.08, 1.79, 0.305], [1, 1, 1], 7)]));
+  const eyes = lit(part([lump(0.03, eye, [0.08, 1.79, 0.305], [1, 1, 1], 7)]));   // (the one he has left)
   const arm = (side, phase) => {
     const S = [side * 0.56, 1.5, 0], E = [side * 0.7, 1.04, 0.08], W = [side * 0.66, 0.7, 0.32], F = [side * 0.66, 0.6, 0.4];
     return part([
       flesh(tube([S, between(S, E, 0.5), E, W], [0.22, 0.25, 0.18, 0.13], skin, { sides: 18, steps: 4 }), [[...E, 0.16, rot, 0.6]]),
       flesh(lump(0.2, pale, [side * 0.64, 1.3, 0.02], [1, 1.15, 1], 12)),                                                              // the flab hanging off it
+      raw(lump(0.13, meat, [side * 0.76, 1.2, 0.1], [0.6, 1.2, 1], 10)), boneShaft([side * 0.8, 1.32, 0.1], [side * 0.8, 1.08, 0.12], 0.03, bone, 1.2),             // a bite out of it, to the bone
+      ...spikes(6, (i) => [[side * 0.76, 1.12, 0.04 + i * 0.03], [side * 0.77, 0.9 - 0.05 * (i % 3), 0.06 + i * 0.03], 0.018], wet),
+      raw(lump(0.09, wet, [F[0], F[1] + 0.06, F[2] + 0.16], [1.5, 0.5, 0.8], 8)), ...spikes(5, (i) => [[F[0] + (i - 2) * 0.06, F[1] - 0.1, F[2] + 0.16], [F[0] + (i - 2) * 0.06, F[1] - 0.3 - 0.06 * (i % 2), F[2] + 0.18], 0.02], wet),   // knuckles split, and dripping
       flesh(lump(0.17, rot, F, [1, 0.85, 1.05], 14)),                                                                                  // a fist like a ham
       ...[-1.5, -0.5, 0.5, 1.5].map((k) => flesh(tube([[F[0] + k * 0.075, F[1] + 0.04, F[2] + 0.12], [F[0] + k * 0.078, F[1] - 0.06, F[2] + 0.2], [F[0] + k * 0.07, F[1] - 0.14, F[2] + 0.1]], [0.05, 0.046, 0.036], skin, { sides: 8, steps: 3 }))),
       flesh(tube([[F[0] - side * 0.13, F[1] + 0.04, F[2]], [F[0] - side * 0.2, F[1] - 0.03, F[2] + 0.1]], [0.055, 0.04], skin, { sides: 8, steps: 2 })),
@@ -240,6 +271,8 @@ export function hamzitus() {
       dirty(rough(tube([H, K, [x, 0.2, 0.02]], [0.24, 0.19, 0.15], trousers, { sides: 16, steps: 4 }), 0.008, 18), { mottle: 0.35, freq: 8, muck: [0.5, 0.6, mud] }),
       ...spikes(7, (i) => { const a = (i / 7) * PI * 2; return [[x + Math.cos(a) * 0.14, 0.22, 0.02 + Math.sin(a) * 0.14], [x + Math.cos(a) * 0.15, 0.12 - 0.03 * (i % 2), 0.02 + Math.sin(a) * 0.15], 0.03]; }, vestDark),   // the trouser end, in ribbons
       flesh(tube([[x, 0.24, 0.02], A], [0.12, 0.1], skin, { sides: 12, steps: 2 })),
+      raw(lump(0.1, meat, [x, 0.2, 0.1], [0.8, 1.3, 0.5], 8)), boneShaft([x, 0.28, 0.13], [x, 0.12, 0.13], 0.022, bone, 1.2),                                           // a shin laid open
+      raw(lump(0.16, clot, [x * 1.02, 0.45, 0.17], [1, 1.4, 0.4], 8)),                                                                                                 // his trousers soaked through
       ...fineFoot(A, 0.44, { skin: rot, joint: skin, nail: 0x2b2a1e }, 0.13).map((g) => dirty(g, { mottle: 0.4, freq: 14 })),
     ], H, [0.32, 0, 0], phase);
   };
@@ -249,7 +282,12 @@ export function hamzitus() {
 // ---- Rubistus Goyitus: a giant made of the people who could not pay. ----
 export function rubistus() {
   const bone = 0xc9c2ad, old = 0x9c9279, dark = 0x050505, eye = 0x8dff5a, gold = 0xc9a23a, teeth = 0xe0d9c2;
-  const S = (x, y, z, r, o = {}) => fineSkull(r, { bone: o.old ? old : bone, old, dark, teeth }, { at: [x, y, z], yaw: o.yaw || 0, fine: o.fine || 12, jaw: o.jaw ?? 0.12, upper: 6, lower: 5 });
+  // He is not old bones. They are still wet: blood round every mouth, sinew holding one to the next, meat left on.
+  const meat = 0x7a1f1a, wet = 0xa3271f, clot = 0x3d0b09, gut = 0x8c3a34, skinned = 0x9a6a58;
+  const raw = (g) => dirty(rough(g, 0.008, 30), { mottle: 0.5, freq: 22, under: 0.3 });
+  const gory = (list, [x, y, z], r, yaw = 0) => list.map((g) => dirty(g, { mottle: 0.05, under: 0, stains: [[x + Math.sin(yaw) * r * 0.75, y - r * 0.45, z + Math.cos(yaw) * r * 0.75, r * 1.0, wet, 0.9], [x, y + r * 0.8, z, r * 0.5, clot, 0.7]] }));
+  const S = (x, y, z, r, o = {}) => gory(fineSkull(r, { bone: o.old ? old : bone, old, dark, teeth }, { at: [x, y, z], yaw: o.yaw || 0, fine: o.fine || 12, jaw: o.jaw ?? 0.12, upper: 6, lower: 5 }), [x, y, z], r, o.yaw || 0);
+  const strand = (A, B, r = 0.022, sag = 0.06, color = meat) => tube([A, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2 - sag, (A[2] + B[2]) / 2 + 0.03], B], [r, r * 0.6, r], color, { sides: 5, steps: 3 });
   const age = (g) => dirty(g, { mottle: 0.3, freq: 14, under: 0.5 });
   const body = part([
     ...S(-0.2, 0.86, 0.02, 0.17, { yaw: -0.5, old: 1 }), ...S(0.2, 0.86, 0.02, 0.17, { yaw: 0.5 }), ...S(0, 0.8, 0.12, 0.16, { old: 1 }),          // a heap of skulls for hips...
@@ -261,19 +299,42 @@ export function rubistus() {
     ...[[-0.25, 1.0, 0.2, 0.2, 1.3, 0.24], [0.18, 0.95, 0.22, -0.1, 0.7, 0.26], [-0.12, 1.26, 0.24, 0.2, 1.3, 0.2], [0.1, 1.55, 0.2, 0.4, 1.62, 0.12], [-0.4, 1.3, -0.1, -0.1, 1.5, -0.22], [0.42, 1.0, -0.1, 0.2, 1.25, -0.24], [-0.3, 0.7, 0.1, 0.05, 0.66, 0.2]]
       .map(([a, b, c, d, e, f], i) => age(boneShaft([a, b, c], [d, e, f], 0.022, i % 2 ? old : bone))),                                         // loose bones, wedged in between
     ...S(-0.56, 1.62, 0, 0.16, { yaw: -1.2 }), ...S(0.56, 1.62, 0, 0.16, { yaw: 1.2 }),                                                           // shoulders
-    ...fineSkull(0.3, { bone, old, dark, teeth }, { at: [0, 1.9, 0.08], fine: 26, jaw: 0.32, upper: 10, lower: 8 }),                               // the head: one huge skull...
+    ...gory(fineSkull(0.3, { bone, old, dark, teeth }, { at: [0, 1.9, 0.08], fine: 26, jaw: 0.32, upper: 10, lower: 8 }), [0, 1.9, 0.08], 0.3),      // the head: one huge skull, its mouth running...
     paint(new THREE.TorusGeometry(0.275, 0.034, 8, 30).rotateX(PI / 2).translate(0, 2.14, 0.06), gold), paint(new THREE.TorusGeometry(0.285, 0.012, 6, 30).rotateX(PI / 2).translate(0, 2.19, 0.06), gold),   // ...in a crown...
     ...Array.from({ length: 9 }, (_, k) => { const a = (k / 9) * PI * 2, x = Math.sin(a) * 0.28, z = 0.06 + Math.cos(a) * 0.28; return age(tube([[x, 2.14, z], [x * 1.04, 2.28, z + (z - 0.06) * 0.04], [x * 0.96, 2.42 + 0.05 * (k % 2), z - (z - 0.06) * 0.06]], [0.028, 0.02, 0.005], bone, { sides: 6, steps: 3 })); }),   // ...of rib bones
     ...[0, 1, 2, 3].map((k) => lump(0.03, eye, [Math.sin(k * 1.57 + 0.3) * 0.3, 2.14, 0.06 + Math.cos(k * 1.57 + 0.3) * 0.3], [1, 1, 0.7], 7)),   // (set with something green)
+    // ---- Sinew, from skull to skull: it is what holds him up ----
+    ...[[[-0.2, 0.86, 0.1], [-0.3, 1.14, 0.12]], [[0.2, 0.86, 0.1], [0.3, 1.14, 0.12]], [[0, 0.8, 0.2], [0, 1.12, 0.24]], [[-0.3, 1.14, 0.12], [-0.34, 1.44, 0.1]], [[0.3, 1.14, 0.12], [0.34, 1.44, 0.1]], [[0, 1.12, 0.26], [0, 1.42, 0.24]],
+      [[-0.3, 1.14, 0.14], [0, 1.12, 0.26]], [[0.3, 1.14, 0.14], [0, 1.12, 0.26]], [[-0.34, 1.44, 0.12], [0, 1.42, 0.24]], [[0.34, 1.44, 0.12], [0, 1.42, 0.24]], [[-0.34, 1.5, 0.05], [-0.56, 1.62, 0.06]], [[0.34, 1.5, 0.05], [0.56, 1.62, 0.06]],
+      [[-0.1, 1.56, 0.12], [-0.12, 1.72, 0.1]], [[0.1, 1.56, 0.12], [0.12, 1.72, 0.1]], [[-0.2, 0.9, -0.05], [-0.16, 1.28, -0.2]], [[0.2, 0.9, -0.05], [0.16, 1.28, -0.2]]].map(([A, B], i) => raw(strand(A, B, 0.02 + 0.012 * (i % 3), 0.03 + 0.03 * (i % 2), i % 3 ? meat : wet))),
+    // ---- Meat still on them: a scalp here, a cheek there, hair on two ----
+    ...[[-0.34, 1.6, -0.02, 0.13], [0.3, 1.3, -0.04, 0.12], [0, 1.58, 0.1, 0.11], [-0.2, 1.0, -0.06, 0.12], [0.34, 1.6, -0.06, 0.12], [0.16, 1.42, -0.2, 0.12]].map(([x, y, z, r], i) => raw(lump(r, i % 2 ? skinned : meat, [x, y, z], [1.1, 0.5, 1.1], 9))),
+    ...spikes(10, (i) => [[-0.34 + (i % 5) * 0.03 - 0.06, 1.62, -0.06 - (i % 2) * 0.04], [-0.42 + (i % 5) * 0.03, 1.36 - 0.05 * (i % 3), -0.12], 0.012], 0x1a1512), ...spikes(8, (i) => [[0.3 + (i % 4) * 0.03, 1.34, -0.1], [0.36 + (i % 4) * 0.03, 1.1 - 0.04 * (i % 3), -0.16], 0.012], 0x2a1a10),
+    // ---- In the cage of his ribs: a heart, still going, on its pipes; and the meat between the ribs not all gone ----
+    raw(sculpt(lump(0.13, wet, [0, 1.3, 0.02], [0.9, 1.15, 0.85], 14), (v) => dent(v, [0, 1.42, 0.1], 0.08, 0.03))), tube([[0.03, 1.4, 0.02], [0.08, 1.56, -0.02], [0.02, 1.7, -0.06]], [0.035, 0.03, 0.02], meat, { sides: 6, steps: 3 }), tube([[-0.04, 1.4, 0.02], [-0.12, 1.5, -0.04], [-0.2, 1.46, -0.1]], [0.03, 0.022, 0.012], 0x4a2a5a, { sides: 6, steps: 3 }),
+    ...[1.06, 1.22, 1.38, 1.53].flatMap((y) => [-1, 1].map((s) => raw(lump(0.11, clot, [s * 0.42, y - 0.02, -0.02], [0.3, 0.6, 1.3], 8)))),
+    raw(tube(Array.from({ length: 13 }, (_, i) => [0.0, 0.72 + i * 0.08, -0.17 + 0.03 * Math.sin(i * 0.6)]), [0.04, 0.04], meat, { sides: 6, steps: 2 })),
+    // ---- What he wears: somebody's insides across his chest, a skin down his back, a pair of hands off his hip ----
+    raw(tube([[-0.58, 1.66, 0.12], [-0.36, 1.34, 0.3], [-0.1, 1.2, 0.36], [0.16, 1.24, 0.36], [0.4, 1.4, 0.3], [0.58, 1.66, 0.12]], [0.05, 0.055, 0.06, 0.055, 0.05, 0.045], gut, { sides: 9, steps: 4 })),
+    raw(tube([[-0.24, 0.8, 0.2], [-0.1, 0.56, 0.3], [0.1, 0.5, 0.3], [0.2, 0.3, 0.26], [0.14, 0.14, 0.3]], [0.045, 0.05, 0.05, 0.04, 0.015], gut, { sides: 8, steps: 4 })),
+    dirty(sheet([0, 1.6, -0.1], [0.42, 0.56], PI / 2 - 1.1, 2.2, 0.95, skinned, { ragged: 0.22, across: 16, down: 7 }), { mottle: 0.45, freq: 6, under: 0.3, stains: [[0, 1.5, -0.5, 0.3, wet, 0.8], [-0.3, 1.0, -0.55, 0.25, clot, 0.8], [0.3, 0.9, -0.5, 0.2, wet, 0.7]] }),
+    ...[-1, 1].flatMap((s) => [strand([s * 0.3, 0.82, 0.14], [s * 0.36, 0.62, 0.2], 0.014, 0, wet), ...fineHand([s * 0.36, 0.62, 0.2], [s * 0.1, -1, 0.15], 0.075, { skin: skinned, joint: meat, nail: clot }, { curl: 0.6, thumb: s }), raw(lump(0.04, wet, [s * 0.36, 0.63, 0.2], [1, 0.6, 1], 6))]),
+    // ---- Running off him: from his teeth, from under his crown ----
+    ...spikes(12, (i) => { const a = (i - 5.5) * 0.16; return [[Math.sin(a) * 0.22, 1.74, 0.08 + Math.cos(a) * 0.24], [Math.sin(a) * 0.22, 1.56 - 0.08 * (i % 3), 0.1 + Math.cos(a) * 0.25], 0.02]; }, wet),
+    ...spikes(11, (i) => { const a = (i - 5) * 0.28; return [[Math.sin(a) * 0.29, 2.12, 0.06 + Math.cos(a) * 0.29], [Math.sin(a) * 0.3, 1.98 - 0.05 * (i % 2), 0.06 + Math.cos(a) * 0.3], 0.018]; }, wet),
   ]);
   const eyes = lit(part([
     lump(0.05, eye, [-0.12, 1.925, 0.32], [1, 1, 1], 8), lump(0.05, eye, [0.12, 1.925, 0.32], [1, 1, 1], 8),
     lump(0.028, eye, [-0.08, 1.436, 0.29], [1, 1, 1], 6), lump(0.028, eye, [0.08, 1.436, 0.29], [1, 1, 1], 6),                                    // and a pair still lit in his chest
+    lump(0.05, 0xff2a1a, [0, 1.3, 0.1], [1, 1.2, 0.6], 8),                                                                                           // and his heart, through the ribs
   ]));
   const arm = (side, phase) => {
     const P = [side * 0.58, 1.6, 0], E = [side * 0.68, 1.1, 0.1], W = [side * 0.7, 0.72, 0.26];
     return part([
       age(boneShaft(P, E, 0.05, bone, 1.5)), age(lump(0.075, old, E, [1, 1, 1], 9)),
+      raw(tube(Array.from({ length: 9 }, (_, i) => { const t = i / 8, a = t * 9; return [P[0] + (E[0] - P[0]) * t + Math.cos(a) * 0.06, P[1] + (E[1] - P[1]) * t, P[2] + (E[2] - P[2]) * t + Math.sin(a) * 0.06]; }), [0.02, 0.016], meat, { sides: 5, steps: 2 })),   // sinew wound round the bone
+      raw(lump(0.09, wet, [E[0], E[1] + 0.03, E[2]], [1, 0.7, 1], 8)), raw(lump(0.1, meat, [P[0], P[1] - 0.12, P[2]], [0.9, 1.2, 0.9], 8)), raw(strand([E[0], E[1], E[2]], [W[0], W[1], W[2] + 0.02], 0.02, -0.05, wet)),
+      ...spikes(6, (i) => [[side * 0.7 + (i - 2.5) * 0.05, 0.48, 0.36], [side * 0.7 + (i - 2.5) * 0.05, 0.26 - 0.07 * (i % 2), 0.38], 0.022], wet),                                                    // his fists drip
       age(boneShaft([E[0] - 0.03, E[1], E[2]], [W[0] - 0.03, W[1], W[2]], 0.032, bone, 1.4)), age(boneShaft([E[0] + 0.035, E[1], E[2]], [W[0] + 0.035, W[1], W[2]], 0.028, old, 1.4)),
       ...S(side * 0.7, 0.56, 0.32, 0.17, { yaw: side * 0.4, jaw: 0.5, fine: 14 }),                                                                // a skull for a fist...
       ...[-1.5, -0.5, 0.5, 1.5].map((k) => age(tube([[side * 0.7 + k * 0.06, 0.7, 0.3], [side * 0.7 + k * 0.07, 0.72, 0.46], [side * 0.7 + k * 0.065, 0.6, 0.53]], [0.02, 0.018, 0.008], bone, { sides: 6, steps: 3 }))),   // ...with fingers of bone over it
@@ -283,6 +344,7 @@ export function rubistus() {
     const x = side * 0.22, H = [x, 0.8, 0], K = [x, 0.42, 0.03], A = [x, 0.24, 0];
     return part([
       age(boneShaft(H, K, 0.06, bone, 1.5)), age(lump(0.09, old, K, [1, 1, 1], 9)),
+      raw(lump(0.11, meat, [x, 0.66, 0.02], [0.8, 1.5, 0.8], 8)), raw(strand([x, 0.5, 0.06], [x, 0.26, 0.04], 0.03, -0.04, wet)), raw(lump(0.1, clot, [x, 0.25, 0.06], [1.3, 0.5, 1.3], 8)),         // meat on the thigh, gristle at the knee, what he has trodden in
       age(boneShaft([x - 0.03, K[1], K[2]], [x - 0.03, A[1], A[2]], 0.042, bone, 1.4)), age(boneShaft([x + 0.04, K[1], K[2]], [x + 0.04, A[1], A[2]], 0.03, old, 1.4)),
       ...S(x, 0.13, 0.08, 0.13, { old: 1, jaw: 0 }),                                                                                              // he walks on them, too
     ], H, [0.3, 0, 0], phase);

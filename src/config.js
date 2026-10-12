@@ -17,19 +17,35 @@ export const config = {
     brakeDecel: 30,       // S: braking while rolling forwards
     reverseAccel: 12,     // S once stopped: acceleration backwards...
     reverseSpeed: 10,     // ...up to this speed
+    edgeKeep: 0.85,       // share of your speed kept when the edge of the world turns you along it (the Moon's unseen wall)
+    parkSpeed: 1.2,       // slower than this (m/s) with no key held, he puts a foot down and stays put...
+    parkSlope: 0.8,       // ...unless the ground is steeper than this (the upward part of its normal: 0.8 is about 37 degrees)
     rollFriction: 0.4,    // constant deceleration while rolling
     rollDrag: 0.03,       // speed-proportional deceleration while rolling
     airDrag: 0.02,
 
+    // Carving has weight: the board leans into a turn rather than snapping to it, and bites harder the longer you hold it.
+    carveIn: 9,           // how fast the lean builds when you press a way (per second: higher is snappier)...
+    carveOut: 13,         // ...and how fast it comes back up when you let go
+    carveBite: 0.3,       // how much harder a held carve turns (0.3 = up to 30% more)...
+    carveBiteTime: 0.5,   // ...after this many seconds of holding it
+    // Pumping: crouched (Space held) going down a slope, you push into it and come out faster.
+    pumpAccel: 13,        // extra acceleration (m/s2) on a slope straight down; in proportion on a gentler one
     turnRateSlow: 2.8,    // carve rate at standstill
     turnRateFast: 1.2,    // carve rate at maxSpeed
     grip: 12,             // how fast velocity follows the board's heading
     gripScrub: 0.3,       // speed lost while the board is slipping sideways
     sideSlip: 0.1,        // fraction of sideways gravity that gets through the wheels
 
-    driftTurnMult: 1.6,   // Shift (powerslide): turn harder...
-    driftGrip: 4.5,       // ...with less grip, so the board swings out...
-    driftScrub: 0.35,     // ...shedding a little speed
+    // Shift (powerslide): the board is thrown sideways under you and you carry on the way you were going, scrubbing speed;
+    // let go and it comes back round to point where you are headed.
+    driftTurnMult: 1.6,   // (kept for the tweak panel: the slide itself uses the numbers below)
+    slideTurn: 7,         // how fast the board comes round sideways (radians a second)
+    slideMax: 1.35,       // how far round it goes (radians from the way you are travelling: 1.35 is about 77 degrees)
+    slideRecover: 0.2,    // seconds it takes to swing back in line when you let go
+    slideMinSpeed: 6,     // a slide slower than this does not count for points
+    driftGrip: 0.7,       // how much the slide still bends where you are going (low: you carry straight on)...
+    driftScrub: 0.5,      // ...and how hard it scrubs speed off
     driftSideSlip: 0.5,
 
     groundStick: 1.6,     // 1 = you leave the ground exactly when physics says so; higher = stickier over crests
@@ -59,9 +75,20 @@ export const config = {
     maxSpeed: 11.5,       // full charge
     normalBlend: 0.5,     // 0 = always jump straight up, 1 = jump along the surface normal
     coyoteTime: 0.1,      // you can still ollie this long after leaving the ground
+    // Timing the pop: let go just as the crouch bottoms out and it goes higher. (The charge bar turns white for that moment.)
+    popFrom: 0.8,         // the window opens at this share of chargeTime...
+    popTo: 1.3,           // ...and closes at this one (hold on longer and it is an ordinary full ollie)
+    popBoost: 1.2,        // how much harder a well-timed one leaves the ground
   },
 
   // Landings never knock you down. A sloppy one just costs momentum.
+  // Manuals (hold E on the ground): up on the back wheels, for as long as you hold it and keep moving.
+  manual: {
+    minSpeed: 3,          // slower than this and the front wheels come down
+    drag: 0.6,            // extra deceleration while you are up (m/s2)
+    revertWindow: 0.4,    // seconds after a landing in which tapping Shift is a revert
+  },
+
   landing: {
     maxAngle: 45,         // board heading vs travel direction for a clean landing
     uprightAngle: 60,     // board tilt vs ground for a clean landing
@@ -125,6 +152,12 @@ export const config = {
     pull: 1.4,            // ...this quickly (per second)
     stepOff: 7,           // getting off a rail that has a safe side (the Moon's rim): how hard you are pushed that way (m/s)
     styleHold: 0.2,       // seconds a grind has to be held before it counts
+    // Balance on a rail: you tip, slowly at first, and A / D lean you back. Past the edge and you are off it.
+    balanceGrace: 0.6,    // seconds on the rail before it starts
+    balanceTip: 1.5,      // how hard a lean feeds itself (higher: falls away faster)
+    balanceWind: 0.45,    // how hard you are nudged off centre
+    balancePush: 4.5,     // how hard A / D lean you
+    balanceDamp: 1.2,     // how quickly a wobble settles
     minSpeed: 2,
     accel: 4,             // rails speed you up
     maxSpeed: 40,         // ...up to this
@@ -275,6 +308,9 @@ export const config = {
     speedPoints: 1.5,     // ...this many per m/s over it
     headshotBonus: 2,     // kill-score multipliers
     airKillBonus: 1.5,
+    slidePoints: 6,       // points per metre of powerslide
+    manualPoints: 5,      // points per metre of manual
+    revertPoints: 150,    // points for a revert out of a landing
     streakWindow: 3.5,    // seconds you have to get the next kill before a kill streak ends
     streakBonus: 0.1,     // extra kill score per kill already in the streak (up to 20)
   },
@@ -282,6 +318,11 @@ export const config = {
   audio: {
     musicVolume: 0.55,
     sfxVolume: 0.8,
+  },
+
+  // How it feels.
+  feel: {
+    speedLines: 0.5,      // of top speed: where the streaks at the edge of the screen begin
   },
 
   camera: {

@@ -11,6 +11,14 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 .bar > div { height: 100%; width: 0; background: #f2f3f5; }
 #speed-fill.hot { background: #ffb347; }
 #charge-fill { background: #ffb347; }
+#charge-fill.sweet { background: #fff; box-shadow: 0 0 10px #fff; }   /* the moment to let go */
+/* Balance on a rail: a marker that must be kept off the ends. */
+#balance { position: absolute; left: 50%; top: 60%; width: 170px; height: 6px; transform: translateX(-50%) skewX(-9deg); background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.3); }
+#balance.hidden { display: none; }
+#balance::before, #balance::after { content: ''; position: absolute; top: -1px; bottom: -1px; width: 14%; background: rgba(255, 60, 40, 0.55); }
+#balance::before { left: 0; } #balance::after { right: 0; }
+#balance i { position: absolute; top: -5px; left: 50%; width: 5px; height: 16px; margin-left: -2.5px; background: #fff; box-shadow: 0 0 6px #000; }
+#balance.danger i { background: #ff5a3a; }
 .label { margin-top: 12px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.6; }
 
 #state { position: absolute; right: 32px; bottom: 30px; font-size: 20px; font-weight: 300; letter-spacing: 1px; }
@@ -57,6 +65,16 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2
 
 
 #popups { position: absolute; left: 0; right: 0; top: 24%; text-align: center; }
+/* Points, floating up from where they were made. */
+#floats { position: absolute; inset: 0; pointer-events: none; }
+#floats div { position: absolute; transform: translate(-50%, -50%); font-family: Anton, Impact, sans-serif; font-size: 22px; letter-spacing: 1px; color: #fff; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7); white-space: nowrap; animation: floatup 0.75s ease-out forwards; }
+#floats div.head { color: #ffd23a; font-size: 28px; }
+#floats div.trick { color: #7fe3ff; font-size: 30px; }
+@keyframes floatup { 0% { opacity: 0; margin-top: 8px; } 15% { opacity: 1; margin-top: 0; } 70% { opacity: 1; } 100% { opacity: 0; margin-top: -46px; } }
+/* Streaks at the edge of the screen at speed (see config.feel). */
+#rushlines { position: absolute; inset: -20%; opacity: 0; pointer-events: none; background: repeating-conic-gradient(from 0deg, rgba(255,255,255,0) 0deg 2.2deg, rgba(255,255,255,0.55) 2.5deg 2.8deg, rgba(255,255,255,0) 3.1deg 7deg);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 34%, #000 78%); mask-image: radial-gradient(ellipse at center, transparent 34%, #000 78%); animation: rushspin 0.09s steps(2) infinite; }
+@keyframes rushspin { from { transform: rotate(0deg); } to { transform: rotate(3.5deg); } }
 .popup { position: absolute; left: 0; right: 0; font-size: 26px; font-weight: 600; letter-spacing: 0.5px; animation: pop 1.3s ease-out forwards; }
 .popup.trick { color: #ffd08a; }
 .popup.pending { font-size: 20px; font-weight: 400; opacity: 0.85; }

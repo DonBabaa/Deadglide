@@ -28,6 +28,7 @@ export const input = {
 
   // Snapshot for one physics step.
   get steer() { return (held('left') ? 1 : 0) - (held('right') ? 1 : 0); },
+  get trickHeld() { return held('trick'); },
   get push() { return held('roll'); },
   get kick() { return held('push'); },
   get brake() { return held('brake'); },

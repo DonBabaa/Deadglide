@@ -58,7 +58,19 @@ export class Skater {
     this.airTime = 0;
     this.sinceGround = 0;   // time since last ground/rail contact (Infinity after an ollie)
     this.charge = 0;        // ollie charge 0..1
-    this.steer = 0;
+    this.steer = 0;         // how far he is leaning into a turn, -1..1 (it builds: see config.skate.carveIn)
+    this.steerRaw = 0;      // what the keys are asking for
+    this.carveHeld = 0;     // seconds this carve has been held
+    this.chargeHeld = 0;    // seconds Space has been held
+    this.manual = false;    // up on the back wheels
+    this.manualDistance = 0;
+    this.slideDistance = 0; // metres of this powerslide so far
+    this.slideSide = 1;     // which way the board last went sideways
+    this.recover = 0;       // seconds left of swinging back in line after a slide
+    this.sinceLand = 9;     // seconds since a clean landing (for reverts)
+    this.revertT = 9;       // seconds since a revert (the model spins him)
+    this.balance = 0;       // on a rail: how far he is tipping, -1..1 (+ = to his left)
+    this.balanceV = 0; this.balanceWind = 0; this.balanceTime = 0; this.windTime = 0;
     this.drifting = false;
     this.kickTimer = 0;     // time until the next kick-push is allowed
     this.sinceKick = 9;     // for the kick animation
@@ -90,7 +102,16 @@ export class Skater {
   // inp: { steer (-1..1, + = left), push, kick, drift, brake, jumpHeld, jumpReleased, trickPressed }
   update(dt, inp) {
     this.prevPos.copy(this.pos);
-    this.steer = inp.steer;
+    // Carving: the lean builds toward what the keys ask for, and bites harder the longer it is held.
+    {
+      const want = inp.steer, C = config.skate, building = Math.abs(want) > Math.abs(this.steer) || want * this.steer < 0;
+      this.steer += (want - this.steer) * (1 - Math.exp(-(building ? C.carveIn : C.carveOut) * dt));
+      this.carveHeld = want !== 0 && want === this.steerRaw ? this.carveHeld + dt : 0;
+      this.steerRaw = want;
+      if (want) this.slideSide = want;
+    }
+    this.sinceLand += dt;
+    this.revertT += dt;
     // W/S flip you in the air, but not if you were already holding them when you left
     // the ground (W is how you roll): let go and press again once you're airborne.
     if (this.grounded || this.rail) { this.carriedW = inp.push; this.carriedS = inp.brake; }
@@ -103,9 +124,11 @@ export class Skater {
     this.sinceKick += dt;
 
     // Ollie: hold to charge, release to pop. Works on the ground and off rails.
-    if (inp.jumpHeld) this.charge = Math.min(1, this.charge + dt / config.jump.chargeTime);
+    if (inp.jumpHeld) { this.charge = Math.min(1, this.charge + dt / config.jump.chargeTime); this.chargeHeld += dt; }
     if (inp.jumpReleased) {
       inp.jumpReleased = false;
+      this.popped = this.popWindow;   // (let go at the right moment: see ollie)
+      this.chargeHeld = 0;
       // Off a rail you hop: you stay over it and come back down on it (hold the powerslide key to jump clear).
       const from = this.rail && !inp.drift ? { rail: this.rail, t: this.railT, v: this.railSpeed } : null;
       const clear = this.rail && !from ? this.rail : null;
@@ -114,6 +137,7 @@ export class Skater {
       if (this.ceiling) this.dropCeiling();   // (jump lets go of the roof)
       else if (this.sinceGround <= config.jump.coyoteTime) { this.ollie(); this.hop = from; }
       this.charge = 0;
+      this.popped = false;
     }
 
     // Trick button: in the air, start the next trick on the list.
@@ -126,6 +150,21 @@ export class Skater {
       }
     }
 
+    // A revert: Shift, tapped just as you land. He comes round with the board (it counts; it changes nothing else).
+    if (this.grounded && !this.rail && inp.drift && !this.driftHeld && this.sinceLand < config.manual.revertWindow && this.vel.length() > 3) {
+      this.sinceLand = 9;
+      this.revertT = 0;
+      this.events.push({ type: 'revertTrick' });
+    }
+    // A manual: E held on the ground, for as long as he keeps moving.
+    {
+      const up = this.grounded && !this.rail && !this.ceiling && inp.trickHeld && !this.drifting && this.vel.length() > config.manual.minSpeed;
+      if (up && !this.manual) { this.manual = true; this.manualDistance = 0; }
+      else if (!up && this.manual) this.endManual();
+      if (this.manual) this.manualDistance += this.vel.length() * dt;
+    }
+    // The end of a powerslide: it is worth what it covered.
+    if (this.slideDistance > 0 && !this.drifting) { this.events.push({ type: 'slideEnd', distance: this.slideDistance }); this.slideDistance = 0; }
     // The powerslide key, pressed while on a rail, steps off it.
     if (this.rail && inp.drift && !this.driftHeld) { const r = this.rail; this.leaveRail(); this.pushOff(r); }
     this.driftHeld = inp.drift;
@@ -142,7 +181,16 @@ export class Skater {
     if (speed > config.skate.hardMaxSpeed) this.vel.multiplyScalar(config.skate.hardMaxSpeed / speed);
   }
 
+  // Is this the moment to let go of Space? (See config.jump.popFrom.)
+  get popWindow() { const J = config.jump; return this.chargeHeld >= J.chargeTime * J.popFrom && this.chargeHeld <= J.chargeTime * J.popTo; }
+
+  endManual() {
+    this.manual = false;
+    this.events.push({ type: 'manualEnd', distance: this.manualDistance });
+  }
+
   takeoff() {
+    if (this.manual) this.endManual();
     this.grounded = false;
     this.airTime = 0;
     this.spin = 0;
@@ -159,10 +207,12 @@ export class Skater {
     dir.copy(UP).lerp(this.grounded ? this.normal : UP, j.normalBlend).normalize();
     const vn = this.vel.dot(dir);
     if (vn < 0) this.vel.addScaledVector(dir, -vn);
-    this.vel.addScaledVector(dir, lerp(j.minSpeed, j.maxSpeed, this.charge));
+    const perfect = !!this.popped;
+    this.popped = false;
+    this.vel.addScaledVector(dir, lerp(j.minSpeed, j.maxSpeed, this.charge) * (perfect ? j.popBoost : 1));
     this.takeoff();
     this.sinceGround = Infinity;
-    this.events.push({ type: 'ollie', charge: this.charge });
+    this.events.push({ type: 'ollie', charge: this.charge, perfect });
   }
 
   // ---- Ground ----------------------------------------------------------------
@@ -176,14 +226,32 @@ export class Skater {
     redirect(vel, n);
 
     // Carve. Turn rate drops with speed.
-    let turnRate = lerp(s.turnRateSlow, s.turnRateFast, clamp01(vel.length() / s.maxSpeed));
-    if (this.drifting) turnRate *= s.driftTurnMult;   // powerslide: the board swings round faster than you change direction
-    fwd.applyAxisAngle(n, this.steer * turnRate * dt);
+    const turnRate = lerp(s.turnRateSlow, s.turnRateFast, clamp01(vel.length() / s.maxSpeed)), going = vel.length();
+    if (going > 1) dir.copy(vel).divideScalar(going);
+    if (this.drifting && going > 1) {
+      // Powerslide: the board is thrown round sideways (the way you are steering, or the way it last went) and held
+      // there, no further than slideMax from the way you are travelling.
+      target.copy(fwd).applyAxisAngle(n, (this.steerRaw || this.slideSide) * s.slideTurn * dt);
+      if (target.dot(dir) >= Math.cos(s.slideMax) || target.dot(dir) > fwd.dot(dir)) fwd.copy(target);
+      this.recover = s.slideRecover;
+      if (going > s.slideMinSpeed && Math.abs(fwd.dot(dir)) < 0.85) this.slideDistance += going * dt;
+    } else if (this.recover > 0 && going > 1) {
+      // ...and let go: it swings back to point where you are going.
+      this.recover -= dt;
+      fwd.lerp(target.copy(dir).multiplyScalar(fwd.dot(dir) >= 0 ? 1 : -1), 1 - Math.exp(-(4 / s.slideRecover) * dt));
+    } else {
+      this.recover = 0;
+      fwd.applyAxisAngle(n, this.steer * turnRate * (1 + s.carveBite * clamp01(this.carveHeld / s.carveBiteTime)) * dt);
+    }
     fwd.addScaledVector(n, -fwd.dot(n)).normalize();
 
-    // Nearly stopped on a slope: swing the board to the fall line so you roll away.
+    // Stopped, with nothing held: he puts a foot down and stays where he is, however the ground tilts (short of a
+    // ramp's steep face: there he rolls back down, as he should). Any of roll, push or brake and he is off again.
     const speedNow = vel.length();
-    if (speedNow < s.fallLineSpeed && n.y < 0.98) {
+    const hold = !inp.push && !inp.kick && !inp.brake && !this.drifting && n.y > s.parkSlope && speedNow < s.parkSpeed;
+    if (hold) vel.set(0, 0, 0);
+    // Nearly stopped on a slope: swing the board to the fall line so you roll away.
+    if (!hold && speedNow < s.fallLineSpeed && n.y < 0.98) {
       target.set(0, -1, 0).addScaledVector(n, n.y).normalize();   // downhill along the surface
       if (target.dot(fwd) < 0) target.negate();
       fwd.lerp(target, clamp01((1 - n.y) * s.fallLineRate * dt * (1 - speedNow / s.fallLineSpeed)));
@@ -192,8 +260,13 @@ export class Skater {
     side.crossVectors(n, fwd);
 
     // Gravity along the slope. Wheels roll forwards freely, sideways hardly at all.
-    vel.addScaledVector(fwd, -g * fwd.y * dt);
-    vel.addScaledVector(side, -g * side.y * (this.drifting ? s.driftSideSlip : s.sideSlip) * dt);
+    if (!hold) {
+      vel.addScaledVector(fwd, -g * fwd.y * dt);
+      vel.addScaledVector(side, -g * side.y * (this.drifting ? s.driftSideSlip : s.sideSlip) * dt);
+      // Pumping: crouched on the way down a slope, he pushes into it.
+      const sp = vel.length();
+      if (inp.jumpHeld && !this.drifting && sp > 2 && sp < s.maxSpeed && vel.y < -0.4) vel.addScaledVector(vel, (s.pumpAccel * (-vel.y / sp) * dt) / sp);
+    }
 
     // Roll (W): gentle, steady acceleration up to cruising speed.
     const vf = Math.max(0, vel.dot(fwd)), top = s.pushMaxSpeed * stats.topSpeed;
@@ -223,6 +296,7 @@ export class Skater {
 
       let decel = s.rollFriction + s.rollDrag * speed + (this.drifting ? s.driftScrub : s.gripScrub) * slip * speed;
       if (inp.brake && !reversing) decel += s.brakeDecel;
+      if (this.manual) decel += config.manual.drag;
       speed = Math.max(0, speed - decel * dt);
       vel.copy(dir).multiplyScalar(speed);
     }
@@ -274,7 +348,7 @@ export class Skater {
     }
 
     // A/D spin your body. It doesn't change where you're flying.
-    const spin = this.steer * s.airTurnRate * dt;
+    const spin = this.steerRaw * s.airTurnRate * dt;
     if (spin !== 0) {
       fwd.applyAxisAngle(UP, spin);
       up.applyAxisAngle(UP, spin);
@@ -407,7 +481,7 @@ export class Skater {
     this.pipeFrame();
 
     // Carve, as on the ground.
-    fwd.applyAxisAngle(pn, this.steer * lerp(c.turnRateSlow, c.turnRateFast, clamp01(vel.length() / c.maxSpeed)) * dt);
+    fwd.applyAxisAngle(pn, this.steerRaw * lerp(c.turnRateSlow, c.turnRateFast, clamp01(vel.length() / c.maxSpeed)) * dt);
     fwd.addScaledVector(pn, -fwd.dot(pn)).normalize();
     // Gravity along the wall; past vertical, speed drains away.
     let speed = vel.length();
@@ -554,6 +628,7 @@ export class Skater {
       if (speed > 0.5) vel.multiplyScalar((speed + boost) / speed);
       else vel.addScaledVector(fwd, boost);
       this.events.push({ type: 'land', airTime: this.airTime, impact, trick: trick.name, boost: trick.boost });
+      this.sinceLand = 0;
     } else {
       // Sloppy: no fall, but most of the momentum is gone. Point the board where we're going.
       vel.multiplyScalar(L.sloppySpeedKeep);
@@ -597,6 +672,7 @@ export class Skater {
     this.railSpeed = (speed < 0 ? -1 : 1) * (fast + (trick.ok ? Math.min(trick.boost, Math.max(0, config.skate.maxSpeed - fast)) : 0));
     this.grindDistance = 0;
     this.grindStyle = 0;
+    this.balance = this.balanceV = this.balanceWind = this.balanceTime = this.windTime = 0;
     this.hop = null;
     this.events.push({ type: 'grind', trick: trick.ok ? trick.name : '', boost: trick.ok ? trick.boost : 0 });
     this.stepGrind(0);
@@ -631,6 +707,21 @@ export class Skater {
       else if (style && (this.styleHeld += dt) >= G.styleHold && !this.styleDone.has(style)) {
         this.styleDone.add(style);
         this.events.push({ type: 'grindStyle', name: GRINDS[style] });
+      }
+    }
+    // Balance: he tips (a lean feeds itself, and something is always nudging him), A / D lean him back. Over the edge
+    // and he is off the rail.
+    if (inp && dt > 0 && (this.balanceTime += dt) > G.balanceGrace) {
+      if ((this.windTime -= dt) <= 0) { this.windTime = 0.5 + Math.random() * 0.9; this.balanceWind = (Math.random() * 2 - 1) * G.balanceWind; }
+      this.balanceV += (G.balanceTip * this.balance + this.balanceWind + inp.steer * G.balancePush) * dt;
+      this.balanceV *= Math.exp(-G.balanceDamp * dt);
+      this.balance += this.balanceV * dt;
+      if (Math.abs(this.balance) >= 1) {
+        this.events.push({ type: 'bail' });
+        this.balance = this.balanceV = 0;
+        this.leaveRail();
+        this.pushOff(r);
+        return;
       }
     }
     let v = this.railSpeed;
@@ -702,7 +793,18 @@ export class Skater {
     if (wallN.lengthSq() < 1e-6) wallN.set(-this.vel.x, 0, -this.vel.z);
     wallN.normalize();
 
-    const into = -this.vel.dot(wallN);
+    // A wall far too high to be anything but the edge of the world (the Moon's, which you cannot see): you are turned
+    // along it and keep most of your speed, rather than stopping dead against nothing.
+    const into = -this.vel.dot(wallN), flat = Math.hypot(this.vel.x, this.vel.z);
+    if (into > 0 && flat > 1 && heightAt(at.x, at.z) - this.pos.y > 40) {
+      let tx = this.vel.x + wallN.x * into, tz = this.vel.z + wallN.z * into, along = Math.hypot(tx, tz);
+      if (along < flat * 0.15) { const turn = this.fwd.x * -wallN.z + this.fwd.z * wallN.x >= 0 ? 1 : -1; tx = -wallN.z * turn; tz = wallN.x * turn; along = 1; }   // (straight at it: go the way the board leans)
+      const keep = (flat * (1 - (1 - s.edgeKeep) * Math.min(1, into / flat))) / along;   // (what is lost is in proportion to how squarely you met it: none at all running along it)
+      this.vel.x = tx * keep + wallN.x * 0.5;
+      this.vel.z = tz * keep + wallN.z * 0.5;
+      this.fwd.set(tx, 0, tz).normalize();
+      return;
+    }
     if (into > 0) this.vel.addScaledVector(wallN, into * (1 + s.wallBounce));
     // Deflect the board along the wall too, or grip would steer us straight back into it.
     const facing = -this.fwd.dot(wallN);

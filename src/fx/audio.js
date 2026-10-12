@@ -1361,3 +1361,47 @@ export function playSaucer(seconds = 10) {
     tone('sine', 1040, 1230, seconds, 0.009);
   });
 }
+
+// The sound of going fast: one continuous sound for as long as you are riding. The wind (louder and higher the faster
+// you go), the wheels on the ground (gone the moment you leave it), steel on a rail, wheels sliding sideways.
+//   speed: 0..1 of top speed.  grounded, grinding, sliding: what the board is doing.
+let ride = null, rideAt = 0;
+export function setRide(speed, grounded = false, grinding = false, sliding = false) {
+  if (!ready() || (!ride && speed <= 0)) return;
+  const ctx = audio.ctx;
+  if (!ride) {
+    const noise = (rate) => { const n = ctx.createBufferSource(); n.buffer = audio.noise; n.loop = true; n.playbackRate.value = rate; n.start(); return n; };
+    const filter = (type, f, q = 0.7) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
+    const level = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(audio.sfx); return g; };
+    ride = { wind: level(), wheels: level(), rail: level(), slide: level(), windTone: filter('bandpass', 500, 0.6), wheelTone: filter('lowpass', 200, 0.9) };
+    noise(1).connect(ride.windTone).connect(ride.wind);
+    noise(0.7).connect(ride.wheelTone).connect(ride.wheels);
+    const scrape = filter('bandpass', 3100, 5);
+    noise(1.4).connect(scrape).connect(ride.rail);
+    noise(1.9).connect(filter('highpass', 6500)).connect(ride.rail);
+    noise(1.1).connect(filter('bandpass', 950, 1.4)).connect(ride.slide);
+  }
+  if (ctx.currentTime - rideAt < 0.05 && speed > 0) return;   // (twenty times a second is plenty)
+  rideAt = ctx.currentTime;
+  const t = ctx.currentTime, to = (param, value, lag = 0.08) => param.setTargetAtTime(value, t, lag), v = mix.level;
+  to(ride.wind.gain, speed * speed * 0.6 * v, 0.15);
+  to(ride.windTone.frequency, 420 + speed * 2300, 0.15);
+  to(ride.wheels.gain, grounded && !grinding ? Math.min(1, speed * 2.2) * 0.34 * v : 0, grounded ? 0.05 : 0.02);
+  to(ride.wheelTone.frequency, 150 + speed * 900);
+  to(ride.rail.gain, grinding ? (0.16 + speed * 0.3) * v : 0, 0.03);
+  to(ride.slide.gain, sliding ? (0.12 + speed * 0.3) * v : 0, 0.04);
+}
+// Leaving the ground with a trick wound up: the air going past the board.
+export function playAir() {
+  if (!ready() || !spaced('air', 0.2)) return;
+  hiss('bandpass', 500, 3400, 0.22, 0.2);
+  hiss('highpass', 3000, 8000, 0.16, 0.07, 0.04);
+}
+// One more in the streak: a note, a step up the scale for every kill in a row (and back to the bottom when it breaks).
+const STEPS = [0, 2, 4, 7, 9];
+export function playKillNote(streak = 1) {
+  if (!ready() || busy() || !spaced('note', 0.05)) return;
+  const n = Math.min(19, Math.max(0, streak - 1)), f = 392 * Math.pow(2, Math.floor(n / 5) + STEPS[n % 5] / 12);
+  tone('triangle', f, f * 1.003, 0.16, 0.13);
+  tone('sine', f * 2, f * 2.01, 0.1, 0.06);
+}

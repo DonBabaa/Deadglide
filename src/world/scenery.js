@@ -65,27 +65,27 @@ export function headstones() {
     move(extrude(panel, 0.012, OLD), [0, 0, 0.1]),                                                              // the face it is cut into
     slab(0.05, 0.2, 0.014, SOOT, [0, 1.02, 0.115]), slab(0.15, 0.05, 0.014, SOOT, [0, 1.06, 0.115]),            // a cross...
     ...lettering(5, [0, 0.82, 0.115], 0.5),                                                                     // ...and who lies here
-    weather(block(1.0, 0.16, 0.34, OLD, [0, 0.06, 0], 0.2), { moss: 0.3 }),                                     // its footing
+    weather(block(1.0, 0.16, 0.34, OLD, [0, 0.06, 0], 0.45), { moss: 0.3 }),                                     // its footing
     ...[-0.36, 0.36].map((x) => lump(0.07, MOSS, [x, 0.14, 0.12], [1.3, 0.5, 1], 6)),
   ], 1.2);
   const cross = join([
-    weather(block(0.2, 1.75, 0.18, STONE, [0, 0.95, 0], 0.12), { moss: 0.5, stains: [[0.05, 0.5, 0.09, 0.2, LICHEN, 0.6]] }),   // the shaft
-    weather(block(0.92, 0.2, 0.18, STONE, [0, 1.3, 0], 0.12), { moss: 0 }),                                     // the arms
-    weather(ring(0.3, 0.05, OLD, [0, 1.3, 0], [0, 0, 0], PI * 2, 24), { moss: 0, chip: 0.006 }),                // the ring round where they meet
+    weather(block(0.2, 1.75, 0.18, STONE, [0, 0.95, 0], 0.45), { moss: 0.5, stains: [[0.05, 0.5, 0.09, 0.2, LICHEN, 0.6]] }),   // the shaft
+    weather(block(0.92, 0.2, 0.18, STONE, [0, 1.3, 0], 0.45), { moss: 0 }),                                     // the arms
+    weather(ring(0.3, 0.05, OLD, [0, 1.3, 0], [0, 0, 0], PI * 2, 14), { moss: 0, chip: 0.006 }),                // the ring round where they meet
     lump(0.075, PALE, [0, 1.3, 0.09], [1, 1, 0.5], 8),                                                          // a boss in the middle...
-    ...[[0, 1.72], [-0.36, 1.3], [0.36, 1.3], [0, 0.9]].map(([x, y]) => lump(0.04, OLD, [x, y, 0.09], [1, 1, 0.5], 6)),   // ...and one on each limb
+    ...[[0, 1.72], [-0.36, 1.3], [0.36, 1.3], [0, 0.9]].map(([x, y]) => lump(0.04, OLD, [x, y, 0.09], [1, 1, 0.5], 4)),   // ...and one on each limb
     ...[0.62, 0.5, 0.38].map((y, i) => slab(0.1, 0.02, 0.012, SOOT, [0, y, 0.094 + i * 0])),
-    weather(block(0.62, 0.2, 0.5, STONE, [0, 0.24, 0], 0.15), { moss: 0.3 }), weather(block(0.86, 0.16, 0.7, OLD, [0, 0.08, 0], 0.2), { moss: 0.3 }),   // two steps under it
+    weather(block(0.62, 0.2, 0.5, STONE, [0, 0.24, 0], 0.45), { moss: 0.3 }), weather(block(0.86, 0.16, 0.7, OLD, [0, 0.08, 0], 0.45), { moss: 0.3 }),   // two steps under it
   ], 1.2);
   const needle = paint(new THREE.CylinderGeometry(0.15, 0.31, 2.3, 4, 8).rotateY(PI / 4).translate(0, 1.75, 0), STONE);
   const obelisk = join([
     weather(needle, { moss: 0.9, stains: [[0.1, 1.2, 0.2, 0.3, LICHEN, 0.6], [-0.2, 2.2, -0.1, 0.25, SOOT, 0.5]] }),
     paint(new THREE.ConeGeometry(0.215, 0.32, 4).rotateY(PI / 4).translate(0, 3.06, 0), PALE),                  // its point
-    weather(block(0.62, 0.36, 0.62, STONE, [0, 0.44, 0], 0.15), { moss: 0.5 }), weather(block(0.74, 0.1, 0.74, PALE, [0, 0.62, 0], 0.2), { moss: 0 }),   // a die...
-    weather(block(0.84, 0.16, 0.84, OLD, [0, 0.2, 0], 0.2), { moss: 0.3 }), weather(block(1.0, 0.14, 1.0, STONE, [0, 0.06, 0], 0.25), { moss: 0.2 }),    // ...on two steps
+    weather(block(0.62, 0.36, 0.62, STONE, [0, 0.44, 0], 0.45), { moss: 0.5 }), weather(block(0.74, 0.1, 0.74, PALE, [0, 0.62, 0], 0.45), { moss: 0 }),   // a die...
+    weather(block(0.84, 0.16, 0.84, OLD, [0, 0.2, 0], 0.45), { moss: 0.3 }), weather(block(1.0, 0.14, 1.0, STONE, [0, 0.06, 0], 0.45), { moss: 0.2 }),    // ...on two steps
     slab(0.4, 0.22, 0.014, SOOT, [0, 0.44, 0.315]), ...lettering(2, [0, 0.48, 0.322], 0.3, [1, 0], 0.07, OLD),  // a plate on the front
-    ring(0.13, 0.03, MOSS, [0, 1.1, 0.25], [0.12, 0, 0], PI * 2, 14),                                           // a wreath, left a long time ago
-    ...Array.from({ length: 8 }, (_, i) => lump(0.035, i % 2 ? MOSS : LICHEN, [Math.cos(i * 0.785) * 0.13, 1.1 + Math.sin(i * 0.785) * 0.13, 0.27], [1, 1, 0.6], 5)),
+    ring(0.13, 0.03, MOSS, [0, 1.1, 0.25], [0.12, 0, 0], PI * 2, 9),                                           // a wreath, left a long time ago
+    ...Array.from({ length: 4 }, (_, i) => lump(0.04, i % 2 ? MOSS : LICHEN, [Math.cos(i * 1.57) * 0.13, 1.1 + Math.sin(i * 1.57) * 0.13, 0.27], [1, 1, 0.6], 4)),
   ], 1.2);
   return [slabStone, cross, obelisk];
 }
@@ -317,7 +317,7 @@ export function brazier() {
 export function decor() {
   const BONE = { bone: 0xddd6c1, old: 0xb3aa92, dark: 0x14120f, teeth: 0xe9e3cf };
   const blade = (x, z, lean, tall, turn) => tube([[x, 0, z], [x + Math.cos(turn) * lean * 0.4, tall * 0.6, z + Math.sin(turn) * lean * 0.4], [x + Math.cos(turn) * lean, tall, z + Math.sin(turn) * lean]], [0.02, 0.015, 0.002], 0xffffff, { sides: 3, steps: 1, caps: false });
-  const rock = (seed) => dirty(sculpt(paint(mergeVertices(new THREE.IcosahedronGeometry(1, 2)), 0xffffff), (v) => { const k = 1 + 0.28 * noise(v.x * 1.4 + seed, v.y * 1.4, v.z * 1.4) + 0.1 * noise(v.x * 4 + seed, v.y * 4, v.z * 4); v.multiplyScalar(k); if (v.y < -0.3) v.y = -0.3; }), { mottle: 0.45, freq: 2.5, under: 0.5 });
+  const rock = (seed, detail = 2) => dirty(sculpt(paint(mergeVertices(new THREE.IcosahedronGeometry(1, detail)), 0xffffff), (v) => { const k = 1 + 0.28 * noise(v.x * 1.4 + seed, v.y * 1.4, v.z * 1.4) + 0.1 * noise(v.x * 4 + seed, v.y * 4, v.z * 4); v.multiplyScalar(k); if (v.y < -0.3) v.y = -0.3; }), { mottle: 0.45, freq: 2.5, under: 0.5 });
   return {
     tuft: (() => {   // grass: seven blades, dark at the root and paler toward the tip
       const g = mergeGeometries([[-0.07, 0, 0.12, 0.3, 0.3], [0.06, 0.03, -0.1, 0.36, 2.8], [0, -0.05, 0.05, 0.42, 1.4], [0.1, 0.02, 0.16, 0.26, 4.4], [-0.03, 0.07, -0.14, 0.34, 5.4], [0.02, 0.1, 0.2, 0.22, 3.6], [-0.1, -0.06, 0.18, 0.2, 2.0]].map(([x, z, lean, tall, turn]) => blade(x, z, lean, tall, turn)));
@@ -326,15 +326,16 @@ export function decor() {
       return g;
     })(),
     rock: wrap(rock(3), 1.5),
+    rockLite: wrap(rock(5, 1), 1.5),   // (for the ones there are thousands of)
     skull: mergeGeometries([...fineSkull(0.13, BONE, { at: [0, 0.13, 0], jaw: 0, fine: 10, upper: 5, lower: 0, tilt: -0.15 })]),
     bone: boneShaft([0, -0.5, 0], [0, 0.5, 0], 0.035, 0xffffff, 1.7),
     ribs: mergeGeometries([...Array.from({ length: 5 }, (_, i) => tube([[-0.2, 0.02, i * 0.09 - 0.18], [-0.16, 0.2, i * 0.09 - 0.18], [0, 0.27, i * 0.09 - 0.18], [0.16, 0.2, i * 0.09 - 0.18], [0.2, 0.02, i * 0.09 - 0.18]], [0.012, 0.016, 0.016, 0.016, 0.012], 0xffffff, { sides: 4, steps: 3 })), tube([[0, 0.27, -0.22], [0, 0.27, 0.24]], [0.03, 0.03], 0xe2dcc8, { sides: 5, steps: 4 })]),
     leaf: paint(new THREE.ShapeGeometry(new THREE.Shape([[0, -0.13], [0.05, -0.07], [0.09, 0], [0.06, 0.03], [0.08, 0.08], [0.03, 0.08], [0, 0.15], [-0.03, 0.08], [-0.08, 0.08], [-0.06, 0.03], [-0.09, 0]].map(([x, y]) => new THREE.Vector2(x, y)))).rotateX(-PI / 2), 0xffffff),
     shroom: mergeGeometries([
       tube([[0, 0, 0], [0.01, 0.07, 0], [0, 0.12, 0]], [0.026, 0.018, 0.02], 0xe6dfc8, { sides: 6, steps: 2 }),
-      dirty(paint(new THREE.SphereGeometry(0.075, 12, 6, 0, PI * 2, 0, PI / 2).scale(1, 0.75, 1).translate(0, 0.11, 0), 0xb8452e), { mottle: 0.3, freq: 30, under: 0 }),
-      paint(new THREE.CircleGeometry(0.073, 12).rotateX(PI / 2).translate(0, 0.111, 0), 0x6b5a48),               // the gills
-      ...[[0.03, 0.01], [-0.03, 0.03], [0, -0.04], [-0.04, -0.02], [0.045, -0.03]].map(([x, z]) => lump(0.012, 0xf3efe2, [x, 0.11 + Math.sqrt(Math.max(0, 0.075 * 0.075 - x * x - z * z)) * 0.75, z], [1, 0.4, 1], 5)),   // its spots
+      dirty(paint(new THREE.SphereGeometry(0.075, 8, 4, 0, PI * 2, 0, PI / 2).scale(1, 0.75, 1).translate(0, 0.11, 0), 0xb8452e), { mottle: 0.3, freq: 30, under: 0 }),
+      paint(new THREE.CircleGeometry(0.073, 8).rotateX(PI / 2).translate(0, 0.111, 0), 0x6b5a48),               // the gills
+      ...[[0.03, 0.01], [-0.03, 0.03], [0, -0.04]].map(([x, z]) => lump(0.013, 0xf3efe2, [x, 0.11 + Math.sqrt(Math.max(0, 0.075 * 0.075 - x * x - z * z)) * 0.75, z], [1, 0.4, 1], 4)),   // its spots
       tube([[0.09, 0, 0.04], [0.095, 0.06, 0.04]], [0.014, 0.012], 0xe6dfc8, { sides: 5 }), paint(new THREE.SphereGeometry(0.04, 8, 5, 0, PI * 2, 0, PI / 2).translate(0.095, 0.055, 0.04), 0xb8452e),   // and a small one beside it
     ]),
     cross: mergeGeometries([
@@ -374,7 +375,7 @@ export function decor() {
       ...Array.from({ length: 5 }, (_, i) => lump(0.03, 0xffffff, [Math.cos(i * 1.257) * 0.034, 0.055, Math.sin(i * 1.257) * 0.034], [1, 0.3, 1], 4)),
       lump(0.018, 0xf2c94a, [0, 0.06, 0], [1, 0.7, 1], 5),
     ]),
-    mound: dirty(rough(lump(1, 0xffffff, [0, 0, 0], [1, 1, 1], 14), 0.09, 3), { mottle: 0.5, freq: 3, under: 0 }),
+    mound: dirty(rough(lump(1, 0xffffff, [0, 0, 0], [1, 1, 1], 9), 0.09, 3), { mottle: 0.5, freq: 3, under: 0 }),
   };
 }
 
@@ -577,7 +578,7 @@ export function street() {
     ...Array.from({ length: 11 }, (_, i) => { const a = i * 0.571 * 2, c = Math.cos(a), s = Math.sin(a), long = 3.4 + (i % 3) * 0.5, up = 0.9 - (i % 4) * 0.35;
       const A = [-0.1, 4.05, 0], B = [-0.1 + c * long * 0.5, 4.1 + up, s * long * 0.5], C = [-0.1 + c * long, 4.05 + up - 1.7, s * long];
       return [tube([A, B, C], [0.05, 0.04, 0.01], GREEN, { sides: 3, steps: 4 }),
-        ...[0.25, 0.4, 0.55, 0.7, 0.85].flatMap((t) => { const k = 1 - t, P = [k * k * A[0] + 2 * k * t * B[0] + t * t * C[0], k * k * A[1] + 2 * k * t * B[1] + t * t * C[1] + 0.25 * Math.sin(t * PI), k * k * A[2] + 2 * k * t * B[2] + t * t * C[2]], w = 0.75 * Math.sin(t * PI) + 0.25;
+        ...[0.3, 0.55, 0.8].flatMap((t) => { const k = 1 - t, P = [k * k * A[0] + 2 * k * t * B[0] + t * t * C[0], k * k * A[1] + 2 * k * t * B[1] + t * t * C[1] + 0.25 * Math.sin(t * PI), k * k * A[2] + 2 * k * t * B[2] + t * t * C[2]], w = 0.75 * Math.sin(t * PI) + 0.25;
           return [-1, 1].map((d) => tube([P, [P[0] - s * d * w, P[1] - 0.45 - 0.3 * t, P[2] + c * d * w]], [0.07, 0.01], i % 2 ? GREEN : 0x3a6e3c, { sides: 3, squash: 0.25 })); })];
     }).flat(),
     ...[0, 2.1, 4.2].map((a) => lump(0.14, 0x4a3a22, [-0.1 + Math.cos(a) * 0.28, 3.72, Math.sin(a) * 0.28], [1, 1.1, 1], 6)),

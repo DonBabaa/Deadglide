@@ -25,7 +25,7 @@ function weldChunk(group, skip) {
   const sets = new Map();
   group.updateMatrixWorld(true);
   group.traverse((m) => {
-    if (!m.isMesh || m.isInstancedMesh || m === skip || !m.visible || Array.isArray(m.material) || m.material.transparent || m.matrixWorld.determinant() < 0) return;
+    if (!m.isMesh || m.isInstancedMesh || m === skip || m.geometry.userData.shared || !m.visible || Array.isArray(m.material) || m.material.transparent || m.matrixWorld.determinant() < 0) return;
     const key = `${m.material.uuid}|${m.castShadow}|${m.receiveShadow}|${Object.keys(m.geometry.attributes).sort()}`;
     if (!sets.has(key)) sets.set(key, []);
     sets.get(key).push(m);
@@ -83,8 +83,10 @@ export function createChunkBuilder() {
   under.tomb.color.set(0x8c8474);
   const rand = seededRandom(11);
   const D = fineDecor(), U = fineUnder(), M = fineLunar();
+  for (const set of [D, U, M]) for (const g of Object.values(set)) g.userData.shared = true;   // (made once: a chunk being unloaded must not throw them away)
   const headstones = fineHeadstones().map(shared);
-  const trees = [0, 1, 2, 3].map(() => shared(fineTree(rand)));
+  const trees = [0, 1, 2, 3].map(() => shared(fineTree(rand, 4)));
+  const shrubGeo = shared(fineTree(rand, 1));   // (dead shrubs: there are a dozen or two to a chunk, so they are far simpler than the trees)
   const moundGeo = shared(D.mound);
   // The House: card tables in green baize, counters in dark wood, and every rail brass.
   const casino = { ...mat, ramp: new THREE.MeshStandardMaterial({ color: 0x0f5a35, roughness: 0.95, side: THREE.DoubleSide }), tomb: new THREE.MeshStandardMaterial({ color: 0x3a2116, roughness: 0.5, side: THREE.DoubleSide }),
@@ -151,7 +153,6 @@ export function createChunkBuilder() {
 
   // Decor (the Cemetery): things that are only drawn. Nothing here is solid, so none of it changes how the place skates.
   const tuftGeo = shared(D.tuft);
-  const rockGeo = shared(D.rock);
   const skullGeo = shared(D.skull);
   const puddleGeo = shared(new THREE.CircleGeometry(1, 18).rotateX(-Math.PI / 2));
   const boneGeo = shared(D.bone);
@@ -244,7 +245,7 @@ export function createChunkBuilder() {
       else if (kind < 0.75) { helmets.push([s.x, s.y, s.z, s.turn, BIG, BIG, BIG]); visors.push([s.x, s.y, s.z, s.turn, BIG, BIG, BIG]); }
       else bones.push([s.x, s.y + 0.1, s.z, s.turn, 0.5 * BIG, 0.5 * BIG, 0.5 * BIG]);
     }
-    put(rockGeo, moonMat.rock, rocks);
+    put(D.rockLite, moonMat.rock, rocks);
     put(M.crystal, moonMat.crystal, crystals, (k) => tintOf.setHSL(0.5 + k * 0.4, 0.9, 0.62));   // cyan through violet
     put(M.egg, moonMat.egg, eggs);
     put(M.helmet, moonMat.tank, helmets);
@@ -388,8 +389,8 @@ export function createChunkBuilder() {
       group.add(mesh);
     };
     instanced(tuftGeo, decorMat.tuft, lists.tuft, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.8 + size * 1.1); });
-    instanced(rockGeo, mat.carved, lists.rock, ([x, y, z, turn, size]) => { v.set(x, y + 0.02, z); q.setFromAxisAngle(Y, turn); sc.set(0.14 + size * 0.3, 0.08 + size * 0.16, 0.12 + size * 0.24); });
-    instanced(trees[0], mat.painted, lists.shrub, ([x, y, z, turn, size]) => { v.set(x, y - 0.1, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.1 + size * 0.09); });
+    instanced(D.rockLite, mat.carved, lists.rock, ([x, y, z, turn, size]) => { v.set(x, y + 0.02, z); q.setFromAxisAngle(Y, turn); sc.set(0.14 + size * 0.3, 0.08 + size * 0.16, 0.12 + size * 0.24); });
+    instanced(shrubGeo, mat.painted, lists.shrub, ([x, y, z, turn, size]) => { v.set(x, y - 0.1, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.16 + size * 0.14); });
     instanced(skullGeo, moreMat.skull, lists.skull, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.9 + size * 0.4); });
     instanced(puddleGeo, decorMat.puddle, lists.puddle, ([x, y, z, turn, size]) => { v.set(x, y + 0.025, z); q.setFromAxisAngle(Y, turn); sc.set(0.7 + size * 1.3, 1, 0.5 + size * 0.9); }, 1);
     const tinted = (geometry, material, list, tint, place) => {
@@ -409,7 +410,7 @@ export function createChunkBuilder() {
     instanced(slabGeo, mat.carved, more.slab, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn).multiply(tilt.setFromAxisAngle(Z3, (size - 0.5) * 0.25)); sc.set(0.5 + size * 0.8, 0.8 + size, 0.6 + size * 0.7); });
     instanced(D.ribs, decorMat.bone, more.ribs, ([x, y, z, turn, size]) => { v.set(x, y - 0.03, z); q.setFromAxisAngle(Y, turn); sc.setScalar(0.8 + size * 0.5); });
     instanced(crowGeo, moreMat.crow, more.crow, ([x, y, z, turn, size]) => { v.set(x, y, z); q.setFromAxisAngle(Y, turn); sc.setScalar(1 + size * 0.5); });
-    instanced(rockGeo, mat.carved, more.pebble, ([x, y, z, turn, size]) => { v.set(x, y + 0.01, z); q.setFromAxisAngle(Y, turn); sc.set(0.05 + size * 0.07, 0.03 + size * 0.03, 0.05 + size * 0.06); });
+    instanced(D.rockLite, mat.carved, more.pebble, ([x, y, z, turn, size]) => { v.set(x, y + 0.01, z); q.setFromAxisAngle(Y, turn); sc.set(0.05 + size * 0.07, 0.03 + size * 0.03, 0.05 + size * 0.06); });
     // Flowers left on the graves, a candle glowing in every pumpkin, and fireflies over the grass.
     const flowers = [], lights = [], flies = [];
     for (const plot of c.plots) for (let k = 0; k < 14; k++) {
@@ -456,17 +457,10 @@ export function createChunkBuilder() {
       group.add(new THREE.Mesh(mergeGeometries(ring.slice(1).map((pt, k) => tubeGeometry(ring[k], pt, 0.06))), mat.steel));
     }
 
-    const stones = [[], [], []];
+    const stones = [[], [], []], wood = [[], [], [], []];
     for (const p of c.props) {
       if (p.type === 'headstone') stones[p.kind].push(p);
-      else if (p.type === 'tree') {
-        const tree = new THREE.Mesh(trees[p.variant], mat.painted);
-        tree.position.set(p.x, p.y0 - 0.5, p.z);
-        tree.rotation.y = p.variant * 1.7 + p.x;
-        tree.scale.setScalar(p.scale);
-        tree.castShadow = true;
-        group.add(tree);
-      }
+      else if (p.type === 'tree') wood[p.variant].push(p);
       else if (p.type === 'mausoleum') group.add(buildMausoleum(p, mat));
       else if (p.type === 'monument') group.add(buildMonument(p, mat));
       else if (p.type === 'chapel') group.add(buildChapel(p, mat));
@@ -478,6 +472,15 @@ export function createChunkBuilder() {
         if (extras) group.add(extras);
       }
     }
+
+    // Trees: one instanced mesh per shape (nothing is copied: a chunk coming into view must not make the game stutter).
+    wood.forEach((list, variant) => {
+      if (!list.length) return;
+      const mesh = new THREE.InstancedMesh(trees[variant], mat.painted, list.length);
+      list.forEach((p, i) => mesh.setMatrixAt(i, m.compose(v.set(p.x, p.y0 - 0.5, p.z), q.setFromAxisAngle(Y, variant * 1.7 + p.x), sc.setScalar(p.scale))));
+      mesh.castShadow = true;
+      group.add(mesh);
+    });
 
     // Headstones: one instanced mesh per shape.
     stones.forEach((list, kind) => {

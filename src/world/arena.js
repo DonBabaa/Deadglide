@@ -60,8 +60,11 @@ export function buildArena(scene) {
   const loaded = new Map();   // "cx,cz" -> { group, chunk }
   let centre = null;
 
+  const stats = { build: 0 };   // build: the longest a chunk has lately taken to make (ms): F3 shows it
   function load(cx, cz) {
+    const t0 = performance.now();
     const chunk = getChunk(cx, cz), group = builder.build(chunk);
+    stats.build = Math.max(stats.build * 0.9, performance.now() - t0);
     scene.add(group);
     loaded.set(`${cx},${cz}`, { group, chunk, cx, cz });
   }
@@ -110,6 +113,7 @@ export function buildArena(scene) {
 
   let lampTimer = 0;
   return {
+    stats,
     // Change level: drop everything on screen and redress the place. (terrain.js's setLevel comes first.)
     setLevel(n) {
       level = n;

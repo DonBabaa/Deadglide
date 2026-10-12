@@ -23,6 +23,14 @@ export const COSTUMES = {
 };
 
 const PI = Math.PI;
+// Where his mouth is in a costume's head (from the middle of his own): what he is smoking is moved there, so it
+// still shows. An alien has a mouth of its own; in a helmet it sticks out through the visor (he was never going to go without).
+export function mouthOf(id) {
+  const C = COSTUMES[id];
+  if (!C) return null;
+  return C.alien ? [0, -0.1 * C.alien.big, 0.132 * C.alien.big] : [0, -0.055, 0.2];
+}
+
 const std = (color, roughness = 0.6, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 // Everything here is sculpted with the monsters' kit (enemies/sculpt.js) and painted point by point, then drawn as at
 // most three meshes: what is matt, what shines (a visor, an eye), and what is lit.

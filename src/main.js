@@ -24,7 +24,7 @@ import { Weapon } from './player/weapon.js';
 import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
-import { unlockAudio, toggleMusic, playShot, playHit, playKill, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, setSpace, holdMusic, playGhostTell, playGhostThrow, playZone, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
+import { unlockAudio, toggleMusic, playShot, playHit, playKill, playKillNote, playAir, setRide, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, setSpace, holdMusic, playGhostTell, playGhostThrow, playZone, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
 import { stats, resetStats } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
@@ -39,6 +39,7 @@ import { UPGRADES, rollUpgrades, takeUpgrade, describe } from './systems/upgrade
 import { levelUp } from './ui/levelUp.js';
 import { startMusic } from './fx/music.js';
 import { hud } from './ui/hud.js';
+import { createRideFx } from './fx/rideFx.js';
 import { createTweakPanel } from './ui/tweakPanel.js';
 import { syncAudioControls } from './ui/audioControls.js';
 import { MenuScene } from './menu/menuScene.js';
@@ -196,6 +197,7 @@ let drinkWait = 0;      // the House: seconds until the barman puts another drin
 // Start the run again from scratch (keeping the same Creative loadout, if any).
 // carry: arriving from the level before: your guns, upgrades, power-ups, XP and score come with you.
 function restart(carry = false) {
+  rideFx.reset();
   offer(0);
   skater.respawn();
   chase.snap(skater);
@@ -601,9 +603,13 @@ function updateSpectate(dt, dx, dy) {
 {
   for (const n of SPECTATE) {
     const b = Object.assign(document.createElement('button'), { type: 'button' });
-    b.innerHTML = `${SPECTATE_NAMES[n]}<small>${LEVELS[n].name}</small>`;
+    // Two buttons a level: play it (a real run, straight in, whatever you have unlocked), or fly round it.
+    const play = Object.assign(document.createElement('button'), { type: 'button' });
+    play.innerHTML = `Play ${SPECTATE_NAMES[n]}<small>A run of this level on its own</small>`;
+    play.addEventListener('click', () => { if (spectate) stopSpectate(false); viewer.hide(); document.body.classList.remove('model-view'); preview = null; startRun(null, n, { direct: true }); });
+    b.innerHTML = `Fly round ${SPECTATE_NAMES[n]}<small>Spectator: nothing happening in it</small>`;
     b.addEventListener('click', () => startSpectate(n));
-    spec('spectate-list').append(b);
+    spec('spectate-list').append(play, b);
   }
   const step = (by) => startSpectate(SPECTATE[(SPECTATE.indexOf(spectate.level) + by + SPECTATE.length) % SPECTATE.length]);
   spec('spectate-light').addEventListener('click', (e) => { spectateLights(!spectate.bright); e.target.blur(); });
@@ -874,9 +880,11 @@ document.getElementById('menu-casino-open').addEventListener('click', () => {
 });
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
-menu.onStart((loadout, chosen = 1, session = null) => {
+// Start a run. loadout: Creative mode's choices (null: a normal run). chosen: the level. session: riding with friends
+// ({ host } or { join }), or { direct: true } from the editor: straight into the level, without the story that leads to it.
+function startRun(loadout, chosen = 1, session = null) {
   creative = loadout;
-  const story = LEVELS[chosen].finale && !loadout;   // (the House opens with how you got there)
+  const direct = !!session?.direct, story = LEVELS[chosen].finale && !loadout && !direct;   // (the House opens with how you got there)
   if (!story) setWorld(chosen);
   ride.leave();
   if (session?.host) ride.host();   // (Free Ride with friends)
@@ -889,14 +897,16 @@ menu.onStart((loadout, chosen = 1, session = null) => {
   if (story) enterHouse(false);
   else restart();
   // The story so far, for where you are starting (not in Creative mode).
-  if (!loadout && chosen === 1) cutscenes.intro();
+  if (direct) { if (LEVELS[chosen].descent) descent.reset(); }
+  else if (!loadout && chosen === 1) cutscenes.intro();
   else if (!loadout && chosen === 2) cutscenes.under();
   else if (!loadout && LEVELS[chosen].descent) cutscenes.collapse(descent, () => descent.reset());
   paused = false;
   last = performance.now();
   if (unlockAudio()) startMusic();
   lockPointer();
-});
+}
+menu.onStart(startRun);
 // Any click on the menu is enough for the browser to let the music start.
 document.getElementById('menu').addEventListener('click', () => { if (unlockAudio()) startMusic(); });
 
@@ -1044,6 +1054,21 @@ function trickLanded() {
 
 const airborne = () => !skater.grounded && !skater.grinding;
 
+// What riding looks and sounds like (fx/rideFx.js, and setRide in fx/audio.js): none of it changes how he rides.
+const rideFx = createRideFx(scene, camera), spot = new THREE.Vector3();
+// Points, shown where they were made: `gained` since `before`, at a place in the world.
+function floatPoints(before, at, lift, kind, label = '') {
+  const gained = Math.round(score.points - before);
+  if (gained <= 0) return;
+  const [x, y] = onScreen(at, lift);
+  hud.float(x, y, `${label}+${gained.toLocaleString()}`, kind);
+}
+// Streaks at the edge of the screen when he is going fast (config.feel.speedLines: where they begin, as a share of top speed).
+function speedLines() {
+  const from = config.feel.speedLines, fast = Math.max(0, (skater.speed / config.skate.maxSpeed - from) / (1 - from));
+  hud.speedLines(Math.min(0.75, fast * fast * 0.6));
+}
+
 function handleEvents() {
   for (const e of skater.events) {
     if (e.type === 'land') {
@@ -1059,12 +1084,16 @@ function handleEvents() {
         hud.popup(`${e.trick}  ${kmh(e.boost)}`, 'trick');
         playTrickLand(e.boost);
         trickLanded();
+        const before = score.points;
         score.trick(e.boost);
-      }
+        rideFx.land(skater, e.boost);
+        floatPoints(before, skater.pos, 2.4, 'trick');
+      } else rideFx.land(skater, 0);
     } else if (e.type === 'sloppy') {
       lines.fail('Sloppy landing');
       overLava = false;
       chase.onSloppy();
+      rideFx.land(skater, 0);
       hud.popup('Sloppy landing', 'sloppy');
     } else if (e.type === 'grind') {
       hud.popup(e.trick ? `${e.trick} to grind  ${kmh(e.boost)}` : 'Grind', 'trick');
@@ -1089,6 +1118,35 @@ function handleEvents() {
       score.trick(8);
     } else if (e.type === 'trick') {
       hud.popup(e.name, 'pending');
+      playAir();
+    } else if (e.type === 'ollie') {
+      if (e.perfect) { hud.popup('Perfect pop', 'trick'); playTrickLand(2); score.add(60, 0.06); }
+    } else if (e.type === 'revertTrick') {
+      const before = score.points;
+      score.add(config.score.revertPoints, 0.15);
+      hud.popup('Revert', 'trick');
+      playTrickLand(2);
+      floatPoints(before, skater.pos, 2.4, 'trick');
+      if (freeRide()) lines.add('Revert', 200);
+    } else if (e.type === 'manualEnd') {
+      if (e.distance > 4) {
+        const before = score.points;
+        score.add(e.distance * config.score.manualPoints, e.distance * 0.012);
+        hud.popup(`Manual  ${Math.round(e.distance)} m`, 'trick');
+        floatPoints(before, skater.pos, 2.4, 'trick');
+        if (freeRide()) lines.add(`Manual ${Math.round(e.distance)} m`, e.distance * 12);
+      }
+    } else if (e.type === 'slideEnd') {
+      if (e.distance > 4) {
+        const before = score.points;
+        score.add(e.distance * config.score.slidePoints, e.distance * 0.012);
+        hud.popup(`Powerslide  ${Math.round(e.distance)} m`, 'trick');
+        floatPoints(before, skater.pos, 2.4, 'trick');
+        if (freeRide()) lines.add(`Powerslide ${Math.round(e.distance)} m`, e.distance * 14);
+      }
+    } else if (e.type === 'bail') {
+      hud.popup('Lost your balance', 'sloppy');
+      if (freeRide()) lines.fail('Lost your balance');
     }
   }
   skater.events.length = 0;
@@ -1134,7 +1192,13 @@ function handleEvents() {
       if (pact && hp < maxHp()) { run.heal(pact); playHeal(); }
       loot.maybeDrop(e);
       if (!creative) gold.maybeDrop(e, horde.finished);
+      const before = score.points;
       const milestone = score.kill(e.score, { elite: e.elite, headshot: e.headshot, airborne: airborne() });
+      if (!e.quiet) {
+        rideFx.kill(e.x, e.y, e.z, e.headshot);
+        playKillNote(score.streak);
+        floatPoints(before, spot.set(e.x, e.y, e.z), 1.6, e.headshot ? 'head' : '', e.headshot ? 'Headshot  ' : '');
+      }
       if (milestone) hud.popup(`${milestone}!`, 'alert');
     } else if (e.type === 'hit') {
       e.headshot ? playHeadshot() : playHit();
@@ -1245,6 +1309,13 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));   // (never backwards: `last` is sometimes reset to a moment after this frame began)
   last = now;
+  {
+    const riding = !(inMenu || paused || spectate || casino.active || cutscenes.active || drag || dead);
+    if (riding) speedLines(); else hud.speedLines(0);
+    hud.balance(riding && skater.grinding ? skater.balance : null);
+    rideFx.update(dt, skater, riding);
+    setRide(riding ? Math.min(1, skater.speed / config.skate.maxSpeed) : 0, riding && skater.grounded, riding && skater.grinding, riding && skater.drifting);
+  }
   let [mouseDX, mouseDY] = input.takeMouse();
   if (emoteWheel.open) mouseDX = mouseDY = 0;   // (the mouse is choosing an emote, not turning the camera)
   // F3: a readout of frames per second and how much was drawn last frame (for finding what makes it slow).
@@ -1252,7 +1323,8 @@ function frame(now) {
     perfFrames++;
     if ((perfTime += dt) >= 0.5) {
       const r = renderer.info.render;
-      perfEl.textContent = `${Math.round(perfFrames / perfTime)} fps   ${(1000 * perfTime / perfFrames).toFixed(1)} ms\n${r.calls} draws   ${Math.round(r.triangles / 1000)}k triangles`;
+      perfEl.textContent = `${Math.round(perfFrames / perfTime)} fps   ${(1000 * perfTime / perfFrames).toFixed(1)} ms\n${r.calls} draws   ${Math.round(r.triangles / 1000)}k triangles
+slowest chunk ${arena.stats.build.toFixed(0)} ms`;
       perfFrames = perfTime = 0;
     }
   }
@@ -1484,4 +1556,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

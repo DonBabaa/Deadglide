@@ -1,0 +1,13 @@
+kirky.glb — Kirky's body
+
+Built with MakeHuman / MPFB (http://www.makehumancommunity.org) by tools/build_kirky.py.
+
+  Body, skin, eyes, eyebrows, teeth, hair   MakeHuman system assets — CC0
+  T-shirt                                   "elvs_crude_t-shirt_male" by MakeHuman, edited by Elvaerwyn — CC0
+  Trousers                                  "toigo_wool_pants" by MRT — CC0
+  Skate shoes                               "elvs_zombie_killer_sneakers" by Elvaerwyn — CC-BY
+
+The shoes (CC-BY) were adapted for the game: thinned out, their texture resized and repainted black on white
+rubber, with a white stripe added down each side. The CC0 pieces were reshaped and recoloured too (the shirt cut
+longer and looser, the trousers cut wide with turn-ups and dyed khaki, the hair shortened and darkened).
+The print on the shirt is the game's own, drawn in src/player/kirkyBody.js.

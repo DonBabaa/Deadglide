@@ -24,6 +24,7 @@ export const MOON = {
   x: 48, z: 48,        // the middle of the arena (the spawn point), in world coordinates
   radius: 250,         // out to the foot of the rim wall...
   wall: 18,            // ...which curves up this far before it goes sheer
+  ledge: 6,            // level ground beyond the lip before the wall you cannot see (room to come off the rim rail, or miss it)
   mons: { x: -150, z: -150, height: 46, spread: 95 },
   basin: { x: 10, z: 140, depth: 9, spread: 110 },
   ridge: { z: -58, height: 8, width: 20 },
@@ -117,7 +118,7 @@ export function moonHeight(x, z, drawn = false) {
   for (let i = 0; i < CHANNELS.length; i++) h -= cut(CHANNELS[i], dx, dz);
   // The wall round the arena: a quarter pipe, then sheer rock.
   const t = dist - (MOON.radius - MOON.wall);
-  if (t > 0) h += t < LIP_OUT ? MOON.wall - Math.sqrt(MOON.wall * MOON.wall - t * t) : drawn ? LIP_UP : 90;
+  if (t > 0) h += t < LIP_OUT ? MOON.wall - Math.sqrt(MOON.wall * MOON.wall - t * t) : drawn || t < LIP_OUT + MOON.ledge ? LIP_UP : 90;
   return h;
 }
 
@@ -134,7 +135,7 @@ export const LAVA_LAKE = {
 
 // Keep a point (a THREE.Vector3: the camera) inside the wall.
 export function moonConfine(pos) {
-  const dx = pos.x - MOON.x, dz = pos.z - MOON.z, dist = Math.hypot(dx, dz), max = MOON.radius - 2.5;
+  const dx = pos.x - MOON.x, dz = pos.z - MOON.z, dist = Math.hypot(dx, dz), max = MOON.radius + MOON.ledge - 3;
   if (dist > max) { pos.x = MOON.x + (dx / dist) * max; pos.z = MOON.z + (dz / dist) * max; }
 }
 

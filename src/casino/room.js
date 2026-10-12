@@ -396,6 +396,7 @@ export class CasinoRoom {
     this.buildDealer();
 
     // Kirky, on foot: no board, facing the way he walks.
+    this.lips = new THREE.Vector3();
     this.kirky = new SkaterModel(this.scene);
     this.emoter = createEmoter(this.kirky, true);
     const k = this.kirky;
@@ -1192,8 +1193,13 @@ export class CasinoRoom {
     k.root.rotation.z = who.lean || 0;
     k.root.position.y += 0.05 * hic;
     k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
-    k.gunArm.rotation.set(lerp(lerp(lerp(1.48 - swing * 0.5, 0.5, sat), -0.95, hand), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(lerp(0.1, -0.2, sat), -0.5, hand), 0);
-    k.leftArm.rotation.set(lerp(lerp(swing * 0.5, -1.15, sat), -2.7, cheer), 0, lerp(0, 0.35, sat));
+    // Arms: swinging against the legs on foot, forearms on the table sat down, straight up for a win, out to a lever.
+    k.gunArm.rotation.set(lerp(lerp(1.42 - swing * 0.5, 0.95, sat), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(0.06, -0.15, sat), 0);
+    k.foreArm.rotation.x = -lerp(lerp(0.25 + Math.max(0, -swing) * 0.7, 1.05, sat), 0.15, Math.max(cheer, reach));
+    k.leftArm.rotation.set(lerp(lerp(swing * 0.5, -0.6, sat), -2.7, cheer), 0, lerp(-0.08, 0.2, sat) * (1 - cheer));
+    k.leftFore.rotation.x = -lerp(lerp(0.25 + Math.max(0, swing) * 0.7, 1.05, sat), 0.15, cheer);
+    // A glass, or what he is smoking: the hand comes up to his mouth, bending at the elbow to get there.
+    if (hand > 0.001) { k.root.updateMatrixWorld(true); k.handTo(k.torso.localToWorld(this.lips.set(0.07, 0.68, 0.23)), smooth(hand)); }
     if (cheer) k.root.position.y += Math.abs(Math.sin(this.time * 11)) * 0.12 * cheer;   // (and he's jumping)
     k.updateSmoke(dt);
   }
@@ -1354,7 +1360,7 @@ export class CasinoRoom {
     if (this.glass && this.glass.ready) {
       const g = this.glass, rest = this.barStools[Math.max(0, this.bar)].stand;
       k.root.updateMatrixWorld(true);
-      k.gunArm.localToWorld(v.set(0, 0.03, 0.62));   // his hand
+      k.handWorld(v);   // his hand
       g.position.set(lerp(rest.x + 0.78, v.x, this.sip), lerp(1.25, v.y - g.lip * 0.5, this.sip), lerp(rest.z + 0.12, v.z, this.sip));
       g.rotation.set(0, 0, 1.15 * smooth((this.sip - 0.6) / 0.4));   // tipped back into his mouth
     }

@@ -23,7 +23,7 @@ import { ENEMY_TYPES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
 import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
 
-const NEAR = 20, NEAR_MOST = 28;   // a monster this close to the camera (m) is drawn in detail: at most this many of a kind at once
+const NEAR = 13, NEAR_MOST = 10;   // a monster this close to the camera (m) is drawn in detail: at most this many of a kind at once
 const MAX = 320;          // hard cap on monsters alive (and instances per type)
 const CELL = 2.5;         // spatial hash cell size
 const CLIMB = 1.3;        // monsters step up anything lower than this
