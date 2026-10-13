@@ -9,6 +9,7 @@
 // To add a power-up: add an entry here and make it act in update().
 // `explain` is the text on the card shown the first time you win it in a run.
 import * as THREE from 'three';
+import { props } from '../world/props.js';
 import { stats, POWER_IDS } from './stats.js';
 import { config } from '../config.js';
 import { world, LEVELS } from '../world/level.js';
@@ -155,6 +156,7 @@ export class Powerups {
     this.drops = Array.from({ length: 8 }, () => {
       const mesh = new THREE.Mesh(femur, new THREE.MeshStandardMaterial({ color: 0xe8dfc8, roughness: 0.6, emissive: 0x3a352a }));
       for (const y of [-0.95, 0.95]) for (const x of [-0.13, 0.13]) { const knob = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mesh.material); knob.position.set(x, y, 0); mesh.add(knob); }
+      props().then((P) => { if (P.power_femur) { mesh.clear(); mesh.geometry = P.power_femur; mesh.material.vertexColors = true; mesh.material.color.set(0xffffff); mesh.material.needsUpdate = true; } });   // (the bone modelled in Blender, when it arrives)
       mesh.visible = false;
       scene.add(mesh);
       return { mesh, life: 0, at: new THREE.Vector3(), damage: 0, radius: 0 };

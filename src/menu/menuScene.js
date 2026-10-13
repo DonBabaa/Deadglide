@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { SkaterModel } from '../player/skaterModel.js';
 import { heightAt, SPAWN } from '../world/terrain.js';
-import { stoneTexture } from '../world/textures.js';
+import { stoneTexture, crateTexture, relief } from '../world/textures.js';
 import { playShot, playSniper, playTitleSting, playSaucer } from '../fx/audio.js';
 import { WEAPONS } from '../player/weapons.js';
 import { hud } from '../ui/hud.js';
@@ -27,7 +27,7 @@ export class MenuScene {
     scene.add(this.group);
 
     // The tomb he leans on: a slab on a plinth with a cross at its head.
-    const stone = new THREE.MeshStandardMaterial({ map: stoneTexture(), roughness: 0.95 });
+    const stoneMap = stoneTexture(), stone = new THREE.MeshStandardMaterial({ map: stoneMap, normalMap: relief(stoneMap, 2.6), roughness: 0.95 });
     this.decor = { earth: [], moon: [] };   // what he leans on, in each place
     let place = 'earth', material = stone;
     const block = (w, h, d, x, y, z) => {
@@ -47,7 +47,8 @@ export class MenuScene {
     block(0.8, 0.2, 0.16, -1.5, 1.42, -0.75);     // arms
     // ...and on the Moon: a supply crate the same size, strapped, with a marker pole and its light where the cross was.
     place = 'moon';
-    material = new THREE.MeshStandardMaterial({ color: 0xb9bcc2, roughness: 0.55, metalness: 0.3 });
+    const crate = crateTexture();
+    material = new THREE.MeshStandardMaterial({ map: crate, normalMap: relief(crate, 2.4), roughness: 0.5, metalness: 0.35 });
     block(2.5, 0.2, 1.2, 0.2, 0.0, -0.75);      // its skid
     block(2.3, 0.85, 1.0, 0.2, 0.55, -0.75);    // the crate
     material = new THREE.MeshStandardMaterial({ color: 0xd9a52a, roughness: 0.5, metalness: 0.4 });
@@ -87,15 +88,24 @@ export class MenuScene {
     this.kirky = new SkaterModel(scene);
     const k = this.kirky;
     k.board.visible = false;                         // his board is beside him instead
-    k.root.position.copy(this.origin);
+    // Sat on the tomb (the crate, on the Moon), near the front edge of its lid, his legs over it: his hips are put a
+    // hand above the stone, and the clip he is played (sat down, a pistol brought up: see update) does the rest of
+    // him. (SEAT: where on it, in the scene's own space; the last number is how far his hips are above his feet when
+    // he stands, which is how far down the figure has to come to sit there.)
+    this.seat = new THREE.Vector3(0.25, 1.02 + 0.125 - 0.842, -0.42).applyAxisAngle(new THREE.Vector3(0, 1, 0), FACING).add(this.origin);
+    k.root.position.copy(this.seat);
     k.root.rotation.y = FACING;
-    k.rider.position.y = 0;                          // standing on the ground, not on a deck
+    k.rider.position.y = 0;                          // (not on a deck)
     k.rider.rotation.y = 0.25;                       // turned a touch toward the camera
-    k.tilt.rotation.x = -0.16;                       // leaning back on the tomb
+    k.tilt.rotation.x = -0.04;
     k.torso.rotation.x = 0.1;
-    k.frontLeg.rotation.x = 0.32;                    // one foot out in front...
-    k.backLeg.rotation.x = -0.05;
-    k.backLeg.rotation.z = 0.06;
+    // (his legs: over the edge of it, thighs sloping a little down off the stone, shins hanging, one tucked further
+  // back than the other. By hand, not the clip's: the clip's man sits on something low with his knees up.)
+    k.frontLeg.rotation.x = -1.4;
+    k.frontLeg.knee.rotation.x = 1.36;
+    k.backLeg.rotation.x = -1.44;
+    k.backLeg.knee.rotation.x = 1.62;
+    k.backLeg.rotation.z = 0;
 
     // The board, stood on its tail in front of the tomb and leaning back against
     // it, wheels facing out. (Kept clear of the stone so nothing cuts through it.)
@@ -143,7 +153,8 @@ export class MenuScene {
     const x0 = moon ? SPAWN.x - 20.9 : SPAWN.x + 7, z0 = moon ? SPAWN.z - 0.3 : SPAWN.z + 9;   // (on the Moon: out on the plain, the lander behind him)
     this.origin.set(x0, heightAt(x0, z0), z0);
     this.group.position.copy(this.origin);
-    this.kirky.root.position.copy(this.origin);
+    this.seat.set(0.25, 1.02 + 0.125 - 0.842, -0.42).applyAxisAngle(new THREE.Vector3(0, 1, 0), FACING).add(this.origin);   // (the same seat, on whatever is there)
+    this.kirky.root.position.copy(this.seat);
     for (const mesh of this.decor.earth) mesh.visible = !moon;
     for (const mesh of this.decor.moon) mesh.visible = moon;
     this.kirky.setWeapon(moon ? WEAPONS.sniper : WEAPONS.pistol);
@@ -177,6 +188,12 @@ export class MenuScene {
     }
     const aiming = this.shotsLeft > 0;
     k.updateArm(dt, this.target, aiming);
+    // Sat there: the clip is a man sat hunched who brings a pistol up and holds it on something. It is not played
+    // through and round: where he is in it follows what he is doing (up as he aims, held while he fires, down again
+    // after), and he is sat up out of its hunch. The arm the gun is in is not the clip's: it is aimed by hand, above.
+    this.raised = (this.raised || 0) + ((aiming ? 1 : 0) - (this.raised || 0)) * (1 - Math.exp(-(aiming ? 7 : 3.5) * dt));
+    k.play?.('aim', 1, 1, 2.75 + 0.75 * this.raised * this.raised * (3 - 2 * this.raised), false, { seated: true, upright: 0.8, legs: false });
+    k.backLeg.knee.rotation.x = 1.62 + Math.sin(this.time * 0.9) * 0.07;   // (a foot swinging, a little)
     if (aiming && (this.shotTimer -= dt) <= 0) {
       this.shotsLeft--;
       this.shotTimer = 0.22;
@@ -226,10 +243,11 @@ export class MenuScene {
       const c = this.cut, t = (c.t += dt), CUTS = [0, 1.3, 2.9, 4.0], smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
       const fwd = new THREE.Vector3(Math.sin(FACING), 0, Math.cos(FACING)), side = new THREE.Vector3(fwd.z, 0, -fwd.x), head = new THREE.Vector3();
       k.root.updateMatrixWorld(true);
-      k.torso.localToWorld(head.set(0, 0.78, 0));
+      if (k.faceAt) k.faceAt(head); else k.torso.localToWorld(head.set(0, 0.78, 0));
+      const big = 1 + ((k.faceBig || 1) - 1) * 0.72;   // (his head is bigger than the one these shots were set for: they stand off by that much)
       const once = (name, at, fn) => { if (t >= at && !c.marks[name]) { c.marks[name] = true; fn(); } };
       if (t < CUTS[1]) {            // the cigarette
-        this.camera.position.copy(head).addScaledVector(fwd, 0.7).addScaledVector(side, 0.28);
+        this.camera.position.copy(head).addScaledVector(fwd, 0.7 * big).addScaledVector(side, 0.28 * big);
         this.camera.lookAt(v.copy(head).addScaledVector(fwd, 0.12));
         this.camera.fov = 30 - 9 * smooth(t / 0.14);
       } else if (t < CUTS[2]) {     // from the ground, up at him

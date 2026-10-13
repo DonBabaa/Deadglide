@@ -114,33 +114,57 @@ export const config = {
   // The Long Way Down (level 5): the hill coming down behind you.
   descent: {
     wallStart: -70,       // where the collapse starts, in metres down the course (behind the doors)
-    wallSpeed: 22,        // how fast it comes at first (m/s)...
-    wallGain: 0.8,        // ...gaining this much every second...
+    wallSpeed: 27,        // how fast it comes at first (m/s)...
+    wallGain: 1.0,        // ...gaining this much every second...
     wallMax: 62,          // ...up to this
-    wallLeash: 110,       // it is never further behind you than this
+    wallLeash: 78,        // it is never further behind you than this
     wallKill: 3,          // closer than this and it has you
-    throwEvery: 5.5,        // seconds between the ghosts' throws
-    throwTell: 0.9,       // how long one glows before he lets go
-    throwFlight: 0.8,     // how long what he threw is in the air
-    throwDamage: 15,      // if it lands on you while you are rolling on the ground (in the air or on a rail it misses)
+    throwEvery: 5.5,      // (the scene before the run still paces itself by this)
+    throwTell: 0.9,
+    throwFlight: 0.85,    // how long what he threw is in the air
+    throwDamage: 22,      // if it lands on you while you are rolling on the ground (in the air or on a rail it misses)
+    // Goyitus Ultimus (systems/descent.js).
+    seals: 6,             // how many times his rite has to be broken to finish him
+    harassEvery: 2.3,     // seconds between the single shots he keeps up...
+    riteEvery: 6.5,       // ...and between his rites
+    riteTime: 5.4,        // how long you have to shoot the sigils out (a quarter of a second less for every seal broken)
+    sigilRadius: 2.6,     // how near a bullet has to pass to one (m)
+    stunTime: 4,          // how long breaking a rite stuns him
+    slow: 0.55,           // what a hit leaves of your speed...
+    slowTime: 1.6,        // ...and for how long after it you are held back
+    brokenRelief: 45,     // finishing him throws the collapse this far back (m)
   },
 
   // The House (the last fight, in the casino).
   house: {
     dealt: 8,             // upgrades you are dealt if you start there cold
-    wheelEvery: 3.4,      // seconds between spins of the wheel (each spin is one of his attacks)...
-    wheelFast: 2.3,       // ...once he is down to half health
-    wheelTell: 1.1,       // how long the chandelier shows the colour before it happens
-    cards: 7,             // red: a fan of this many cards, thrown flat at you (half as many again once he is hurt)
-    cardSpeed: 34,
-    cardDamage: 14,
-    chips: 10,            // black: this many chips rain down round you
-    chipDamage: 16,
+    wheelEvery: 2.1,      // seconds between spins of the wheel (each spin is one of his attacks)...
+    wheelFast: 1.4,       // ...once he is down to half health
+    wheelTell: 0.9,       // how long the chandelier shows the colour before it happens
+    cards: 11,             // red: a fan of this many cards, thrown flat at you (half as many again once he is hurt)
+    cardSpeed: 42,
+    cardDamage: 22,
+    chips: 17,            // black: this many chips rain down round you
+    chipDamage: 24,
     chipSplash: 8,
-    addsEvery: 10,        // the slot machines pay out a pack of monsters this often...
-    addsPack: 3,
-    addsMax: 12,          // ...unless there are already this many about
-    drinkEvery: 28,       // seconds between drinks on the bar
+    addsEvery: 6,        // the slot machines pay out a pack of monsters this often...
+    addsPack: 5,
+    addsMax: 20,          // ...unless there are already this many about
+    drinkEvery: 40,
+    // The fight is three hands (see houseBoss in enemies/horde.js).
+    stages: {
+      second: 0.66,       // how much of his health is left when the second hand begins...
+      third: 0.33,        // ...and the third
+      guard: 2.6,         // seconds between hands when nothing can hurt him
+      lungeEvery: 9,      // (from the second hand) seconds between his runs at you
+      slamTell: 0.75,     // how long his arms are up before the slam
+      slamRadius: 11,     // how far it reaches (m): be in the air when it lands
+      slamDamage: 26,
+      rainEvery: 0.7,     // (the third hand) seconds between chips off the ceiling
+      lastHand: 0.12,     // how much of his health is left when he bets it all
+      lastTime: 7,        // how long the storm of cards lasts
+      spentTime: 5,       // how long he stands spent after it (taking double); not dead by then, he deals it again
+    },       // seconds between drinks on the bar
     drinkHeal: 30,
     drinkFrenzy: 8,       // seconds of double fire rate with it
   },

@@ -8,7 +8,7 @@ function canvas(size, paint) {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = 16;
   return tex;
 }
 
@@ -38,33 +38,90 @@ function blotches(g, size, count, alpha) {
   }
 }
 
-// Neutral ground detail. The ground mesh tints it grey (concrete) or green
-// (grass) per vertex, so one texture serves the whole world.
-export function groundTexture() {
-  return canvas(512, (g, s) => {
-    g.fillStyle = '#c9c9c9';
-    g.fillRect(0, 0, s, s);
-    blotches(g, s, 40, 0.07);
-    g.strokeStyle = 'rgba(40,40,40,0.25)';
-    g.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      let x = Math.random() * s, y = Math.random() * s;
-      g.beginPath(); g.moveTo(x, y);
-      for (let k = 0; k < 10; k++) { x += (Math.random() - 0.5) * 50; y += Math.random() * 30; g.lineTo(x, y); }
-      g.stroke();
+// The bumps of a surface, read off its picture (what is dark in it is taken to be deep: a crack, a joint, a pit), as
+// a normal map the light can catch on. strength: how deep. It tiles as the picture does.
+export function relief(tex, strength = 2) {
+  const src = tex.image, s = src.width, h = src.height;
+  const from = src.getContext('2d').getImageData(0, 0, s, h).data, lum = new Float32Array(s * h);
+  for (let i = 0; i < s * h; i++) lum[i] = (from[i * 4] * 0.3 + from[i * 4 + 1] * 0.59 + from[i * 4 + 2] * 0.11) / 255;
+  const c = document.createElement('canvas');
+  c.width = s; c.height = h;
+  const g = c.getContext('2d'), img = g.createImageData(s, h), d = img.data;
+  const at = (x, y) => lum[((y + h) % h) * s + ((x + s) % s)];
+  for (let y = 0; y < h; y++) for (let x = 0; x < s; x++) {
+    // (a wide and a narrow difference together: the shape of the thing, and its grain)
+    const dx = (at(x + 1, y) - at(x - 1, y)) * 0.6 + (at(x + 3, y) - at(x - 3, y)) * 0.4, dy = (at(x, y + 1) - at(x, y - 1)) * 0.6 + (at(x, y + 3) - at(x, y - 3)) * 0.4;
+    const nx = -dx * strength, ny = dy * strength, k = 1 / Math.hypot(nx, ny, 1), i = (y * s + x) * 4;
+    d[i] = (nx * k * 0.5 + 0.5) * 255; d[i + 1] = (ny * k * 0.5 + 0.5) * 255; d[i + 2] = (k * 0.5 + 0.5) * 255; d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const out = new THREE.CanvasTexture(c);
+  out.wrapS = out.wrapT = THREE.RepeatWrapping;
+  out.repeat.copy(tex.repeat);
+  out.anisotropy = 16;
+  return out;
+}
+
+// A crack: a dark line that wanders, forks, and thins out. Drawn wrapped, so the picture still tiles.
+function crack(g, size, x, y, angle, length, width, depth = 0) {
+  for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) {
+    let px = x + ox, py = y + oy, a = angle;
+    const seed = Math.sin(x * 12.9898 + y * 78.233 + depth) * 43758.5453;
+    let r = seed - Math.floor(seed);
+    const rnd = () => (r = (r * 16807 + 0.1) % 1);
+    g.beginPath(); g.moveTo(px, py);
+    const steps = Math.ceil(length / 7);
+    for (let k = 0; k < steps; k++) { a += (rnd() - 0.5) * 1.1; px += Math.cos(a) * 7; py += Math.sin(a) * 7; g.lineTo(px, py); }
+    g.lineWidth = width; g.stroke();
+  }
+  if (depth < 2 && length > 40) for (let k = 0; k < 2; k++) crack(g, size, x + Math.cos(angle) * length * (0.3 + 0.3 * k), y + Math.sin(angle) * length * (0.3 + 0.3 * k), angle + (k ? 1 : -1) * (0.6 + Math.random() * 0.6), length * 0.5, width * 0.6, depth + 1 + k * 0.1);
+}
+
+// Pits, pebbles and flecks: small round marks, dark with a light lip (so they read as hollows) or the other way (as bumps).
+function specks(g, size, count, rMin, rMax, hollow = true) {
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * size, y = Math.random() * size, r = rMin + Math.random() * (rMax - rMin);
+    for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) {
+      if (x + ox < -r || x + ox > size + r || y + oy < -r || y + oy > size + r) continue;
+      g.fillStyle = hollow ? 'rgba(20,20,20,0.5)' : 'rgba(235,235,230,0.45)';
+      g.beginPath(); g.arc(x + ox, y + oy, r, 0, 7); g.fill();
+      g.fillStyle = hollow ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.3)';
+      g.beginPath(); g.arc(x + ox + r * 0.35, y + oy + r * 0.35, r * 0.7, 0, 7); g.fill();
     }
-    grain(g, s, 34);
+  }
+}
+
+// Neutral ground detail. The ground mesh tints it grey (concrete) or green
+// (grass) per vertex, so one texture serves the whole world. Old, cracked, pitted and stained.
+export function groundTexture() {
+  return canvas(1024, (g, s) => {
+    g.fillStyle = '#c4c4c2';
+    g.fillRect(0, 0, s, s);
+    blotches(g, s, 70, 0.08);
+    specks(g, s, 900, 0.6, 2.2, true);
+    specks(g, s, 260, 1, 3.2, false);
+    g.strokeStyle = 'rgba(25,25,25,0.5)';
+    for (let i = 0; i < 5; i++) crack(g, s, Math.random() * s, Math.random() * s, Math.random() * 6.28, 160 + Math.random() * 220, 1.5);
+    g.strokeStyle = 'rgba(40,40,40,0.3)';
+    for (let i = 0; i < 26; i++) crack(g, s, Math.random() * s, Math.random() * s, Math.random() * 6.28, 30 + Math.random() * 70, 1);
+    // old stains, spreading from where something dripped
+    for (let i = 0; i < 14; i++) {
+      const x = Math.random() * s, y = Math.random() * s, r = 20 + Math.random() * 60, grad = g.createRadialGradient(x, y, r * 0.3, x, y, r);
+      grad.addColorStop(0, 'rgba(60,55,45,0.2)'); grad.addColorStop(0.8, 'rgba(60,55,45,0.1)'); grad.addColorStop(1, 'rgba(60,55,45,0)');
+      g.fillStyle = grad; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    grain(g, s, 30);
   });
 }
 
 // Moon dust: grey, grainy, blotched, and pocked with little craters (a dark hollow with a bright far edge).
 export function regolithTexture() {
-  return canvas(1024, (g, s) => {
+  return canvas(2048, (g, s) => {
     g.fillStyle = '#b9b8ba';
     g.fillRect(0, 0, s, s);
-    blotches(g, s, 90, 0.09);
-    for (let i = 0; i < 260; i++) {
-      const x = Math.random() * s, y = Math.random() * s, r = 2 + Math.random() * Math.random() * 26;
+    blotches(g, s, 160, 0.09);
+    for (let i = 0; i < 620; i++) {
+      const x = Math.random() * s, y = Math.random() * s, r = 2 + Math.random() * Math.random() * 44;
       for (const [ox, oy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {   // (wrapped copies: it tiles)
         g.fillStyle = 'rgba(40, 40, 46, 0.22)';
         g.beginPath(); g.arc(x + ox, y + oy, r, 0, Math.PI * 2); g.fill();
@@ -74,7 +131,7 @@ export function regolithTexture() {
         g.beginPath(); g.arc(x + ox, y + oy, r * 0.92, 2.6, 5); g.stroke();
       }
     }
-    for (let i = 0; i < 1400; i++) {   // stones
+    for (let i = 0; i < 7000; i++) {   // stones
       g.fillStyle = Math.random() < 0.5 ? 'rgba(30, 30, 34, 0.35)' : 'rgba(235, 235, 240, 0.3)';
       g.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 2.5, 1 + Math.random() * 2);
     }
@@ -148,48 +205,104 @@ export function lavaTexture() {
   });
 }
 
-// Smooth ramp concrete: no joints.
+// Smooth ramp concrete: no joints. Poured in boards (the faint lines of them), pored, and scuffed by wheels.
 export function rampTexture() {
-  return canvas(256, (g, s) => {
+  return canvas(512, (g, s) => {
     g.fillStyle = '#9a9994';
     g.fillRect(0, 0, s, s);
-    blotches(g, s, 14, 0.05);
-    grain(g, s, 18);
+    blotches(g, s, 26, 0.06);
+    for (let y = 0; y < s; y += s / 8) { g.fillStyle = 'rgba(0,0,0,0.07)'; g.fillRect(0, y, s, 2); g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(0, y + 2, s, 1); }
+    specks(g, s, 500, 0.5, 1.6, true);
+    g.strokeStyle = 'rgba(20,20,22,0.16)';   // wheel marks: long, nearly straight, in sheaves
+    for (let i = 0; i < 30; i++) { const x = Math.random() * s, lean = (Math.random() - 0.5) * 60; g.lineWidth = 1 + Math.random() * 2; g.beginPath(); g.moveTo(x, -10); g.lineTo(x + lean, s + 10); g.stroke(); }
+    g.strokeStyle = 'rgba(30,30,30,0.35)';
+    for (let i = 0; i < 4; i++) crack(g, s, Math.random() * s, Math.random() * s, Math.random() * 6.28, 60 + Math.random() * 80, 1);
+    grain(g, s, 20);
   });
 }
 
-// Stone block wall.
+// Stone block wall: coursed blocks of different lengths, deep joints, some cracked through, moss in the joints and
+// creeping up from the foot, damp running down from the top.
 export function stoneWallTexture() {
-  return canvas(512, (g, s) => {
-    g.fillStyle = '#3d3c3a';
+  return canvas(1024, (g, s) => {
+    g.fillStyle = '#1f1e1c';   // (the mortar: deep in the joints)
     g.fillRect(0, 0, s, s);
-    const rows = 8, h = s / rows;
+    const rows = 10, h = s / rows;
     for (let r = 0; r < rows; r++) {
-      const cols = 4, w = s / cols, off = r % 2 ? w / 2 : 0;
-      for (let c = -1; c <= cols; c++) {
-        const v = 95 + Math.random() * 45;
-        g.fillStyle = `rgb(${v},${v * 0.98},${v * 0.94})`;
-        g.fillRect(c * w + off + 3, r * h + 3, w - 6, h - 6);
+      let x = -(r % 2) * 60 - Math.random() * 40;
+      while (x < s) {
+        const w = 90 + Math.random() * 110, v = 88 + Math.random() * 55, inset = 4 + Math.random() * 2;
+        for (const ox of [0, -s]) {
+          g.fillStyle = `rgb(${v},${v * 0.97},${v * 0.92})`;
+          g.beginPath(); g.roundRect(x + ox + inset, r * h + inset, w - inset * 2, h - inset * 2, 5); g.fill();
+          g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + ox + inset, r * h + inset, w - inset * 2, 3);            // light on its top edge
+          g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + ox + inset, (r + 1) * h - inset - 4, w - inset * 2, 4);       // shadow under it
+        }
+        if (Math.random() < 0.22) { g.strokeStyle = 'rgba(15,15,15,0.7)'; crack(g, s, x + w * (0.3 + Math.random() * 0.4), r * h + 4, 1.57 + (Math.random() - 0.5) * 0.8, h, 1.6, 2); }
+        x += w;
       }
     }
-    blotches(g, s, 30, 0.1);
-    // moss creeping up from the bottom of each tile
-    const moss = g.createLinearGradient(0, s * 0.55, 0, s);
+    specks(g, s, 700, 0.8, 2.6, true);
+    blotches(g, s, 50, 0.1);
+    for (let i = 0; i < 160; i++) {   // moss: in clumps along the joints
+      const x = Math.random() * s, y = Math.round(Math.random() * rows) * h + (Math.random() - 0.5) * 14, r = 4 + Math.random() * 12;
+      g.fillStyle = `rgba(${52 + Math.random() * 30},${78 + Math.random() * 30},40,0.4)`;
+      g.beginPath(); g.ellipse(x, y, r * 1.8, r, 0, 0, 7); g.fill();
+    }
+    const moss = g.createLinearGradient(0, s * 0.6, 0, s);
     moss.addColorStop(0, 'rgba(50,70,40,0)');
-    moss.addColorStop(1, 'rgba(50,70,40,0.35)');
+    moss.addColorStop(1, 'rgba(50,70,40,0.3)');
     g.fillStyle = moss;
     g.fillRect(0, 0, s, s);
-    grain(g, s, 26);
+    for (let i = 0; i < 26; i++) {   // damp, running down
+      const x = Math.random() * s, w = 6 + Math.random() * 16, len = s * (0.2 + Math.random() * 0.5), run = g.createLinearGradient(0, 0, 0, len);
+      run.addColorStop(0, 'rgba(10,12,10,0.3)'); run.addColorStop(1, 'rgba(10,12,10,0)');
+      g.fillStyle = run; g.fillRect(x, 0, w, len);
+    }
+    grain(g, s, 24);
   });
 }
 
-// Plain weathered stone for headstones and crypts.
+// Weathered stone for headstones and crypts: pitted, chipped, streaked by rain, with lichen on it.
 export function stoneTexture() {
-  return canvas(256, (g, s) => {
+  return canvas(512, (g, s) => {
     g.fillStyle = '#8b8a84';
     g.fillRect(0, 0, s, s);
-    blotches(g, s, 30, 0.12);
+    blotches(g, s, 44, 0.12);
+    specks(g, s, 650, 0.5, 2.4, true);
+    for (let i = 0; i < 34; i++) {   // rain streaks
+      const x = Math.random() * s, w = 3 + Math.random() * 9, y = Math.random() * s * 0.5, len = s * (0.25 + Math.random() * 0.5), run = g.createLinearGradient(0, y, 0, y + len);
+      const dark = Math.random() < 0.7;
+      run.addColorStop(0, dark ? 'rgba(25,26,24,0.28)' : 'rgba(225,225,215,0.2)'); run.addColorStop(1, 'rgba(25,26,24,0)');
+      g.fillStyle = run; g.fillRect(x, y, w, len);
+    }
+    for (let i = 0; i < 70; i++) {   // lichen: pale green-grey and mustard rosettes
+      const x = Math.random() * s, y = Math.random() * s, r = 3 + Math.random() * 11, yellow = Math.random() < 0.3;
+      g.fillStyle = yellow ? 'rgba(170,150,60,0.35)' : 'rgba(120,140,105,0.38)';
+      for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(x + (Math.random() - 0.5) * r, y + (Math.random() - 0.5) * r, r * (0.4 + Math.random() * 0.5), 0, 7); g.fill(); }
+    }
+    g.strokeStyle = 'rgba(20,20,20,0.5)';
+    for (let i = 0; i < 5; i++) crack(g, s, Math.random() * s, Math.random() * s, Math.random() * 6.28, 60 + Math.random() * 120, 1.3);
     grain(g, s, 30);
+  });
+}
+
+// A supply crate's side: pressed steel panels, ribbed, riveted, scuffed, with its markings stencilled on.
+export function crateTexture() {
+  return canvas(1024, (g, s) => {
+    g.fillStyle = '#b4b8bf'; g.fillRect(0, 0, s, s);
+    blotches(g, s, 40, 0.07);
+    for (let i = 0; i < 8; i++) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(i * s / 8 + s / 16 - 9, 0, 6, s); g.fillStyle = 'rgba(255,255,255,0.2)'; g.fillRect(i * s / 8 + s / 16 - 3, 0, 4, s); }   // ribs
+    g.strokeStyle = 'rgba(20,22,26,0.55)'; g.lineWidth = 10; g.strokeRect(14, 14, s - 28, s - 28);
+    for (let i = 0; i < 16; i++) for (const [x, y] of [[40 + i * (s - 80) / 15, 40], [40 + i * (s - 80) / 15, s - 40], [40, 40 + i * (s - 80) / 15], [s - 40, 40 + i * (s - 80) / 15]]) { g.fillStyle = 'rgba(30,32,36,0.6)'; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.arc(x - 2, y - 2, 3, 0, 7); g.fill(); }
+    g.save(); g.translate(s / 2, s * 0.2); g.fillStyle = '#d9a52a'; g.fillRect(-s * 0.36, -34, s * 0.72, 68); g.fillStyle = '#1b1c1f';
+    for (let x = -s * 0.36; x < s * 0.36; x += 70) { g.beginPath(); g.moveTo(x, 34); g.lineTo(x + 35, 34); g.lineTo(x + 70, -34); g.lineTo(x + 35, -34); g.fill(); } g.restore();   // a hazard band
+    g.fillStyle = 'rgba(24,26,30,0.85)'; g.textAlign = 'center'; g.font = '900 120px Impact, sans-serif'; g.fillText('DEADSLIDE', s / 2, s * 0.52);
+    g.font = '700 54px "Arial Black", sans-serif'; g.fillText('LUNAR SUPPLY  \u00b7  07', s / 2, s * 0.64);
+    g.font = '700 40px "Arial Black", sans-serif'; g.fillText('BOOF  \u2014  KEEP DRY  \u2014  THIS WAY UP \u2191', s / 2, s * 0.8);
+    g.strokeStyle = 'rgba(40,40,44,0.35)'; g.lineWidth = 2;
+    for (let i = 0; i < 90; i++) { const x = Math.random() * s, y = Math.random() * s; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 160, y + (Math.random() - 0.5) * 30); g.stroke(); }   // scuffs
+    grain(g, s, 22);
   });
 }
 

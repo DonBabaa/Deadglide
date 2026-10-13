@@ -9,6 +9,11 @@
 // quarter pipe, so the edge of the map throws you back in, and there is a rail
 // to grind all the way round its lip.
 //
+// All of it is under glass: a dome over the whole crater (DOME), a moon base big enough to ride in. Things hang
+// from it: rails over the lip of the wall, a ring round the top of Mons, and, from right under the top of it, the
+// Helter: a rail that winds three times round the Base on its way down, through hoops, which only the Geyser in the
+// middle of the Base gets you up to.
+//
 // What stands on it (fillMoon): the Base in the middle (a lander, habitat
 // modules to ride as ledges, solar banks as kickers, pipes and cables as rails),
 // the Launch Pad (one huge kicker aimed over the ridge), a comms tower with a
@@ -31,7 +36,12 @@ export const MOON = {
   plaza: 34,           // the ground is level within this far of the middle (the Base stands here)
   ventKick: 15,        // how fast a gas vent throws you upward (m/s)
   ventRadius: 2.4,
+  apron: 34,           // this far in from the foot of the wall, the ground has smoothed out: nothing but the big swells of it, so that the wall is one clean bowl all the way round
 };
+// The glass over it all: half an egg, `radius` across at the ground and `height` at its top (high enough to clear
+// Mons and the wall behind it, which stand far above the rest). domeAt: how high the glass is over a place.
+export const DOME = { radius: 286, height: 142 };
+export const domeAt = (x, z) => DOME.height * Math.sqrt(Math.max(0, 1 - ((x - MOON.x) ** 2 + (z - MOON.z) ** 2) / (DOME.radius * DOME.radius)));
 const SEED = 1969, CHUNK = 96;
 const LIP_OUT = MOON.wall * 0.95, LIP_UP = MOON.wall - Math.sqrt(MOON.wall * MOON.wall - LIP_OUT * LIP_OUT);   // where the wall goes sheer: how far out, how far up
 export const WALL_AT = MOON.radius - MOON.wall + LIP_OUT;   // ...measured from the middle
@@ -95,8 +105,10 @@ for (let tries = 0; tries < 400 && CRATERS.length < 38; tries++) {
 // wall's lip is left out (arena.js stands a proper wall there instead of stretching the ground up it).
 export function moonHeight(x, z, drawn = false) {
   const dx = x - MOON.x, dz = z - MOON.z, dist = Math.hypot(dx, dz);
+  // (near the wall the small things die away: 1 out on the plain, 0 from a little before the wall's foot)
+  const rough = 1 - smooth((dist - (MOON.radius - MOON.wall - MOON.apron)) / (MOON.apron - 8));
   // Rolling ground: broad swells, hills, and small lumps on top.
-  let h = layer(x, z, 170, SEED) * 7 + layer(x, z, 70, SEED + 1) * 3 + layer(x, z, 26, SEED + 2) * 0.7;
+  let h = layer(x, z, 170, SEED) * 7 + (layer(x, z, 70, SEED + 1) * 3 + layer(x, z, 26, SEED + 2) * 0.7) * rough;
   // The highlands, climbing to Mons.
   const M = MOON.mons, B = MOON.basin, R = MOON.ridge;
   h += M.height * Math.exp(-(((dx - M.x) ** 2 + (dz - M.z) ** 2) / (M.spread * M.spread)));
@@ -111,11 +123,11 @@ export function moonHeight(x, z, drawn = false) {
     const c = CRATERS[i], cx = dx - c.x, cz = dz - c.z, d2 = cx * cx + cz * cz, reach = c.r * 1.9;
     if (d2 > reach * reach) continue;
     const d = Math.sqrt(d2) / c.r;
-    if (d < 1) h -= c.depth * (1 - d * d) ** 1.4;
-    h += c.rim * Math.exp(-(((d - 1) / 0.22) ** 2));
+    if (d < 1) h -= c.depth * (1 - d * d) ** 1.4 * rough;
+    h += c.rim * Math.exp(-(((d - 1) / 0.22) ** 2)) * rough;
   }
   // The Snake Run and the Rille.
-  for (let i = 0; i < CHANNELS.length; i++) h -= cut(CHANNELS[i], dx, dz);
+  for (let i = 0; i < CHANNELS.length; i++) h -= cut(CHANNELS[i], dx, dz) * rough;
   // The wall round the arena: a quarter pipe, then sheer rock.
   const t = dist - (MOON.radius - MOON.wall);
   if (t > 0) h += t < LIP_OUT ? MOON.wall - Math.sqrt(MOON.wall * MOON.wall - t * t) : drawn || t < LIP_OUT + MOON.ledge ? LIP_UP : 90;
@@ -176,11 +188,75 @@ export const RIM_LENGTH = 2 * Math.PI * (WALL_AT - 0.5);
   for (let i = first; i < RAILS.length; i++) {
     const r = RAILS[i], mx = MOON.x - (r.ax + r.bx) / 2, mz = MOON.z - (r.az + r.bz) / 2, far = Math.hypot(mx, mz);
     r.rim = true;
+    r.easy = true;   // (it catches you from further off, and whichever way you come at it: see Skater.tryCatchRail)
+    r.wide = 7.5;    // (and from this far to either side of it, however high over it you are, you drift onto its line: ride straight up the wall and it is the rail you come down on, not the ledge behind it)
     r.exit = { x: mx / far, z: mz / far };
   }
 }
 // The Monorail: from high on Mons, straight down over the highlands to the edge of the Base.
 span(-138, -138, 3, -30, -30, 1.2, 22);
+
+// ---- What hangs from the glass ----
+// Rails in the air, hung from the dome on cables (marked `hung`, and `easy`: they catch you from further off than a
+// rail on the ground, because you are coming at them from a long way down). HOOPS: rings to go through,
+// { x, y, z, nx, ny, nz (which way through), r, pts (what one is worth), quiet (says nothing: there are a lot of
+// them in a row) }: main.js scores them.
+export const HOOPS = [];
+// A rail through points [x, z, y] (from the middle; y is a height in the world, not above the ground).
+function sky(points, loop = false) {
+  const made = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [ax, az, ay] = points[i], [bx, bz, by] = points[i + 1];
+    made.push(Object.assign(F.rail(MOON.x + ax, ay, MOON.z + az, MOON.x + bx, by, MOON.z + bz), { hung: true, easy: true }));
+  }
+  made.forEach((r, i) => { r.next = made[i + 1] || (loop ? made[0] : null); r.prev = made[i - 1] || (loop ? made[made.length - 1] : null); });
+  RAILS.push(...made);
+  return made;
+}
+const arc = (cx, cz, r, y, from, to, n) => Array.from({ length: n + 1 }, (_, i) => { const a = from + ((to - from) * i) / n; return [cx + Math.cos(a) * r, cz + Math.sin(a) * r, typeof y === 'function' ? y(a) : y]; });
+const hoop = (x, y, z, nx, ny, nz, r, more) => HOOPS.push({ x: MOON.x + x, y, z: MOON.z + z, nx, ny, nz, r, ...more });
+// Over the wall: four long rails a few metres above its lip and just inside it, each a sixth of the way round. Come
+// up the wall fast, and they are what you land on.
+for (const middle of [0.35, 1.75, 3.3, 5.6]) {
+  const r = WALL_AT - 1.6, y = (a) => moonHeight(MOON.x + Math.cos(a) * (WALL_AT - 3), MOON.z + Math.sin(a) * (WALL_AT - 3)) + 5.2;
+  sky(arc(0, 0, r, y, middle - 0.5, middle + 0.5, 44));
+}
+// The Crown: a ring round the top of Mons, an ollie off its slopes, the highest grind there is on the ground.
+{
+  const M = MOON.mons, top = moonHeight(MOON.x + M.x, MOON.z + M.z);
+  sky(arc(M.x, M.z, 11, top + 0.9, 0, Math.PI * 2, 40), true);
+}
+// The Geyser, in the middle of the Base: ride over it and it throws you to the top of the dome, up through three
+// hoops, each wider than the last, and onto the Helter: a rail hung from the glass, which starts as a ring right
+// under it and winds outward and down, three times round the Base and through a hoop every so often, to let you off
+// a couple of metres over the ground. Whichever way you were going when you crossed the Geyser, it is the Helter's
+// top turn you come up to: GEYSER.aim says where that turn is on a bearing, and main.js throws you at it.
+//   turns: times round; from, to: how far out it starts and ends; lead: it starts this much of a turn early (so that
+//   coming up at its very start is still coming up at rail); power: how late it leaves its height (higher: later);
+//   start: the bearing it starts on; piece: how long each straight piece of it is.
+const HELTER = { turns: 3, from: 30, to: 72, lead: 0.05, power: 2.8, start: 0.6, piece: 4.5 };
+export const GEYSER = { x: MOON.x + 16, z: MOON.z - 20, radius: 3.4, reach: DOME.height - 13 };   // reach: how high it throws you (m above its mouth)
+{
+  const gx = GEYSER.x - MOON.x, gz = GEYSER.z - MOON.z, ground = moonHeight(GEYSER.x, GEYSER.z), top = ground + GEYSER.reach, H = HELTER;
+  const angle = (u) => H.start + Math.PI * 2 * H.turns * u, out = (u) => H.from + (H.to - H.from) * u;   // (u: 0 at its start, 1 at its end)
+  const end = moonHeight(GEYSER.x + Math.cos(angle(1)) * H.to, GEYSER.z + Math.sin(angle(1)) * H.to) + 2.4;
+  const high = (u) => top - (top - end) * Math.max(0, u) ** H.power;
+  GEYSER.aim = (bearing) => { const u = (((((bearing - H.start) / (Math.PI * 2)) % 1) + 1) % 1) / H.turns; return { r: out(u), y: high(u) }; };
+  const points = [], marks = [];
+  for (let u = -H.lead / H.turns, gone = 0, mark = 70; ; ) {
+    const a = angle(u), r = out(u), x = gx + Math.cos(a) * r, z = gz + Math.sin(a) * r, y = Math.max(high(u), moonHeight(MOON.x + x, MOON.z + z) + 2.4);
+    points.push([x, z, y]);
+    if (u >= 1) break;
+    if (u > 0 && (gone += H.piece) >= mark) { mark += 95; marks.push([x, z, y, a]); }
+    u = Math.min(1, u + H.piece / (Math.PI * 2 * H.turns * r));
+  }
+  for (const r of sky(points)) r.flow = 1;   // (come at it square on, as the Geyser brings you, and you go the way it runs: down)
+  for (const [x, z, y, a] of marks) hoop(x, y + 1, z, -Math.sin(a), 0, Math.cos(a), 2.7, { pts: 300, quiet: true });   // (stood on the rail: grind it and you thread them)
+  for (const [up, r] of [[0.3, 9], [0.55, 17], [0.8, 27]]) hoop(gx, ground + GEYSER.reach * up, gz, 0, 1, 0, r, { pts: 500 });
+}
+// A hoop over each of three vents, as high as a vent throws you, and one off the end of the Launch Pad.
+for (const [x, z] of [[32, 32], [-62, 58], [150, 62]]) hoop(x, moonHeight(MOON.x + x, MOON.z + z) + 3.4, z, 0, 1, 0, 3.2);
+hoop(115, moonHeight(MOON.x + 115, MOON.z - 128) + 9.5, -112, 0, 0, 1, 4.6);
 
 // The Base.
 PROPS.push(
@@ -220,6 +296,7 @@ PROPS.push(F.kicker({ ...at(205, 68), facing: 90, width: 9, radius: 12, angle: 3
 for (let n = 0, tries = 0; n < 22 && tries < 300; tries++) {
   const a = dice() * Math.PI * 2, d = 55 + dice() * 150, x = Math.cos(a) * d, z = Math.sin(a) * d, facing = dice() * 360, size = dice();
   if (CRATERS.some((c) => Math.hypot(c.x - x, c.z - z) < c.r * 1.25) || CHANNELS.some((ch) => cut(ch, x, z) > 0)) continue;
+  if (d > MOON.radius - MOON.wall - MOON.apron - 6) continue;   // (the run-in to the wall is left clear)
   PROPS.push(Object.assign(F.kicker({ ...at(x, z), facing, width: 3.5 + size * 3, radius: 5 + size * 4, angle: 32 + size * 8 }), { kind: 'slab' }));
   n++;
 }
@@ -249,8 +326,12 @@ export function fillMoon(c) {
     }
     if (highX >= c.x0 && lowX < x1 && highZ >= c.z0 && lowZ < z1) c.props.push(p);
   }
+  // (`near`: those, and the rim's pieces just over the chunk's edge: it reaches for you from further than its own width)
+  const near = [];
   for (const r of RAILS) {
     const inside = (x, z) => x >= c.x0 && x < x1 && z >= c.z0 && z < z1;
     if (inside(r.ax, r.az) || inside(r.bx, r.bz)) c.rails.push(r);
+    else if (r.wide && Math.max(r.ax, r.bx) > c.x0 - 9 && Math.min(r.ax, r.bx) < x1 + 9 && Math.max(r.az, r.bz) > c.z0 - 9 && Math.min(r.az, r.bz) < z1 + 9) near.push(r);
   }
+  if (near.length) c.near = c.rails.concat(near);
 }

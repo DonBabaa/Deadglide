@@ -1181,6 +1181,10 @@ export class CasinoRoom {
     k.root.position.set(who.pos.x, lerp(Math.abs(Math.sin(who.walk)) * 0.04 * moving, STOOL_Y - 0.83, sat), who.pos.z);
     k.root.rotation.set(0, who.yaw, 0);
     k.root.visible = true;
+    // (on his feet: motion capture. Standing, walking, or running if he is in a hurry. Sat down, he is posed by hand.)
+    // His arms too, unless one of them is busy (a glass, a drag, a lever, a win).
+    const busy = Math.max(who.sip || 0, who.drag || 0, who.reach || 0, who.cheer || 0, who.hic || 0, who.heave || 0) > 0.01 || who.glass > 0;
+    if (sat < 0.3) k.play?.(Math.abs(who.speed) > C.walkSpeed * 1.35 ? 'run' : moving > 0.12 ? 'walk' : Math.floor(this.time / 11 + who.pos.x) % 2 ? 'idle2' : 'idle', 1 - sat * 3, moving > 0.12 ? 0.6 + 0.6 * moving : 1, undefined, !busy);
     k.frontLeg.rotation.x = lerp(swing, -1.5, sat);
     k.backLeg.rotation.x = lerp(-swing, -1.5, sat);
     k.frontLeg.knee.rotation.x = lerp(Math.max(0, -swing) * 1.3, 1.4, sat);   // on foot, the trailing knee bends
@@ -1217,7 +1221,7 @@ export class CasinoRoom {
         model.rider.position.y = 0;
         model.rider.rotation.y = 0;
         for (const id in model.guns) model.guns[id].group.visible = false;
-        try { model.applyLook({ hoodie: '#7a2f2b', beanie: '#24262c', deck: 'wood', wheels: '#e9e4d4', smoke: 'cigarette', ...p.look, goldGuns: new Set() }); } catch {}
+        try { model.applyLook({ hoodie: '#7a2f2b', beanie: 'none', deck: 'wood', wheels: '#e9e4d4', smoke: 'cigarette', ...p.look, goldGuns: new Set() }); } catch {}
         const tag = sign([p.name], 0.95, 0.22, { size: 0.62, color: '#f3efe4', board: 'rgba(12, 12, 14, 0.7)' });
         tag.material.transparent = true;
         this.scene.add(tag);

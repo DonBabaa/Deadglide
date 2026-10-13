@@ -3,21 +3,22 @@
 // He wears a hoodie with the hood up over a beanie, belted jeans and black
 // Vans-style skate shoes, and he is never without a cigarette.
 import * as THREE from 'three';
+import { realGuns } from './gunModels.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { config } from '../config.js';
 import { glowTexture } from '../world/textures.js';
 import { hoodieTexture, denimTexture, ribTexture, canvasTexture, deckTexture, emblemTexture } from './kirkyTextures.js';
 import { buildGuns } from './gunModels.js';
 import { COSTUMES, buildMask, buildPack, mouthOf } from './costumes.js';
-import { tube as skinTube, lump, sculpt, dent, rough, fineHand } from '../enemies/sculpt.js';
+import { tube as skinTube, lump, sculpt, dent, fineHand } from '../enemies/sculpt.js';
 import { whenBody, attachBody } from './kirkyBody.js';
 
 const TAU = Math.PI * 2;
 const x = new THREE.Vector3(), z = new THREE.Vector3(), basis = new THREE.Matrix4();
-const Z = new THREE.Vector3(0, 0, 1), local = new THREE.Vector3();
-const qInv = new THREE.Quaternion(), qAim = new THREE.Quaternion();
+const local = new THREE.Vector3();
+const qInv = new THREE.Quaternion(), qAim = new THREE.Quaternion(), ORIGIN = new THREE.Vector3();
 const REST = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.2, 0.5, 0));   // gun arm hanging at the side
-const REST_TWO_HANDED = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0.2, 0));   // long guns: carried low across the body
+const REST_TWO_HANDED = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.26, 0.2, 0));   // long guns: carried low across the body (not so low that the longest of them is in the ground)
 const UP = new THREE.Vector3(0, 1, 0), grip = new THREE.Vector3();
 const ease = (t) => t * t * (3 - 2 * t);
 const EMBER = new THREE.Color(0xff6a1a);
@@ -123,6 +124,11 @@ function crease(geo, middle, fold) {
 const bell = (x) => Math.exp(-x * x);
 const FLIP_PIVOT = 0.85;   // he flips about this height (his middle)
 const X_AXIS = new THREE.Vector3(1, 0, 0), flipQ = new THREE.Quaternion(), pivot = new THREE.Vector3();
+
+const qTuck = new THREE.Quaternion();
+// Where the snapped boof ends, which is where it burns: the middle of the last ring of its far half, which
+// tools/build_guns.py turns 0.8 rad up about the under side of the break (0.074 along it), and a touch beyond it.
+export const SNAPPED_END = new THREE.Vector3(0, 0.0325, 0.1006);
 
 export class SkaterModel {
   constructor(scene) {
@@ -478,6 +484,26 @@ export class SkaterModel {
     cig.add(this.ember);
     headIn.add(cig);
     this.cig = cig;
+    // The boof itself is modelled in Blender (a hand-rolled joint: tools/build_guns.py, in public/models/guns.glb), and
+    // takes the place of the built one when the file arrives: whole, snapped (his last one), and snapped in gold.
+    realGuns().then((scene) => {
+      if (!scene) return;
+      const found = {};
+      scene.traverse((o) => { const is = o.isMesh && o.name.match(/^(boof|boofbroken)_(Paper|Crutch|Ash)/); if (is) (found[is[1]] ||= []).push([is[2], o.geometry]); });
+      const ash = std(0x4a4744, 1), gold = std(0xffc233, 0.3), goldDark = std(0xb8860b, 0.3);
+      const swap = (kind, from, mats) => {
+        if (!found[from]) return;
+        const on = this.mouth[kind].some((m) => m.visible);
+        for (const old of this.mouth[kind]) cig.remove(old);
+        this.mouth[kind] = found[from].map(([finish, geometry]) => { const m = new THREE.Mesh(geometry, mats[finish]); m.castShadow = true; m.visible = on; cig.add(m); return m; });
+      };
+      swap('cigarette', 'boof', { Paper: paper, Crutch: filter, Ash: ash });
+      swap('broken', 'boofbroken', { Paper: paper, Crutch: filter, Ash: ash });
+      swap('goldbroken', 'boofbroken', { Paper: gold, Crutch: goldDark, Ash: goldDark });
+      // (The snapped one's far half is turned up from the break: tools/build_guns.py. Its ember sits on the end of that.)
+      this.realBoof = !!found.boofbroken;
+      this.placeEmber();
+    });
 
     const smokeTex = glowTexture();
     this.smoke = Array.from({ length: 70 }, () => {   // (enough for the big cloud after a HotBox)
@@ -583,16 +609,21 @@ export class SkaterModel {
     // Board tricks: the board flips under the feet while the rider tucks up.
     const trick = skater.trick, p = ease(skater.trickProgress);
     if (trick) this.board.rotation.set(trick.pitch * TAU * p, trick.yaw * TAU * p, trick.roll * TAU * p);
-    else this.board.rotation.set(this.grindPose[1], this.grindPose[0], 0);
+    this.air = skater.grounded || skater.grinding ? 0 : (this.air || 0) + dt;
+    const pop = !trick && this.air > 0 && this.air < 0.36 ? Math.sin((Math.PI * this.air) / 0.36) : 0;   // (0 -> 1 -> 0 over the first third of a second in the air)
+    if (!trick) this.board.rotation.set(this.grindPose[1] - 0.42 * pop, this.grindPose[0], 0);
+    this.pop = pop;
     // On a rail: the grind he is holding.
     const pose = skater.manual ? MANUAL_POSE : GRIND_POSES[skater.grinding ? skater.grindStyle || 0 : 0], easing = 1 - Math.exp(-16 * dt);
     for (let i = 0; i < 3; i++) this.grindPose[i] += (pose[i] - this.grindPose[i]) * easing;
     this.tilt.position.x = this.grindPose[2];
     const tuck = trick ? Math.sin(skater.trickProgress * Math.PI) : 0;
-    this.board.position.y = 0.142 + tuck * 0.12;
+    this.board.position.y = 0.142 + tuck * 0.12 + 0.05 * pop;
+    this.tuck = tuck;
     // He rides with his knees bent, and crouches by bending them further (and tucks them up through a trick): the
     // thighs go forward, the shins back by twice as much, so his feet stay under him, and he sinks by what that costs.
-    const bend = 0.3 + 0.55 * this.crouch + 0.35 * tuck;
+    // (a skater's stance: low, knees well bent and out over his toes, weight over the middle of the board)
+    const bend = 0.52 + 0.45 * this.crouch + 0.35 * tuck;
     this.frontLeg.rotation.x = this.backLeg.rotation.x = -bend;
     this.frontLeg.knee.rotation.x = this.backLeg.knee.rotation.x = 2 * bend;
     this.rider.position.y = 0.16 - (this.legLength ?? 0.865) * (1 - Math.cos(bend)) + tuck * 0.1;
@@ -600,19 +631,24 @@ export class SkaterModel {
     // Crouch: charging an ollie, mid-trick, or balancing on a rail.
     const crouchTarget = Math.max(skater.charge, skater.grinding ? 0.5 : 0, tuck * 0.5);
     this.crouch += (crouchTarget - this.crouch) * (1 - Math.exp(-18 * dt));
-    this.torso.rotation.x = 0.12 + 0.35 * this.crouch + 0.2 * speed01;
+    this.torso.rotation.x = 0.3 + 0.3 * this.crouch + 0.12 * speed01;   // (leaning in over his knees, chest toward his toes)   // (he stands up straight: chest up, shoulders back)
 
     // Kick-push: back leg swings down and back.
     const k = Math.min(1, skater.sinceKick / (config.skate.kickInterval * 0.8));
     this.backLeg.rotation.z = -Math.sin(k * Math.PI) * 0.9;
+    this.riding = performance.now();   // (he is on his board: his feet are kept on it, see kirkyBody.js)
+    this.kick = skater.grounded ? k : 1;   // (0 -> 1 through a push; 1: both feet on the board)
+    // He goes down into the push and leans over his front foot, and comes up out of it.
+    this.rider.position.y -= 0.07 * Math.sin(this.kick * Math.PI);
+    this.torso.rotation.x += 0.2 * Math.sin(this.kick * Math.PI);
 
     // His free arm: out from his side for balance, further the faster he goes; up when he is in the air; swinging
     // with the push; thrown the other way to a carve. (An emote, when one is playing, takes it over after this.)
     const air = skater.grounded ? 0 : 1, push = Math.sin(k * Math.PI);
     this.armOut ??= 0.3;
-    this.armOut += (0.28 + 0.3 * speed01 + 0.55 * air + 0.3 * tuck - this.armOut) * (1 - Math.exp(-8 * dt));
+    this.armOut += (0.85 + 0.2 * speed01 + 0.45 * air + 0.3 * tuck - this.armOut) * (1 - Math.exp(-8 * dt));   // (his arms are out from his sides for balance all the time he is riding)
     this.leftArm.rotation.set(-0.25 * this.crouch - 0.2 * air + 0.5 * push + Math.sin(this.time * 2.1) * 0.04, 0, -this.armOut + this.lean * 0.6);
-    this.leftFore.rotation.x = -(0.35 + 0.5 * this.crouch + 0.3 * air);
+    this.leftFore.rotation.x = -(0.45 + 0.4 * this.crouch + 0.3 * air);
     this.updateArm(dt, aimPoint, gunUp);
     this.updateSmoke(dt);
   }
@@ -674,16 +710,26 @@ export class SkaterModel {
     this.recoil *= Math.exp(-25 * dt);
     this.root.updateMatrixWorld();
     // Out straight to shoot (a little give in it for the kick); loose at his side otherwise. Both hands on a long gun: straight.
-    const elbow = this.twoHanded ? 0 : this.armed > 0 && aimPoint ? 0.1 + this.recoil * 1.6 : 0.5 + 0.25 * this.crouch;
+    // A long gun is held in to his body: his upper arm down along his ribs, his forearm (and the gun along it) out
+    // at what he is shooting, so that his other hand can get to its fore-end.
+    const tucked = this.twoHanded ? 1.25 : 0;
+    const elbow = this.twoHanded ? tucked + this.recoil * 0.8 : this.armed > 0 && aimPoint ? 0.1 + this.recoil * 1.6 : 0.5 + 0.25 * this.crouch;
+    qTuck.setFromAxisAngle(X_AXIS, tucked);
+    this.foreArm.rotation.y = this.foreArm.rotation.z = 0;   // (whatever kept it out of his body last frame turned it: it bends at the elbow, and that is all)
     this.foreArm.rotation.x += (-elbow - this.foreArm.rotation.x) * (1 - Math.exp(-(this.armed > 0 ? 28 : 9) * dt));
     if (this.armed > 0 && aimPoint) {
       this.gunArm.getWorldPosition(local);
       local.subVectors(aimPoint, local).normalize();
       local.y += this.recoil;
-      qAim.setFromUnitVectors(Z, local.normalize());
-      this.gunArm.quaternion.slerp(qInv.copy(this.root.quaternion).invert().multiply(qAim), 1 - Math.exp(-30 * dt));
+      // (In his own space, and the right way up: the shortest turn from "ahead" to where he is aiming rolls the gun
+      // over, and tucks his arm up instead of down, whenever that is back along the world's z: all the way down the
+      // Long Way Down, for one.)
+      local.normalize().applyQuaternion(qInv.copy(this.root.quaternion).invert());
+      if (Math.abs(local.y) > 0.98) local.z += 0.2;
+      qAim.setFromRotationMatrix(basis.lookAt(local, ORIGIN, UP));
+      this.gunArm.quaternion.slerp(qAim.multiply(qTuck), 1 - Math.exp(-30 * dt));
     } else {
-      this.gunArm.quaternion.slerp(this.twoHanded ? REST_TWO_HANDED : REST, 1 - Math.exp(-8 * dt));
+      this.gunArm.quaternion.slerp(this.twoHanded ? qInv.copy(REST_TWO_HANDED).multiply(qTuck) : REST, 1 - Math.exp(-8 * dt));
     }
     this.gunArm.updateMatrixWorld();
 
@@ -698,7 +744,7 @@ export class SkaterModel {
       this.supportArm.scale.y = reach / 0.516;   // (0.516 = the arm's own length)
     }
     this.muzzle.copy(this.gun.muzzle).add(HAND);
-    this.muzzle.z -= UPPER;
+    this.muzzle.z -= UPPER - (this.gripShift || 0);
     this.muzzle.applyMatrix4(this.foreArm.matrixWorld);
   }
 
@@ -749,10 +795,9 @@ export class SkaterModel {
     if (look.outfit !== this.look?.outfit) { this.packHolder.clear(); const pack = buildPack(look.outfit); if (pack) this.packHolder.add(pack); }
     if (look.mask !== this.look?.mask) { this.maskHolder.clear(); this.maskHolder.add(buildMask(look.mask)); }
     this.hood.visible = this.neckwear.visible = !masked;
-    const bare = look.beanie === 'none' || masked;
-    this.beanieDome.visible = this.brim.visible = !bare;
-    this.hair.visible = bare && !masked;
-    if (!bare && look.beanie !== this.look?.beanie) repaint(M.beanie, ribTexture(look.beanie));
+    // (no beanies any more: the slot they were in is his hat's now, see kirkyBody.js)
+    this.beanieDome.visible = this.brim.visible = false;
+    this.hair.visible = !masked;
     if (look.deck !== this.look?.deck) {
       repaint(M.wood, look.deck === 'wood' ? null : deckTexture(look.deck));
       M.wood.color.set(look.deck === 'wood' ? 0x9a6a3c : 0xffffff);
@@ -765,8 +810,8 @@ export class SkaterModel {
     for (const kind in this.mouth) for (const piece of this.mouth[kind]) piece.visible = kind === look.smoke;
     const snapped = look.smoke === 'broken' || look.smoke === 'goldbroken';
     this.smoking = this.ember.visible = (look.smoke === 'cigarette' || look.smoke === 'cigar' || look.smoke === 'pipe' || snapped);
-    this.ember.position.set(0, snapped ? -0.0375 : 0, snapped ? 0.117 : 0.132);   // (at the end of whatever it is)
-    this.emberSize = look.smoke === 'goldbroken' ? 0.55 : 1;   // (a small one on the gold cigarette: the gold is the point)
+    this.placeEmber(look.smoke);
+    this.emberSize = look.smoke === 'goldbroken' ? 0.9 : 1;   // (it fills the end of it: the snapped one is an open roll of paper there)
     this.look = { ...look };
     this.masked = masked;
     this.afterLook?.(masked);
@@ -779,6 +824,13 @@ export class SkaterModel {
     metal.color.set(gold ? 0xffc233 : 0x1b1d21);
     metal.emissive.set(gold ? 0x5a3a00 : 0x000000);
     metal.roughness = gold ? 0.3 : 0.45;
+  }
+
+  // The ember: at the end of whatever he is smoking.
+  placeEmber(smoke = this.look?.smoke) {
+    const snapped = smoke === 'broken' || smoke === 'goldbroken';
+    if (snapped && this.realBoof) this.ember.position.copy(SNAPPED_END);
+    else this.ember.position.set(0, snapped ? -0.0375 : 0, snapped ? 0.117 : 0.132);
   }
 
   setWeapon(def) {

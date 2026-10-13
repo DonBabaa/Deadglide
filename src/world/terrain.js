@@ -89,7 +89,7 @@ export const chunkAt = (x, z) => getChunk(Math.floor(x / CHUNK), Math.floor(z / 
 
 export const heightAt = (x, z) => chunkHeight(chunkAt(x, z), x, z);
 export const groundAt = (x, z) => chunkBase(chunkAt(x, z), x, z);   // the land alone, ignoring props
-export const railsNear = (x, z) => chunkAt(x, z).rails;
+export const railsNear = (x, z) => { const c = chunkAt(x, z); return c.near || c.rails; };
 
 const E = 0.03;      // finite-difference distance
 const CLIFF = 8;     // slopes steeper than this are drops/walls, not ground

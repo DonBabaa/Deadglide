@@ -1,13 +1,58 @@
 kirky.glb — Kirky's body
 
-Built with MakeHuman / MPFB (http://www.makehumancommunity.org) by tools/build_kirky.py.
+The man in the fedora: Mixamo's "Boss" character (https://www.mixamo.com, Adobe), as he comes inside the clips
+downloaded from there. tools/build_kirky.py stands him as he was made, sizes him, names his skeleton and his
+pieces for the game and takes his cigar out; nothing else of him is changed. His hats (the shop's fedoras) are his
+own hat's picture recoloured by the game (src/player/kirkyBody.js).
 
-  Body, skin, eyes, eyebrows, teeth, hair   MakeHuman system assets — CC0
-  T-shirt                                   "elvs_crude_t-shirt_male" by MakeHuman, edited by Elvaerwyn — CC0
-  Trousers                                  "toigo_wool_pants" by MRT — CC0
-  Skate shoes                               "elvs_zombie_killer_sneakers" by Elvaerwyn — CC-BY
+kirky_skater.glb — a second Kirky, kept as a spare skin (not loaded by the game)
 
-The shoes (CC-BY) were adapted for the game: thinned out, their texture resized and repainted black on white
-rubber, with a white stripe added down each side. The CC0 pieces were reshaped and recoloured too (the shirt cut
-longer and looser, the trousers cut wide with turn-ups and dyed khaki, the hair shortened and darkened).
-The print on the shirt is the game's own, drawn in src/player/kirkyBody.js.
+Built by tools/build_kirky_skater.py from a skater model downloaded from Sketchfab by the project's owner (a
+MakeHuman character with a skateboard). WHO MADE IT AND UNDER WHICH LICENCE STILL HAS TO BE WRITTEN HERE before
+this file is used for anything: the download page has both. The script recuts his clothes, paints out the print on
+his shirt and the maker's marks on his shoes, builds his hair, and adds headphones, glasses and a backpack of its own.
+
+kirky_anims.glb, kirky_anims.json — how Kirky moves
+mob_anims.json — how the monsters move
+
+Motion capture from Mixamo (https://www.mixamo.com, Adobe): riding, pushing, walking, running, sitting, aiming,
+falling, dying and the rest for Kirky; the zombies' sprint, attack, scream, climb and death, the mutant's walk, roar,
+swipe, turns, jump and jump attack for the bosses, a throw, a card deal, a man going through something with both
+hands (Goyitus Ultimus, reaching), and the one clip each that Hamzitus's and Rubistus's own characters came with.
+Refitted to the game's own skeletons and parts by tools/build_anims.py and tools/build_mob_anims.py. One clip of Kirky's (the ollie) is from the skater model
+above. The spiders' clips (walk, idle, bite, rear, die) are from a rigged tarantula downloaded by the project's owner
+(dl/tarantula-animation): ITS AUTHOR AND LICENCE STILL HAVE TO BE WRITTEN HERE. The rat's run and its standing
+still are from a rigged rat downloaded by the project's owner (dl/rat run, "rat_02"): ITS AUTHOR AND LICENCE STILL
+HAVE TO BE WRITTEN HERE.
+
+zombies.glb — two more zombies, and two of the bosses
+
+Mixamo characters (https://www.mixamo.com, Adobe): a soldier in what is left of his uniform ("WorldWar zombie"), a
+gaunt one bare to the waist ("Ch10"), Hamzitus Goyitus (the "parasite zombie") and Rubistus Goyitus (the "skeleton
+zombie"). tools/build_zombies.py cuts each into the game's parts and puts the colours of its picture on its points.
+
+rat.glb — the rat
+
+A low-poly rat downloaded by the project's owner (dl/low-poly-rat, "Ratlow"): ITS AUTHOR AND LICENCE STILL HAVE TO
+BE WRITTEN HERE. tools/build_rat.py cuts it into a body, a tail and four legs and puts the colours of its picture on
+its points.
+
+mobs.glb — the monsters and bosses
+
+Built by tools/build_mobs.py. (Its Hamzitus, its Rubistus and its rat are no longer the ones drawn: see zombies.glb
+and rat.glb.) The zombie, the ghost, Hamzitus and Babitus are MakeHuman / MPFB characters
+(http://www.makehumancommunity.org: body, skin, eyes, teeth, "male_casualsuit02", "male_elegantsuit01", "shoes02":
+MakeHuman system assets — CC0). The rat, the spiders, the skeleton, the bone-thrower and Rubistus are modelled by
+the script itself.
+
+alien.glb — the body of the three alien costumes
+
+Built by tools/build_alien.py from the MakeHuman base mesh (CC0), reshaped by the script.
+
+astronaut.glb — the space suit; props.glb — the casino front, the exit portal, the Bone Rain femur
+
+Modelled by tools/build_astronaut.py and tools/build_props.py: nothing downloaded.
+
+guns.glb — the guns and the boof
+
+Modelled by tools/build_guns.py: nothing downloaded.

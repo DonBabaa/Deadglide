@@ -643,23 +643,33 @@ export class Skater {
   // (Rails are magnetic: within `pullRadius` you are drawn sideways onto the rail's line on the way down.)
   tryCatchRail(dt = 0) {
     const G = config.grind, { pos, vel } = this;
-    if (this.railCooldown > 0 || this.clearOfRails || vel.y > 1.5) return;
+    if (this.railCooldown > 0 || this.clearOfRails) return;
     for (const r of railsNear(pos.x, pos.z)) {
+      // (an `easy` rail, the Moon's rim and the ones hung from its dome: it reaches for you from twice as far, takes
+      // you while you are still going up a little, and does not mind which way you were going, or how slowly: across
+      // it will do. A `wide` one, the rim: from that far to either side of it, and from however high over it, going up
+      // or coming down, you drift onto its line.)
+      const reach = r.easy ? 2.1 : 1, rising = vel.y > (r.easy ? 4 : 1.5);
+      if (rising && !r.wide) continue;
       const px = pos.x - r.ax, py = pos.y - r.ay, pz = pos.z - r.az;
       const t = px * r.dx + py * r.dy + pz * r.dz;
       if (t < 0 || t > r.len) continue;
       const offX = px - r.dx * t, offY = py - r.dy * t, offZ = pz - r.dz * t;
       const side = Math.hypot(offX, offZ);
-      if (side > G.pullRadius) continue;
+      if (side > Math.max(G.pullRadius * reach, r.wide || 0)) continue;
       const along = vel.x * r.dx + vel.y * r.dy + vel.z * r.dz;
       const flat = Math.hypot(vel.x, vel.z);
-      if (Math.abs(along) < G.minSpeed || Math.abs(along) < flat * 0.35) continue;
-      if (side <= G.catchRadius && Math.abs(offY) <= G.catchHeight) return this.lockOn(r, t, Math.sign(along) * flat);
-      if (offY > 0 && offY < 8) {   // above it and a little to one side: slide over onto its line
-        const k = 1 - Math.exp(-G.pull * dt);
+      if (!r.easy && (Math.abs(along) < G.minSpeed || Math.abs(along) < flat * 0.35)) continue;
+      if (!rising && side <= G.catchRadius * reach && Math.abs(offY) <= G.catchHeight * reach) {
+        // (which way along it: the way you were going. Came at an easy one square on: the way it runs (`flow`), or the way the board points.)
+        const way = !r.easy || Math.abs(along) > Math.max(0.5, flat * 0.5) ? Math.sign(along) : r.flow || Math.sign(this.fwd.x * r.dx + this.fwd.z * r.dz) || 1;
+        return this.lockOn(r, t, way * Math.max(flat, r.easy ? 9 : 0));
+      }
+      if (offY > 0 && offY < (r.wide ? 90 : 8)) {   // above it and a little to one side: slide over onto its line
+        const k = 1 - Math.exp(-(r.wide ? 3 : G.pull) * dt);
         pos.x -= offX * k; pos.z -= offZ * k;
         vel.x -= (vel.x - r.dx * along) * k; vel.z -= (vel.z - r.dz * along) * k;
-        return;
+        if (!r.wide) return;   // (a wide one draws you from a long way over it: a rail hung between you and it may still take you)
       }
     }
   }
@@ -710,10 +720,12 @@ export class Skater {
       }
     }
     // Balance: he tips (a lean feeds itself, and something is always nudging him), A / D lean him back. Over the edge
-    // and he is off the rail.
+    // and he is off the rail. (An `easy` rail, the Moon's rim and the ones hung from its dome: he tips far more slowly.
+    // They are long, and a long way up.)
     if (inp && dt > 0 && (this.balanceTime += dt) > G.balanceGrace) {
+      const tips = r.easy ? 0.4 : 1;
       if ((this.windTime -= dt) <= 0) { this.windTime = 0.5 + Math.random() * 0.9; this.balanceWind = (Math.random() * 2 - 1) * G.balanceWind; }
-      this.balanceV += (G.balanceTip * this.balance + this.balanceWind + inp.steer * G.balancePush) * dt;
+      this.balanceV += ((G.balanceTip * this.balance + this.balanceWind) * tips + inp.steer * G.balancePush) * dt;
       this.balanceV *= Math.exp(-G.balanceDamp * dt);
       this.balance += this.balanceV * dt;
       if (Math.abs(this.balance) >= 1) {
@@ -728,6 +740,7 @@ export class Skater {
     const sign = v < 0 ? -1 : 1;
     v -= config.physics.gravity * stats.gravity * r.dy * dt;                    // sloped rails pull you downhill
     if (Math.abs(v) < G.maxSpeed) v += sign * G.accel * dt;     // grinding builds speed
+    else if (r.hung) v -= sign * (Math.abs(v) - G.maxSpeed) * (1 - Math.exp(-1.2 * dt));   // (a long way down a rail hung from the Moon's dome: the slope stops adding to it much past that)
     this.railSpeed = v;
     this.railT += v * dt;
     this.grindDistance += Math.abs(v) * dt;

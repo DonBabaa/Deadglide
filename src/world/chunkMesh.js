@@ -7,10 +7,10 @@ import { CATA, route, floorAt, pipePoint } from './catacombs.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CHUNK, chunkBase, chunkHeight, chunkPaved } from './worldgen.js';
 import { seededRandom } from './random.js';
-import { MOON, moonHeight, daylight, lavaAt } from './moon.js';
+import { MOON, moonHeight, daylight, lavaAt, domeAt } from './moon.js';
 import { houseHeight, pocketAt } from './house.js';
 import { headstones as fineHeadstones, tree as fineTree, mausoleum as tombTrim, statues as fineStatues, chapel as chapelTrim, lamp as fineLamp, brazier as fineBrazier, decor as fineDecor, under as fineUnder, lunar as fineLunar, landerTrim, towerTrim, gantryTrim } from './scenery.js';
-import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture, regolithTexture, plateTexture, marbleTexture } from './textures.js';
+import { groundTexture, rampTexture, stoneWallTexture, stoneTexture, glowTexture, regolithTexture, plateTexture, marbleTexture, relief } from './textures.js';
 
 const CONCRETE = new THREE.Color(0x9c9b96), GRASS = new THREE.Color(0x35452a);
 const REGOLITH = new THREE.Color(0x9b9a9c), shade = new THREE.Color();   // the Moon's dust
@@ -77,6 +77,15 @@ export function createChunkBuilder() {
     flare: new THREE.SpriteMaterial({ map: glow, color: 0xffc98a, transparent: true, opacity: 0.6, depthWrite: false }),
     flame: new THREE.PointsMaterial({ map: glow, color: 0xffb060, size: 0.9, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
   };
+  // Every stone and concrete surface catches the light on its cracks, joints and pits (a normal map read off its
+  // own picture: see relief() in textures.js).
+  const bumps = new Map();
+  for (const [name, depth] of [['ground', 1.8], ['dust', 2.2], ['ramp', 1.6], ['tomb', 2.6], ['wall', 3.2], ['rock', 3.2], ['stone', 2.6], ['carved', 2.2], ['marble', 0.6]]) {
+    const m = mat[name];
+    if (!m || !m.map) continue;
+    if (!bumps.has(m.map)) bumps.set(m.map, relief(m.map, depth));
+    m.normalMap = bumps.get(m.map);
+  }
   // The Catacombs' ramps and coffins are old stone, not skatepark concrete.
   const under = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
   under.ramp.color.set(0x7a7262);
@@ -225,6 +234,7 @@ export function createChunkBuilder() {
       const s = spot();
       if (!s) continue;
       const big = s.extra > 0.93 ? 3.2 : s.extra > 0.7 ? 1.4 : 0.55, r = (0.16 + s.size * 0.36) * big * BIG;
+      if (big > 1 && s.out > MOON.radius - MOON.wall - MOON.apron) continue;   // (the run-in to the wall is a clean bowl: pebbles on it, no boulders)
       rocks.push([s.x, s.y + r * 0.2, s.z, s.turn, r, r * (0.5 + s.extra * 0.4), r * (0.7 + s.size * 0.5)]);
     }
     for (let k = 0; k < 26; k++) {   // the night side's own
@@ -523,15 +533,27 @@ export function createChunkBuilder() {
     else if (c.level === 2 && c.cx === 0) buildUnderDecor(c, group);
 
     // Rails: every rail and post in the chunk merged into one mesh.
-    const tubes = [];
+    const tubes = [], hung = [], cables = [], rim = [];
+    let nth = 0;
     for (const r of c.rails) {
       const a = new THREE.Vector3(r.ax, r.ay, r.az), b = new THREE.Vector3(r.bx, r.by, r.bz);
-      tubes.push(tubeGeometry(a, b, 0.05));
+      if (r.hung) {   // (the Moon: one hung from the dome. It can be seen from the ground, a long way under it)
+        hung.push(tubeGeometry(a, b, 0.14));
+        if (nth++ % 5 === 0) cables.push(tubeGeometry(a, new THREE.Vector3(a.x, domeAt(a.x, a.z) - 0.4, a.z), 0.045));
+        continue;
+      }
+      if (r.rim) rim.push(tubeGeometry(a, b, 0.085));   // (the Moon's rim: lit, and thicker, so that the lip of the bowl can be seen from across it)
+      else tubes.push(tubeGeometry(a, b, 0.05));
       const posts = Math.max(1, Math.round(r.len / 2.5));
       for (let i = 0; i <= posts; i++) {
         const top = a.clone().lerp(b, 0.04 + (0.92 * i) / posts);
         tubes.push(tubeGeometry(top, new THREE.Vector3(top.x, chunkHeight(c, top.x, top.z), top.z), 0.035));
       }
+    }
+    if (rim.length) group.add(new THREE.Mesh(mergeGeometries(rim), RIM_RAIL));
+    if (hung.length) {
+      group.add(new THREE.Mesh(mergeGeometries(hung), HUNG_RAIL));
+      if (cables.length) group.add(new THREE.Mesh(mergeGeometries(cables), HUNG_CABLE));
     }
     if (tubes.length) {
       const rails = new THREE.Mesh(mergeGeometries(tubes), c.level === 4 ? casino.steel : mat.steel);
@@ -768,6 +790,8 @@ function tubeBatch(sides = 6) {
   };
 }
 
+const RIM_RAIL = new THREE.MeshBasicMaterial({ color: 0xd8efff, toneMapped: false });
+const HUNG_RAIL = new THREE.MeshBasicMaterial({ color: 0xffc94a, toneMapped: false }), HUNG_CABLE = new THREE.MeshBasicMaterial({ color: 0x6f8296 });
 function tubeGeometry(a, b, radius, tip = radius) {
   const len = a.distanceTo(b), mid = a.clone().lerp(b, 0.5);
   const geo = new THREE.CylinderGeometry(tip, radius, len, 8);

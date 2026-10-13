@@ -104,7 +104,7 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
     let g = ghosts.get(id);
     if (!g) {
       const model = new SkaterModel(scene);
-      try { model.applyLook({ hoodie: '#7a2f2b', beanie: '#24262c', deck: 'wood', wheels: '#e9e4d4', smoke: 'cigarette', ...look, goldGuns: new Set() }); } catch {}
+      try { model.applyLook({ hoodie: '#7a2f2b', beanie: 'none', deck: 'wood', wheels: '#e9e4d4', smoke: 'cigarette', ...look, goldGuns: new Set() }); } catch {}
       model.setWeapon(WEAPONS.sniper);
       const tag = nameTag(name);
       scene.add(tag);

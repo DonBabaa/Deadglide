@@ -41,6 +41,14 @@ export const EMOTES = [
     P.lean(0.95);
     P.left(0.5, 0, 0.2);
   } },
+  // (motion capture, all of him: on his feet he goes down on his hands and swings his legs round; on his board, where
+  // there is no room for it, his arms go round instead)
+  { id: 'flair', name: 'Flair', icon: '\u{1F938}', time: 4.1, clip: true, pose: (k, t, w, P) => {
+    k.play?.('flair', 1, 1, undefined, true);
+    P.left(-1.6 + Math.sin(t * 8) * 1.1, 0, 0.5);
+    P.right(-1.2 - Math.sin(t * 8) * 0.9, 0.2, 0);
+    P.twist(Math.sin(t * 4) * 0.6);
+  } },
 ];
 
 // One per model. driven: something else sets his left arm every frame (the casino's walking and sitting
@@ -87,6 +95,7 @@ export function createEmoter(model, driven = false) {
       if (index < 0) return;
       dress(false);
       index = -1;
+      k.emoting = 0;
       k.torso.rotation.y = 0;
       if (!driven) k.leftArm.rotation.set(0, 0, 0);
     },
@@ -100,6 +109,7 @@ export function createEmoter(model, driven = false) {
       const E = EMOTES[index];
       if ((t += dt) >= E.time) return emoter.stop();
       P.w = smooth(t / 0.2) * smooth((E.time - t) / 0.25);
+      k.emoting = E.clip ? 0 : P.w;   // (posed by hand: whatever clip he is standing or walking by gives way to it, see kirkyBody.js)
       E.pose(k, t, P.w, P, dt);
     },
   };

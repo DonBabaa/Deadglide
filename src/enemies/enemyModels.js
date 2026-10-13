@@ -71,10 +71,6 @@ function hand(W, toward, size, color, tip = color, curl = 0.5, thumb = 1) {
   return out;
 }
 
-// Three fingers reaching forward from a hand at (x, y, z).
-const fingers = (color, x, y, z, length = 0.09) =>
-  [-0.028, 0, 0.028].map((dx) => at(rod(0.007, 0.012, length), color, x + dx, y - 0.01, z + length / 2, PI / 2 - 0.25));
-
 // ---- Zombie: a hunched, rotting corpse in what is left of a suit. ----
 // Built round a skeleton of points (shoulder, elbow, wrist; hip, knee, ankle), so every limb is a real limb: an upper
 // and a lower piece meeting at a joint, ending in a hand or a foot. Both arms reach for you: the right one high, in
@@ -488,54 +484,6 @@ function boss2() {
   return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0)];
 }
 
-// ---- The last boss: Babitus Goyitus, the dealer. A long, lean corpse in a dinner suit. ----
-// jewels: 0 to 3, how much gold he is wearing (it goes by how much you have ever wagered at his tables).
-function babitus(jewels = 0) {
-  const suit = 0x101014, lapel = 0x1c1c22, shirt = 0xf3efe4, tie = 0xb3201b, skin = 0x8a9468, rot = 0x5c6648, hair = 0x0c0b0a, bone = 0xd8d2bf, dark = 0x121110, eye = 0xffb347, gold = 0xffc233, card = 0xf7f3ea;
-
-  const body = part([
-    at(cap(0.26, 0.5, 0.75), suit, 0, 1.18, 0),                                   // a narrow chest in a dinner jacket
-    at(cap(0.22, 0.2, 0.75), suit, 0, 0.82, 0),                                   // ...buttoned at the waist
-    at(box(0.2, 0.52, 0.04), shirt, 0, 1.2, 0.2),                                 // shirt front
-    at(box(0.1, 0.5, 0.05), lapel, -0.15, 1.22, 0.2, 0, 0, 0.16), at(box(0.1, 0.5, 0.05), lapel, 0.15, 1.22, 0.2, 0, 0, -0.16),   // satin lapels
-    at(box(0.07, 0.07, 0.05), tie, 0, 1.46, 0.22), at(box(0.09, 0.1, 0.04), tie, -0.07, 1.46, 0.21, 0, 0, 0.5), at(box(0.09, 0.1, 0.04), tie, 0.07, 1.46, 0.21, 0, 0, -0.5),   // a red bow tie
-    ...[1.3, 1.16, 1.02].map((y) => at(ball(0.014), dark, 0, y, 0.225)),            // studs
-    at(ball(0.15), suit, -0.31, 1.42, 0), at(ball(0.15), suit, 0.31, 1.42, 0),    // square shoulders
-    at(rod(0.07, 0.08, 0.14), skin, 0, 1.56, 0.02),                               // a thin neck
-    at(ball(0.17, 0.92, 1.12, 1), skin, 0, 1.76, 0.03),                           // a long head
-    at(box(0.2, 0.1, 0.16), skin, 0, 1.63, 0.07),                                 // lantern jaw
-    at(ball(0.07, 1, 1, 0.5), rot, -0.11, 1.72, 0.12), at(ball(0.07, 1, 1, 0.5), rot, 0.11, 1.72, 0.12),   // hollow cheeks
-    at(ball(0.175, 0.95, 0.8, 1.05), hair, 0, 1.86, -0.02),                       // hair slicked straight back
-    at(box(0.16, 0.035, 0.03), dark, 0, 1.64, 0.155),                             // a thin smile
-    ...[-0.05, -0.017, 0.017, 0.05].map((x) => at(box(0.026, 0.03, 0.02), bone, x, 1.645, 0.165)),   // ...full of teeth
-    at(ball(0.036), dark, -0.065, 1.79, 0.15), at(ball(0.036), dark, 0.065, 1.79, 0.15),   // eye sockets
-    at(box(0.3, 0.04, 0.05), hair, 0, 1.845, 0.13, -0.25),                        // one long brow
-  ]);
-  const eyes = glowing([at(ball(0.024), eye, -0.065, 1.79, 0.17), at(ball(0.024), eye, 0.065, 1.79, 0.17)]);
-
-  const arm = (side, phase) => part([
-    at(cap(0.085, 0.34), suit, side * 0.36, 1.2, 0.04, 0.2),                      // sleeve
-    at(cap(0.07, 0.3), suit, side * 0.38, 0.84, 0.18, 0.55),
-    at(rod(0.075, 0.075, 0.05), shirt, side * 0.38, 0.69, 0.28, 0.55),            // a white cuff
-    at(ball(0.07, 1, 0.7, 1.2), skin, side * 0.38, 0.63, 0.34),                   // a long grey hand
-    ...fingers(rot, side * 0.38, 0.63, 0.4),
-    ...(side > 0 ? [-0.3, -0.15, 0, 0.15, 0.3].map((turn, i) => at(box(0.1, 0.15, 0.006), card, 0.38 + turn * 0.16, 0.74 + Math.cos(turn * 3) * 0.03, 0.42 + i * 0.004, -0.3, 0, -turn)) : []),   // a hand of cards, fanned
-  ], [side * 0.33, 1.42, 0], [0.45, 0, 0], phase);
-
-  const leg = (side, phase) => part([
-    at(cap(0.1, 0.36), suit, side * 0.13, 0.46, 0),                               // trouser leg
-    at(cap(0.085, 0.22), suit, side * 0.13, 0.2, 0),
-    at(ball(0.09, 0.9, 0.55, 1.7), dark, side * 0.13, 0.05, 0.07),                // patent shoe
-  ], [side * 0.13, 0.66, 0], [0.34, 0, 0], phase);
-
-  // What he has taken from you: a chain, then rings and a second chain, then a crown.
-  const bling = [];
-  if (jewels >= 1) bling.push(at(hoop(0.2, 0.022, 0.7), gold, 0, 1.4, 0.04, 0.5), at(ball(0.05), gold, 0, 1.24, 0.24));
-  if (jewels >= 2) bling.push(at(hoop(0.26, 0.03, 0.7), gold, 0, 1.34, 0.05, 0.62), at(ball(0.075), gold, 0, 1.1, 0.25), at(ball(0.03), gold, -0.165, 1.9, 0.02), at(ball(0.03), gold, 0.165, 1.9, 0.02));
-  if (jewels >= 3) bling.push(at(rod(0.17, 0.15, 0.09), gold, 0, 2.0, 0), ...[0, 1, 2, 3, 4, 5].map((i) => at(rod(0.004, 0.03, 0.12), gold, Math.cos(i * 1.047) * 0.15, 2.09, Math.sin(i * 1.047) * 0.15)));
-  return [body, eyes, arm(-1, 0), arm(1, PI), leg(-1, PI), leg(1, 0), ...(bling.length ? [glowing(bling)] : [])];
-}
-
 // ENEMY_PARTS: each monster as it is seen close up. ENEMY_LITE: a plainer version of the same monster (the same parts,
 // in the same order, hinged in the same places) that the horde draws for the ones further away. A monster with no plain
 // version is always drawn in full.
@@ -546,3 +494,5 @@ export const ENEMY_PARTS = {
   shambler: zombie, rattler: skeleton, wraith: ghost, rat: bigRat, crawler: () => fineSpider(CRAWLER), thrower: boneThrower, queen: () => fineSpider(QUEEN),
   boss: hamzitus, boss2: rubistus, boss3: () => fineBabitus(0), boss3b: () => fineBabitus(1), boss3c: () => fineBabitus(2), boss3d: () => fineBabitus(3),
 };
+// (the other zombies: the first one's body, until their own have arrived: see realMobs.js)
+for (const name of ['zombieb', 'zombiec']) { ENEMY_PARTS[name] = () => ENEMY_PARTS.shambler(); ENEMY_LITE[name] = () => ENEMY_LITE.shambler(); }

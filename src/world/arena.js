@@ -6,11 +6,11 @@ import { getChunk, groundAt } from './terrain.js';
 import { CHUNK } from './worldgen.js';
 import { createChunkBuilder } from './chunkMesh.js';
 import { seededRandom } from './random.js';
-import { glowTexture, regolithTexture, lavaTexture } from './textures.js';
+import { glowTexture, regolithTexture, lavaTexture, relief } from './textures.js';
 import { buildCemeteryBackdrop, buildMoonOutside } from './backdrop.js';
 import { CATA, floorAt } from './catacombs.js';
 import { buildHouseScene } from './houseScene.js';
-import { MOON, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE } from './moon.js';
+import { MOON, moonHeight, daylight, VENTS, BEACONS, LAVA_Y, LAVA_LAKE, DOME, domeAt, HOOPS, GEYSER } from './moon.js';
 
 const HORIZON = 0x1c2535;
 const MOON_DIR = new THREE.Vector3(-0.6, 0.62, -0.4).normalize();
@@ -27,7 +27,7 @@ export function buildArena(scene) {
   scene.add(fill);
   const moon = new THREE.DirectionalLight(0xc3d4ff, 1.9);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.mapSize.set(4096, 4096);   // (sharp: a headstone's shadow has an edge)
   Object.assign(moon.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 300 });
   moon.shadow.bias = -0.0004;
   moon.shadow.normalBias = 0.06;
@@ -186,6 +186,13 @@ export function buildArena(scene) {
           moonFar.userData.lavaLight.intensity = 800 + 250 * Math.sin(performance.now() / 130) * Math.sin(performance.now() / 47);
         }
         if (moonFar) for (const v of moonFar.userData.vents) v.material.opacity = 0.55 + 0.35 * Math.sin(performance.now() / 180 + v.position.x);   // vents pulse
+        if (moonFar && moonFar.userData.geyser) {   // the Geyser blows: its gas climbs, fast in the jet and slower in the column over it
+          const G = moonFar.userData.geyser, now = performance.now() / 1000;
+          G.jet.material.map.offset.y = -(now * 1.9) % 1;
+          G.column.material.map.offset.y = -(now * 0.55) % 1;
+          G.light.intensity = 230 + 90 * Math.sin(now * 9) * Math.sin(now * 3.1);
+          G.paint.material.opacity = 0.8 + 0.2 * Math.sin(now * 4);
+        }
       }
       if (level === 4 && house) house.userData.update(dt, performance.now() / 1000);
       if (level !== 1) {
@@ -218,7 +225,8 @@ function buildMoonFar() {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: regolithTexture(), color: 0x9b9a9c, roughness: 1, vertexColors: true }));
+  const dust = regolithTexture();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: dust, normalMap: relief(dust, 2.2), color: 0x9b9a9c, roughness: 1, vertexColors: true }));
   mesh.frustumCulled = false;
   // Beyond the lip there is no wall to see (only one to stop you): the plain the crater sits in, and what is out on it.
   mesh.add(buildMoonOutside());
@@ -239,6 +247,9 @@ function buildMoonFar() {
     mesh.add(ring);
     return ring;
   });
+  const dome = buildDome();
+  mesh.add(dome);
+  mesh.userData.geyser = dome.userData.geyser;
   // Beacons: a mast at each place with a coloured light on top, to steer by.
   const glowMap = glowTexture();
   for (const b of BEACONS) {
@@ -250,6 +261,162 @@ function buildMoonFar() {
     mesh.add(mast, light);
   }
   return mesh;
+}
+
+// The Moon is a base under glass: a dome over the whole crater. The glass (barely there: a tint, and a sheen low down
+// where you look through most of it), the frame that holds it (ribs up to its crown, rings round it, a beam at its
+// foot), the hoops that hang from it, and the Geyser that throws you up to them.
+function buildDome() {
+  const group = new THREE.Group(), R = DOME.radius, H = DOME.height;
+  const on = (a, k) => new THREE.Vector3(MOON.x + Math.cos(a) * R * Math.sin(k), H * Math.cos(k), MOON.z + Math.sin(a) * R * Math.sin(k));   // (a: round it; k: 0 at its crown, a quarter turn at its foot)
+  const shell = new THREE.SphereGeometry(1, 72, 22, 0, Math.PI * 2, 0, Math.PI / 2).scale(R, H, R).translate(MOON.x, 0, MOON.z);
+  const glass = new THREE.Mesh(shell, new THREE.MeshBasicMaterial({ color: 0x8fd0ff, transparent: true, opacity: 0.055, side: THREE.BackSide, depthWrite: false, fog: false }));
+  glass.renderOrder = 3;
+  // (the sheen: light on the glass, strongest in a band above its foot, in long soft streaks)
+  const c = Object.assign(document.createElement('canvas'), { width: 512, height: 256 }), g = c.getContext('2d');
+  const band = g.createLinearGradient(0, 0, 0, 256);
+  band.addColorStop(0, 'rgba(160,215,255,0.02)'); band.addColorStop(0.55, 'rgba(160,215,255,0.045)'); band.addColorStop(0.86, 'rgba(190,230,255,0.15)'); band.addColorStop(1, 'rgba(160,215,255,0.04)');
+  g.fillStyle = band; g.fillRect(0, 0, 512, 256);
+  for (let i = 0; i < 26; i++) { const x = (i * 97) % 512, w = 6 + ((i * 53) % 30); const streak = g.createLinearGradient(x, 0, x + w, 0); streak.addColorStop(0, 'rgba(255,255,255,0)'); streak.addColorStop(0.5, 'rgba(255,255,255,0.07)'); streak.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = streak; g.fillRect(x, 60, w, 196); }
+  const sheenMap = new THREE.CanvasTexture(c);
+  sheenMap.wrapS = THREE.RepeatWrapping; sheenMap.repeat.set(3, 1); sheenMap.colorSpace = THREE.SRGBColorSpace;
+  const sheen = new THREE.Mesh(shell, new THREE.MeshBasicMaterial({ map: sheenMap, transparent: true, side: THREE.BackSide, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  sheen.renderOrder = 4;
+  group.add(glass, sheen);
+  // The frame: fine glazing bars all over it, and eight great ribs.
+  const bars = [];
+  for (let i = 0; i < 48; i++) for (let j = 0; j < 22; j++) { const a = (i / 48) * Math.PI * 2; bars.push(on(a, (j / 22) * Math.PI / 2), on(a, ((j + 1) / 22) * Math.PI / 2)); }
+  for (let j = 1; j <= 9; j++) for (let i = 0; i < 96; i++) { const k = (j / 9.6) * Math.PI / 2; bars.push(on((i / 96) * Math.PI * 2, k), on(((i + 1) / 96) * Math.PI * 2, k)); }
+  group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(bars), new THREE.LineBasicMaterial({ color: 0xa9cbe6, transparent: true, opacity: 0.3, fog: false, depthWrite: false })));
+  const steel = new THREE.MeshStandardMaterial({ color: 0x59636f, roughness: 0.5, metalness: 0.7, fog: false });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2, line = new THREE.CatmullRomCurve3(Array.from({ length: 15 }, (_, j) => on(a, (j / 14) * Math.PI / 2 * 0.995)));
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(line, 56, 0.85, 6), steel));
+  }
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(R * Math.sin(0.12), 0.9, 6, 40).rotateX(Math.PI / 2), steel);
+  crown.position.set(MOON.x, H * Math.cos(0.12), MOON.z);
+  const foot = new THREE.Mesh(new THREE.TorusGeometry(R * Math.sin(Math.PI / 2 * 0.93), 1.6, 6, 120).rotateX(Math.PI / 2), steel);
+  foot.position.set(MOON.x, H * Math.cos(Math.PI / 2 * 0.93), MOON.z);
+  group.add(crown, foot);
+  // The hoops: a lit ring each (and across a small one a film of light: something to go through), held in steel
+  // clamps on cables from the glass over it. One lying flat hangs by its rim, from two sides, or a big one from four;
+  // one stood on edge hangs by its top.
+  const lit = new THREE.MeshBasicMaterial({ color: 0x7ff0ff, toneMapped: false }), wire = new THREE.LineBasicMaterial({ color: 0x8aa0b4, transparent: true, opacity: 0.6 }), wires = [];
+  const film = new THREE.MeshBasicMaterial({ map: filmTexture(), color: 0x7ff0ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  const Z = new THREE.Vector3(0, 0, 1), clamp = new THREE.BoxGeometry(1, 1, 1);
+  for (const h of HOOPS) {
+    const tube = Math.min(0.34, Math.max(0.13, h.r * 0.05)), flat = h.ny > 0.5;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(h.r, tube, 8, Math.max(36, Math.round(h.r * 6))), lit);
+    ring.position.set(h.x, h.y, h.z);
+    ring.quaternion.setFromUnitVectors(Z, new THREE.Vector3(h.nx, h.ny, h.nz));
+    group.add(ring);
+    if (h.r < 8) {
+      const skin = new THREE.Mesh(new THREE.CircleGeometry(h.r - tube, 36), film);
+      skin.position.copy(ring.position);
+      skin.quaternion.copy(ring.quaternion);
+      skin.renderOrder = 2;
+      group.add(skin);
+    }
+    for (const [sx, sz] of flat ? (h.r > 8 ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : [[1, 0], [-1, 0]]) : [[0, 0]]) {
+      const x = h.x + sx * h.r, z = h.z + sz * h.r, y = h.y + (flat ? 0 : h.r);
+      wires.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, domeAt(x, z) - 0.4, z));
+      const block = new THREE.Mesh(clamp, steel);
+      block.position.set(x, y + tube * 0.6, z);
+      block.scale.set(tube * 3.4, tube * 3, tube * 3.4);
+      group.add(block);
+    }
+  }
+  group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wires), wire));
+  // The Geyser: its mouth (a steel collar bolted down round the hole, and the paint round that which says where to
+  // ride, laid on the ground as it lies), the jet out of it, and the column of gas the jet becomes, as tall as it
+  // throws you.
+  const gy = moonHeight(GEYSER.x, GEYSER.z), geyser = new THREE.Group(), wide = GEYSER.radius * 1.5;
+  geyser.position.set(GEYSER.x, gy, GEYSER.z);
+  const lawn = new THREE.PlaneGeometry(wide * 2, wide * 2, 14, 14).rotateX(-Math.PI / 2), spots = lawn.attributes.position;
+  for (let i = 0; i < spots.count; i++) spots.setY(i, moonHeight(GEYSER.x + spots.getX(i), GEYSER.z + spots.getZ(i)) - gy + 0.13);
+  const paint = new THREE.Mesh(lawn, new THREE.MeshBasicMaterial({ map: geyserPaint(), transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(GEYSER.radius * 0.46, 0.14, 6, 36).rotateX(Math.PI / 2), steel);
+  collar.position.y = 0.1;
+  geyser.add(paint, collar);
+  const bolt = new THREE.CylinderGeometry(0.09, 0.09, 0.16, 6);
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2, lug = new THREE.Mesh(bolt, steel);
+    lug.position.set(Math.cos(a) * GEYSER.radius * 0.46, 0.24, Math.sin(a) * GEYSER.radius * 0.46);
+    geyser.add(lug);
+  }
+  // (gas: an open tube with wisps climbing it (see update), bright at its foot and gone by its top)
+  const wisps = wispTexture();
+  const gas = (foot, head, tall, opacity, repeat) => {
+    const map = wisps.clone(), tube = new THREE.CylinderGeometry(head, foot, tall, 24, 10, true), at = tube.attributes.position, shade = [];
+    map.needsUpdate = true;
+    map.repeat.set(2, repeat);
+    for (let i = 0; i < at.count; i++) { const up = at.getY(i) / tall + 0.5, k = (1 - up) ** 1.6 * Math.min(1, up * 14); shade.push(k, k, k); }
+    tube.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
+    const column = new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ map, color: 0xffc070, vertexColors: true, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false }));
+    column.position.y = tall / 2;
+    column.renderOrder = 5;
+    geyser.add(column);
+    return column;
+  };
+  const jet = gas(GEYSER.radius * 0.4, GEYSER.radius * 0.75, 30, 0.9, 2), column = gas(GEYSER.radius * 0.6, GEYSER.radius * 1.5, GEYSER.reach, 0.38, 7);
+  const light = new THREE.PointLight(0xffb060, 260, 40, 1.6);
+  light.position.y = 3;
+  geyser.add(light);
+  group.add(geyser);
+  group.userData.geyser = { jet, column, light, paint };
+  return group;
+}
+// (the film across a hoop: next to nothing in its middle, bright against its ring)
+function filmTexture() {
+  const c = Object.assign(document.createElement('canvas'), { width: 128, height: 128 }), g = c.getContext('2d');
+  const fade = g.createRadialGradient(64, 64, 8, 64, 64, 64);
+  fade.addColorStop(0, 'rgba(255,255,255,0.02)'); fade.addColorStop(0.72, 'rgba(255,255,255,0.07)'); fade.addColorStop(1, 'rgba(255,255,255,0.5)');
+  g.fillStyle = fade; g.fillRect(0, 0, 128, 128);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  return map;
+}
+// (the paint round the Geyser: the glow of its hole, a dashed ring where it takes you, arrows pointing in at it)
+function geyserPaint() {
+  const c = Object.assign(document.createElement('canvas'), { width: 512, height: 512 }), g = c.getContext('2d'), R = 256 / 1.5;
+  g.translate(256, 256);
+  const glow = g.createRadialGradient(0, 0, 0, 0, 0, R * 0.95);
+  glow.addColorStop(0, 'rgba(255,236,170,0.95)'); glow.addColorStop(0.4, 'rgba(255,170,60,0.6)'); glow.addColorStop(1, 'rgba(255,120,30,0)');
+  g.fillStyle = glow; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#ffb347'; g.lineWidth = 9; g.setLineDash([30, 15]);
+  g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.stroke();
+  g.setLineDash([]); g.lineWidth = 3; g.globalAlpha = 0.7;
+  g.beginPath(); g.arc(0, 0, 250, 0, Math.PI * 2); g.stroke();
+  g.globalAlpha = 0.95; g.lineWidth = 9; g.lineJoin = 'miter';
+  for (let i = 0; i < 12; i++) {
+    g.save(); g.rotate((i / 12) * Math.PI * 2);
+    for (const far of [236, 212]) { g.beginPath(); g.moveTo(-15, far); g.lineTo(0, far - 15); g.lineTo(15, far); g.stroke(); }
+    g.restore();
+  }
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 8;
+  return map;
+}
+// (gas: soft streaks that run the height of the picture, swelling and thinning, which join up where it repeats)
+function wispTexture() {
+  const W = 128, H = 256, c = Object.assign(document.createElement('canvas'), { width: W, height: H }), g = c.getContext('2d'), image = g.createImageData(W, H);
+  const streaks = Array.from({ length: 16 }, (_, i) => ({ x: (i * 37 + 11) % W, w: 3 + ((i * 13) % 9), n: 1 + (i % 4), at: i * 1.7, a: 0.35 + ((i * 29) % 50) / 100 }));
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let v = 0;
+    for (const s of streaks) {
+      const d = Math.min(Math.abs(x - s.x), W - Math.abs(x - s.x)) / s.w;
+      if (d < 3) v += Math.exp(-d * d) * s.a * (0.5 + 0.5 * Math.sin((y / H) * Math.PI * 2 * s.n + s.at)) ** 2;
+    }
+    const k = (y * W + x) * 4, lit = Math.min(255, v * 255);
+    image.data[k] = image.data[k + 1] = image.data[k + 2] = lit;
+    image.data[k + 3] = 255;
+  }
+  g.putImageData(image, 0, 0);
+  const map = new THREE.CanvasTexture(c);
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.colorSpace = THREE.SRGBColorSpace;
+  return map;
 }
 
 function earthTexture() {

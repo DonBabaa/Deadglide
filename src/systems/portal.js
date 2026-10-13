@@ -2,6 +2,7 @@
 // finish the level.
 import { lapNear } from '../world/terrain.js';
 import * as THREE from 'three';
+import { props } from '../world/props.js';
 
 const RADIUS = 3.4;   // of the ring, in metres
 
@@ -26,6 +27,15 @@ export class Portal {
     this.gate = new THREE.Group();
     this.gate.position.y = RADIUS + 0.3;
     this.gate.add(this.ring, this.swirl, this.core, this.arcs, this.light);
+    // The ring is stone (modelled in Blender: a circle of broken blocks, their runes alight), with the glow of the
+    // old one kept as a thin halo behind it.
+    props().then((P) => {
+      if (!P.portal_frame) return;
+      this.frame = new THREE.Mesh(P.portal_frame, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide }));
+      this.gate.add(this.frame);
+      this.ring.scale.setScalar(1.12);
+      this.ring.material.opacity = 0.25;
+    });
     this.group.add(this.gate, this.beam);
     scene.add(this.group);
     this.reset();

@@ -11,7 +11,7 @@ import { leaderboard } from '../ui/leaderboard.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch'), levels = $('menu-levels');
-const ALL = new URLSearchParams(location.search).has('all');   // (?all in the address: every level on the list, for testing)
+const ALL = new URLSearchParams(location.search).has('all') || new URLSearchParams(location.search).has('editor');   // (?all in the address: every level on the list, for testing)
 const toggle = $('creative-toggle'), loadoutBox = $('loadout');
 
 // What Creative mode will start you with.

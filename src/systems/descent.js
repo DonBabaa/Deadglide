@@ -1,9 +1,12 @@
 // The Long Way Down (level 5): what chases you down the hill.
 //   the collapse   a wall of dust coming down the course behind you. It starts slowly and keeps getting faster,
 //                  and it is never far behind however fast you go. If it reaches you, that is the end of the run.
-//   the ghosts     the three brothers you killed: one down each side of you, and Babitus up ahead. Every few
-//                  seconds one of them glows red, then throws something at where you are about to be (a red ring
-//                  on the ground shows where). Steer round it, or be in the air or on a rail when it lands.
+//   Goyitus Ultimus  the three brothers you killed, run together into one ghost that flies down the hill ahead of
+//                  you. He throws at where you are about to be (a red ring on the ground shows where: steer round
+//                  it, or be in the air or on a rail when it lands; what hits you hurts, and slows you, and the
+//                  collapse is right behind). Every few seconds he begins a rite: sigils light in the sky. Shoot
+//                  them all out before it is done and he is stunned and loses a seal; fail, and he lets fly with
+//                  everything. Six seals, and he is finished.
 //   the clock      how long you have been going. Off the lip of the last ramp, it stops: that is your time.
 // main.js calls update() every frame of the level and acts on what it returns.
 import * as THREE from 'three';
@@ -12,6 +15,7 @@ import { DESCENT, along, descentHeight, cityAt, sewerAt } from '../world/descent
 import { buildDescentScene } from '../world/descentScene.js';
 import { ENEMY_PARTS } from '../enemies/enemyModels.js';
 import { ENEMY_TYPES } from '../enemies/types.js';
+import { pose, aimOf, hasMobAnims } from '../enemies/mobAnims.js';
 import { glowTexture } from '../world/textures.js';
 import { buildCasinoFront } from '../world/casinoFront.js';
 import { load, store } from './storage.js';
@@ -32,7 +36,7 @@ const THROWS = {
 
 // One of the dead bosses, as a ghost: his model in his own colours, see-through, with a glow of `tint` round him.
 // place: 'side' (flying beside you) or 'ahead' (up in front of you).
-function ghost(name, tint, throws, map) {
+export function ghost(name, tint, throws, map) {
   const group = new THREE.Group(), T = ENEMY_TYPES[name], arms = [];
   const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, toneMapped: false });
   for (const p of ENEMY_PARTS[name]()) {
@@ -48,7 +52,7 @@ function ghost(name, tint, throws, map) {
   group.scale.setScalar(T.scale * 0.55);
   // (his colours, pushed toward his tint and brightened: unlit, he would be nearly black)
   const base = new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(2.1);
-  return { group, material, aura, arms, base, throws, side: 0, tall: T.height * T.scale * 0.55 };
+  return { group, material, aura, arms, base, throws, side: 0, tall: T.height * T.scale * 0.55, size: T.scale * 0.55, title: T.title, lost: 0 };
 }
 
 // The Moon as a disc: pale, with its seas and a few craters, and a soft glow round it.
@@ -134,20 +138,18 @@ export function createDescent({ scene, skater }) {
   }
 
   // The brothers: Hamzitus (sickly green) on your left, Rubistus (bone blue) on your right, Babitus (gold) ahead.
-  const ghosts = [ghost('boss', 0x7dff5a, 'blob', map), ghost('boss2', 0x7ab8ff, 'bone', map), ghost('boss3d', 0xffc233, 'card', map)];
-  ghosts[0].side = -1;
-  ghosts[1].side = 1;
+  const ghosts = [ghost('ultimus', 0xb9a0ff, 'blob', map)];   // Goyitus Ultimus: one ghost, with something of each brother in him
   for (const g of ghosts) group.add(g.group);
 
   // What they throw: a few of each, used in turn, each with a red ring on the ground where it is going to land.
   const lit = (color) => new THREE.MeshBasicMaterial({ color, toneMapped: false, fog: false });
   const shapes = {
-    blob: [new THREE.SphereGeometry(1.2, 10, 8), lit(0x9be04a)],
+    blob: [new THREE.SphereGeometry(1.2, 10, 8), lit(0x6b3d1a)],   // (filth: brown)
     bone: [new THREE.CapsuleGeometry(0.24, 2.3, 3, 6), lit(0xf2ecd8)],
     card: [new THREE.BoxGeometry(1.5, 0.06, 2.1), lit(0xfff8e8)],
   };
   const ringShape = new THREE.RingGeometry(0.8, 1, 28).rotateX(-Math.PI / 2);
-  const shots = Array.from({ length: 6 }, () => {
+  const shots = Array.from({ length: 22 }, () => {
     const body = new THREE.Group(), kinds = {};
     for (const kind in shapes) { kinds[kind] = new THREE.Mesh(...shapes[kind]); body.add(kinds[kind]); }
     const ring = new THREE.Mesh(ringShape, new THREE.MeshBasicMaterial({ color: 0xff3a2a, transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false, fog: false, side: THREE.DoubleSide }));
@@ -157,32 +159,59 @@ export function createDescent({ scene, skater }) {
   });
   const clearShots = () => { for (const sh of shots) { sh.live = false; sh.body.visible = sh.ring.visible = false; } };
 
-  // A ghost lets go: aimed at where you will be when it lands, if you carry on as you are.
-  function hurl(g) {
-    const T = THROWS[g.throws], p = skater.pos, v = skater.vel;
+  // He lets go of one: aimed at where you will be when it lands if you carry on as you are, `dx` metres to one side
+  // of that and `late` seconds off it. kind: whose it is (what is thrown, how many, how wide).
+  function hurl(kind, dx = 0, late = 0) {
+    const T = THROWS[kind], p = skater.pos, v = skater.vel, from = ghosts.find((g) => g.throws === kind) || ghosts[0];
     for (let i = 0; i < T.count; i++) {
       const sh = shots.find((s) => !s.live);
       if (!sh) return;
-      const x = Math.max(X0 - 30, Math.min(X0 + 30, p.x + v.x * C.throwFlight + (i - (T.count - 1) / 2) * T.spread)), z = p.z + v.z * C.throwFlight;
+      const x = Math.max(X0 - 30, Math.min(X0 + 30, p.x + v.x * (C.throwFlight + late) + dx + (i - (T.count - 1) / 2) * T.spread)), z = p.z + v.z * (C.throwFlight + late);
       Object.assign(sh, { live: true, t: 0, radius: T.radius });
-      sh.from.copy(g.group.position).y += g.tall * 0.7;
+      sh.from.copy(from.group.position).y += from.tall * 0.7;
       sh.to.set(x, descentHeight(x, z) + 0.9, z);
-      for (const kind in sh.kinds) sh.kinds[kind].visible = kind === g.throws;
+      for (const k in sh.kinds) sh.kinds[k].visible = k === kind;
       sh.ring.position.set(x, sh.to.y - 0.4, z);
       sh.ring.scale.setScalar(T.radius);
       sh.body.visible = sh.ring.visible = true;
     }
   }
 
+  // The sigils of his rite: a bright heart with a ring closing on it, in one of the brothers' colours.
+  const TINTS = [0x7dff5a, 0x7ab8ff, 0xffc233], SEAT = [[0, 0, 0, 0], [3.2, 3.4, 2, -0.3], [-1.6, 7.2, 1.2, 0.18]];   // (SEAT: where each brother sits in the one body, and how he leans)
+  const ringMap = (() => {
+    const c = Object.assign(document.createElement('canvas'), { width: 256, height: 256 }), g = c.getContext('2d');
+    g.translate(128, 128); g.strokeStyle = '#fff'; g.lineCap = 'round';
+    g.lineWidth = 9; g.beginPath(); g.arc(0, 0, 112, 0, 7); g.stroke();
+    g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 92, 0, 7); g.stroke();
+    for (let i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.lineWidth = i % 3 ? 4 : 9; g.beginPath(); g.moveTo(0, -92); g.lineTo(0, i % 3 ? -104 : -70); g.stroke(); }
+    g.lineWidth = 5; g.beginPath(); for (let i = 0; i < 4; i++) { const a = i * 2 * Math.PI / 3; g.lineTo(Math.sin(a) * 70, -Math.cos(a) * 70); } g.stroke();
+    return new THREE.CanvasTexture(c);
+  })();
+  const sigils = Array.from({ length: 6 }, () => {
+    const g = new THREE.Group();
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false }));
+    const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringMap, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false }));
+    g.add(core, ring);
+    g.visible = false;
+    group.add(g);
+    return { group: g, core, ring, live: false, pop: 0, ox: 0, oy: 0, oz: 0, phase: 0 };
+  });
+  const seg = new THREE.Vector3(), toSigil = new THREE.Vector3();
+  const reach = new THREE.Vector3(), hand = new THREE.Vector3();   // (lunge(): his hands)
+  const newBoss = () => ({ met: false, seals: C.seals, wait: C.riteEvery * 0.6, harass: 3, rite: null, volley: null, stun: 0, turn: 0, kind() { const live = ['blob', 'bone', 'card'].slice(0, Math.max(1, Math.ceil(this.seals / 2))); return live[this.turn++ % live.length]; } });   // (what he throws: each brother's own, for as long as that brother's seals hold)
+
   // The stretches of the hill, by where each starts.
   const ZONES = [[DESCENT.city[1] + 10, 'The Cemetery'], [DESCENT.sewer[0] + 8, 'Storm Drain 7'], [DESCENT.sewer[1], 'The Hillside'], [DESCENT.edge[0], 'The Edge']];
-  const state = { zone: 0, time: 0, wall: 0, best: Math.max(0, Number(load('bestRun')) || 0), wind: null, wait: 0, next: 0, done: false };
+  const state = { zone: 0, time: 0, wall: 0, best: Math.max(0, Number(load('bestRun')) || 0), wind: null, wait: 0, next: 0, done: false, boss: newBoss() };
 
   return {
     state,
     setVisible(on) { group.visible = on; },
     reset() {
-      Object.assign(state, { zone: 0, time: 0, wall: C.wallStart, wind: null, wait: C.throwEvery, next: 0, done: false });
+      Object.assign(state, { zone: 0, time: 0, wall: C.wallStart, wind: null, wait: C.throwEvery, next: 0, done: false, boss: newBoss() });
+      for (const g of ghosts) g.lost = 0;
+      for (const g of sigils) { g.live = false; g.pop = 0; g.group.visible = false; }
       clearShots();
       casino.fall(1);
       casino.doors(0);
@@ -204,6 +233,8 @@ export function createDescent({ scene, skater }) {
         const x = X0 + g.side * 10, z = Z0 - wall - (g.side ? 7 : 3), up = g.side ? 3 : 10;
         g.group.position.set(x, descentHeight(x, z) - g.tall * 1.3 + (g.tall * 1.3 + up) * smooth(rise) + Math.sin(time * 2 + i) * 0.5, z);
         g.group.rotation.set(0, Math.atan2(skater.pos.x - x, skater.pos.z - z), 0);
+        g.group.scale.setScalar(g.size);
+        g.group.visible = true;
         for (const arm of g.arms) arm.rotation.x = -2.2 * smooth(rise) + Math.sin(time * 3 + i) * 0.2;
         g.material.color.copy(g.base);
         g.material.opacity = 0.7;
@@ -216,17 +247,52 @@ export function createDescent({ scene, skater }) {
     // For the scene when it catches you (cutscenes.buried): the dust `wall` metres down the course, and nothing thrown.
     bury(wall, time) { placeDust(wall, time); clearShots(); },
 
+    // For the scene as he leaves the last ramp (cutscenes.launch): the dust `wall` metres down the course, over the
+    // ramp behind him, and Goyitus Ultimus coming down out of it after him: turned toward `toward`, pitched over
+    // `dive` rad, and stood wherever has his hands at `hands`. His arms do what a man's do going through something
+    // in front of him with both hands (the clip `rummage`, `at` seconds into it: see enemies/mobAnims.js).
+    lunge(wall, time, hands, toward, dive, at) {
+      placeDust(wall, time);
+      back.visible = true;
+      const g = ghosts[0], P = hasMobAnims() ? pose('rummage', at) : null;
+      g.group.visible = true;
+      g.group.scale.setScalar(g.size);
+      g.material.color.copy(g.base);
+      g.material.opacity = 0.85;
+      g.aura.material.opacity = 0.55;
+      g.group.position.set(0, 0, 0);
+      g.group.rotation.set(dive, Math.atan2(toward.x - hands.x, toward.z - hands.z), 0, 'YXZ');
+      for (const arm of g.arms) {
+        if (!arm.aim) {   // (which way it points as it was made, and where its hand is: the point of it furthest from its shoulder)
+          const spot = arm.geometry.attributes.position;
+          let far = 0;
+          arm.aim = aimOf(arm.geometry, 'arm');
+          arm.tip = new THREE.Vector3();
+          for (let i = 0; i < spot.count; i++) { const d = spot.getX(i) ** 2 + spot.getY(i) ** 2 + spot.getZ(i) ** 2; if (d > far) { far = d; arm.tip.set(spot.getX(i), spot.getY(i), spot.getZ(i)); } }
+        }
+        if (P) arm.quaternion.setFromUnitVectors(arm.aim, arm.position.x > 0 ? P.armL : P.armR);
+        else arm.rotation.set(-1.5 + Math.sin(time * 5 + arm.position.x) * 0.15, 0, 0);
+      }
+      // (where that has his hands, with him at the origin: so he goes wherever puts them where they are wanted)
+      g.group.updateMatrixWorld(true);
+      reach.set(0, 0, 0);
+      for (const arm of g.arms) reach.add(hand.copy(arm.tip).applyMatrix4(arm.matrixWorld));
+      g.group.position.copy(hands).sub(reach.multiplyScalar(1 / Math.max(1, g.arms.length)));
+    },
+
     // For the scene after it (cutscenes.launch): nobody chasing any more, and the Moon ahead of `from`, `size` across.
     launch(from, size) {
       clearShots();
       for (const g of ghosts) g.group.visible = false;
+      for (const g of sigils) g.group.visible = false;
       placeMoon(from, size);
     },
 
     // Returns { gap: metres between you and the collapse, caught, hit: damage from something thrown that landed on you
     // this frame, tell: a ghost has just started to glow (-1 left, 1 right, 2 ahead), finished: your time, the frame
     // you leave the last ramp }.
-    update(dt) {
+    // bullets: the gun's (weapon.bullets); beam: a beam fired this frame ({ origin, dir }), if one was.
+    update(dt, bullets, beam) {
       const out = { gap: 0, caught: false, hit: 0, tell: 0, finished: 0 };
       if (state.done) return out;
       const p = skater.pos, s = along(p.z);
@@ -252,34 +318,104 @@ export function createDescent({ scene, skater }) {
       if (state.zone < ZONES.length && s >= ZONES[state.zone][0]) out.zone = ZONES[state.zone++][1];   // (you have just got somewhere)
       const left = smooth((s - DESCENT.edge[0]) / 140);   // 0..1: the brothers dropping back, where the hill runs out
 
-      // The ghosts, in turn: one winds up (glowing red), then throws.
-      if (!state.wind && (state.wait -= dt) <= 0 && s > 60 && s < DESCENT.ramp[0] - 60) {
-        state.wind = { who: state.next, t: 0, thrown: false };
-        state.next = (state.next + 1) % ghosts.length;
-        out.tell = ghosts[state.wind.who].side || 2;
+      // ---- Goyitus Ultimus ----
+      // The three of them, run together into one thing that flies down the hill ahead of you, looking back.
+      // He never lets up: a shot at you every couple of seconds. And every so often he begins a rite: sigils light in
+      // the sky round him, and when it is finished he lets fly with everything. Shoot every sigil out before then and
+      // it breaks in his face: he is stunned, and one of the six seals that hold him together goes. Two seals to a
+      // brother; when a brother's are gone he comes away and is lost. Break all six and he is finished.
+      const B = state.boss, on = s > 60 && s < DESCENT.ramp[0] - 60 && B.seals > 0;
+      if (on && !B.met) { B.met = true; out.met = true; }
+      B.stun = Math.max(0, B.stun - dt);
+      if (on && B.stun <= 0) {
+        if (!B.rite) {
+          if ((B.harass -= dt) <= 0) {   // a shot at you, to keep you moving
+            B.harass = C.harassEvery * (0.7 + Math.random() * 0.6) * (0.75 + 0.25 * B.seals / C.seals);
+            hurl(B.kind(), (Math.random() - 0.5) * 3, 0);
+            out.thrown = true;
+          }
+          if ((B.wait -= dt) <= 0) {     // the rite begins
+            const broken = C.seals - B.seals, count = Math.min(sigils.length, 3 + Math.floor(broken / 2));
+            B.rite = { t: 0, time: C.riteTime - 0.25 * broken, count };
+            for (let i = 0; i < count; i++) {
+              const g = sigils[i], a = ((i + 0.5) / count - 0.5) * 2;   // (-1..1 across the sky)
+              Object.assign(g, { live: true, pop: 0, ox: a * 13 + (Math.random() - 0.5) * 3, oy: 6 + 4 * Math.cos(a * 1.3) + Math.random() * 2, oz: -19 - Math.random() * 6, phase: Math.random() * 6 });
+              g.group.visible = true;
+              g.core.material.color.set(TINTS[i % 3]);
+              g.ring.material.color.set(TINTS[i % 3]);
+            }
+            out.rite = count;
+          }
+        } else {
+          const R = B.rite;
+          R.t += dt;
+          const left = sigils.filter((g) => g.live).length;
+          if (!left) {                      // every one of them shot out: it breaks on him
+            B.rite = null; B.stun = C.stunTime; B.wait = C.riteEvery; B.harass = 1.5;
+            B.seals--;
+            out.stun = true;
+            if (B.seals % 2 === 0 && B.seals > 0) out.lost = B.seals === 4 ? 'Babitus' : 'Rubistus';   // (a brother's second seal: he comes away)
+            if (B.seals <= 0) { out.broken = true; state.wall -= C.brokenRelief; }
+          } else if (R.t >= R.time) {       // it is finished: everything he has, more of it for every sigil left standing
+            B.rite = null; B.wait = C.riteEvery * 0.8; B.harass = 1.2;
+            B.volley = { left: 3 + 2 * left, t: 0 };
+            for (const g of sigils) { g.live = false; g.group.visible = false; }
+            out.barrage = true;
+          }
+        }
+      } else if (!on && B.rite) { B.rite = null; for (const g of sigils) { g.live = false; g.group.visible = false; } }
+      if (B.volley && (B.volley.t -= dt) <= 0) {
+        B.volley.t = 0.16;
+        hurl(B.kind(), (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 0.5);
+        out.thrown = true;
+        if (--B.volley.left <= 0) B.volley = null;
       }
+
+      // The sigils: hanging in the sky ahead of you, drawing in as the rite runs out. A bullet through one puts it out.
+      const rite = B.rite ? B.rite.t / B.rite.time : 0;
+      for (const g of sigils) {
+        if (g.pop > 0) { g.pop -= dt * 3; g.group.scale.setScalar(1 + (1 - g.pop) * 2.5); g.core.material.opacity = g.ring.material.opacity = Math.max(0, g.pop); if (g.pop <= 0) g.group.visible = false; continue; }
+        if (!g.live) continue;
+        g.group.position.set(p.x * 0.6 + X0 * 0.4 + g.ox + Math.sin(state.time * 1.3 + g.phase) * 1.6, p.y + g.oy + Math.sin(state.time * 2.1 + g.phase) * 0.8, p.z + g.oz);
+        g.group.scale.setScalar(1);
+        g.core.material.opacity = 0.95;
+        g.ring.material.opacity = 0.9;
+        g.ring.scale.setScalar(5.4 - 3.4 * rite);                                     // (the ring closes on it: when it touches, time is up)
+        g.ring.material.rotation = state.time * 1.5 + g.phase;
+        g.core.scale.setScalar(3.4 * (1 + 0.12 * Math.sin(state.time * 9 + g.phase)) * (rite > 0.75 ? 1 + 0.3 * Math.sin(state.time * 30) : 1));
+        for (const b of bullets || []) {
+          if (!b.alive) continue;
+          // (how near the bullet's path this frame came to it)
+          seg.copy(b.vel).multiplyScalar(-dt);
+          const back2 = seg.lengthSq() || 1, k = Math.max(0, Math.min(1, toSigil.subVectors(g.group.position, b.pos).dot(seg) / back2));
+          if (toSigil.addScaledVector(seg, -k).lengthSq() < C.sigilRadius * C.sigilRadius) { b.alive = false; g.live = false; g.pop = 1; out.sigil = (out.sigil || 0) + 1; break; }
+        }
+        if (g.live && beam) {
+          const d2 = toSigil.subVectors(g.group.position, beam.origin), al = d2.dot(beam.dir);
+          if (al > 0 && d2.lengthSq() - al * al < C.sigilRadius * C.sigilRadius) { g.live = false; g.pop = 1; out.sigil = (out.sigil || 0) + 1; }
+        }
+      }
+      out.boss = B.met && B.seals > 0 ? B.seals / C.seals : null;
+      out.charge = rite;
+
+      // His body: the three run together. Hamzitus is the bulk of him; Rubistus leans out of his shoulder; Babitus
+      // stands out of the top, crowned. He hangs ahead of you over the course, turned to face you.
+      const ax = p.x * 0.5 + X0 * 0.5 + Math.sin(state.time * 0.45) * 9, az = p.z - 46 - 5 * Math.sin(state.time * 0.3), reel = B.stun > 0 ? Math.min(1, B.stun) : 0;
+      const ay = Math.max(descentHeight(ax, az), p.y - 2) + 9 + Math.sin(state.time * 1.4) * 0.9 - 3 * reel;
+      const hot = B.rite ? 0.25 + 0.75 * rite * (0.6 + 0.4 * Math.sin(state.time * (10 + 20 * rite))) : B.volley ? 1 : 0;
       ghosts.forEach((g, i) => {
-        const w = state.wind && state.wind.who === i ? state.wind : null;
-        const t = w ? w.t : 0, tell = C.throwTell, lean = w ? smooth(t / tell) * (1 - smooth((t - tell - 0.2) / 0.5)) : 0;
-        // The two at your sides fly out wide, a little ahead; Babitus high up in front. Each leans in as he winds up.
-        const x = g.side ? p.x + g.side * (21 - 6 * lean) : p.x + Math.sin(state.time * 0.5) * 7;
-        const z = g.side ? p.z - 9 - 4 * Math.sin(state.time * 0.7 + i * 2) : p.z - 30 + 6 * lean;
-        g.group.position.set(x, Math.max(descentHeight(x, z), p.y - 2) + (g.side ? 1.5 : 9) + Math.sin(state.time * 2 + i) * 0.6, z + 90 * left);
-        g.group.rotation.set(0, Math.atan2(p.x - x, p.z - z), 0);
-        // Arms: back over his head through the tell, then down hard as he lets go.
-        const lift = w ? (t < tell ? -2.6 * smooth(t / tell) : -2.6 + 3.6 * smooth((t - tell) / 0.2)) : Math.sin(state.time * 1.6 + i) * 0.15;
+        const [ox, oy, oz, roll] = SEAT[i], gone = g.lost || 0;
+        g.group.position.set(ax + ox + gone * (i - 1) * 30, ay + oy + gone * 14 + Math.sin(state.time * 2 + i * 2) * 0.35, az + oz + 90 * left + gone * 40);
+        g.group.rotation.set(-0.5 * reel + 0.15 * Math.sin(state.time * 0.9 + i), Math.atan2(p.x - ax, p.z - az) + 0.25 * (i - 1) + 1.2 * reel * Math.sin(state.time * 5 + i), roll + 0.5 * reel * Math.sin(state.time * 7 + i));
+        g.group.scale.setScalar(g.size * (1 + 0.04 * Math.sin(state.time * 3 + i)));
+        if (B.seals <= 0) g.lost = Math.min(1, (g.lost || 0) + dt * 0.5);   // (finished: he comes apart, upward, and is gone)
+        const lift = B.rite ? -2.7 * smooth(rite * 1.5) + 0.25 * Math.sin(state.time * 14 + i) : B.volley ? 0.9 : reel ? 1.1 : -0.4 + Math.sin(state.time * 1.6 + i) * 0.3;
         for (const arm of g.arms) arm.rotation.x = lift;
-        const hot = w && t < tell ? 0.5 + 0.5 * Math.sin(t * 22) : 0;
-        g.material.color.copy(g.base).lerp(RED, hot);
-        g.material.opacity = (0.7 + 0.25 * hot) * (1 - left);
-        g.aura.material.opacity = 0.55 * (1 - left);
+        g.material.color.copy(g.base).lerp(RED, hot).multiplyScalar(reel ? 0.45 + 0.4 * Math.abs(Math.sin(state.time * 18)) : 1);
+        g.material.opacity = (0.72 + 0.2 * hot) * (1 - left) * (1 - gone) * (on || B.seals <= 0 || s <= 60 ? 1 : 1);
+        g.aura.material.opacity = 0.6 * (1 - left) * (1 - gone);
+        g.group.visible = B.seals > 0 || gone < 1;
       });
-      if (state.wind) {
-        const w = state.wind;
-        w.t += dt;
-        if (!w.thrown && w.t >= C.throwTell) { w.thrown = true; hurl(ghosts[w.who]); out.thrown = true; }
-        if (w.t > C.throwTell + 0.7) { state.wind = null; state.wait = C.throwEvery * (0.75 + Math.random() * 0.5); }
-      }
 
       // What is in the air.
       for (const sh of shots) {

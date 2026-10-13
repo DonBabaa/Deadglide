@@ -11,8 +11,9 @@ import { HOUSE, WALL_TOP } from './world/house.js';
 import { hud } from './ui/hud.js';
 import { ENEMY_TYPES } from './enemies/types.js';
 import { FLIGHT } from './systems/descent.js';
-import { SkaterModel } from './player/skaterModel.js';
-import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playVoid, playMoonLand, playSnap, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
+import { SkaterModel, SNAPPED_END } from './player/skaterModel.js';
+import { realGuns } from './player/gunModels.js';
+import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playMoonLand, playSnap, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
 import { playBones, playDread, playThunder, playHeadshot, playPowerup, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop, playRumble, playWhoosh, playLighter, playCoin } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
 import { holdMusic, sceneBoost } from './fx/audio.js';
@@ -72,6 +73,25 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       tip.position.x = 0.56;
       hang.add(tip);
       prize.add(stick(0.4, butt, -0.5), stick(0.65, shine, 0.025), hang);
+      // (That is the built one. The boof he ends up wearing is modelled (public/models/guns.glb), and when it arrives
+      // it takes the built one's place here: the same thing, eleven times the size, lying along the same line, its
+      // snapped half turned up and its ember sitting on the end of that.)
+      realGuns().then((guns) => {
+        const turned = new THREE.Group(), real = new THREE.Group();
+        const gilt = (color, glow) => new THREE.MeshStandardMaterial({ color, emissive: glow, roughness: 0.32, metalness: 0.55 });
+        const finish = { Paper: gilt(0xffc233, 0x8a5a00), Crutch: gilt(0xb8860b, 0x5a3c00) };
+        guns?.traverse((o) => { const is = o.isMesh && o.name.match(/^boofbroken_(Paper|Crutch)/); if (is) turned.add(new THREE.Mesh(o.geometry, finish[is[1]])); });
+        if (!turned.children.length) return;
+        tip.geometry = new THREE.SphereGeometry(0.0128, 12, 10);
+        tip.position.copy(SNAPPED_END);
+        turned.add(tip);
+        turned.scale.setScalar(11);
+        turned.position.z = -0.054 * 11;     // (its middle on the middle of the prize)
+        real.rotation.y = Math.PI / 2;       // (and along the prize's length)
+        real.add(turned);
+        prize.clear();
+        prize.add(real);
+      });
       const rays = new THREE.Mesh(new THREE.CircleGeometry(4.2, 48), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, map: (() => {
         const cv = Object.assign(document.createElement('canvas'), { width: 512, height: 512 }), g2 = cv.getContext('2d');
         g2.translate(256, 256);
@@ -116,7 +136,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     hud.dread(0);
     hud.lines(0);
     model.root.scale.setScalar(1);
-    if (horde.boss) { horde.boss.rise = 1; horde.boss.roar = 0; }
+    if (horde.boss) { horde.boss.rise = 1; horde.boss.roar = 0; horde.boss.posed = false; }
     horde.corpse = null;
     if (completed) done?.();
     if (!scene) { stopCue(); holdMusic(null); sceneBoost(1); }   // (unless what followed was another scene)
@@ -129,7 +149,30 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
   }
 
   // Put the camera at `eye` looking at `target`, shaking by up to `shake` metres.
+  // (A shot that is on Kirky's face, or on what is in his mouth, is put on his face as it is: every scene here aims
+  // at where a man's head would be over his board, and stands as close as suits a man's head. His is bigger, and is
+  // where his body has it. So the shot is centred on the middle of his face, and stood off further by as much as his
+  // head is bigger: the nearer it was, the more.)
+  const faceNow = new THREE.Vector3(), lipsNow = new THREE.Vector3();
+  function onFace() {
+    for (const who of [model, cast.kirky]) {
+      if (!who || !who.faceAt || !who.root.visible || !who.body || !who.body.visible) continue;
+      who.faceAt(faceNow);
+      const far = eye.distanceTo(target);
+      if (far > 3.4 || target.distanceTo(faceNow) > 0.55) continue;
+      const lips = target.distanceTo(who.ember.getWorldPosition(lipsNow)) < 0.12;      // (on his boof: it stays on it)
+      const back = 1 + (who.faceBig - 1) * 0.72 * (lips ? 0.6 : 1) * (1 - smooth((far - 1.6) / 1.8));
+      dir.copy(eye).sub(target);
+      if (!lips) {
+        target.copy(faceNow);
+        if (far < 1) target.lerp(who.cig.getWorldPosition(lipsNow), 0.6);   // (right in on him: that is a shot of his mouth, and what is in it)
+      }
+      eye.copy(target).addScaledVector(dir, back);
+      return;
+    }
+  }
   function view(fov, shake = 0) {
+    onFace();
     camera.position.copy(eye);
     if (shake) camera.position.add(dir.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 2));
     camera.lookAt(target);
@@ -143,9 +186,24 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     camera.updateProjectionMatrix();
   }
   // A line of story over a scene that has none of its own: it comes up at `at`, and the scene waits at `hold` until it has been read.
+  // How Kirky takes a line of the story: what his face does. Read off the words (a scene can also call
+  // model.express itself, for a beat that has no line).
+  const MOODS = [
+    [/\?|what|who|wait|huh|why/i, 'surprise', 1.6], [/boof|smoke|light|gold|chip|win|jackpot|free|home|nice|yes/i, 'smile', 2.2],
+    [/dead|die|lost|lose|gone|buried|broke|no|never|alone|last/i, 'sad', 2.4], [/owes|owe|take it back|mine|kill|run|pay|house/i, 'angry', 2.0], [/moon|sky|stars|far|down/i, 'ooh', 1.8],
+  ];
+  function reaction(text) {
+    const mood = MOODS.find(([words]) => words.test(text));
+    for (const who of [model, cast.kirky].filter(Boolean)) {
+      who.talk?.(Math.min(2.6, 0.5 + text.length * 0.045));
+      if (mood) who.express?.(mood[1], mood[2], 0.9);
+    }
+  }
   function say(at, hold, text) {
     const step = scene.step;
-    scene.step = (t, dt) => { step(t, dt); hud.caption(t >= at ? text : null, NEXT); };
+    // (when a line comes up, whoever is on screen as Kirky reacts to it: see reaction())
+    let shown = false;
+    scene.step = (t, dt) => { step(t, dt); hud.caption(t >= at ? text : null, NEXT); if (t >= at && !shown) { shown = true; reaction(text); } else if (t < at) shown = false; };
     scene.holds.push(hold);
     scene.auto = 2.5;
   }
@@ -158,11 +216,39 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
   }
   // Run `fn` once, the first time the cutscene's clock passes `at`.
   const once = (name, t, at, fn) => { if (t >= at && !scene.marks[name]) { scene.marks[name] = true; fn(); } };
+  // Kirky off his board, in a scene: stood at `at` facing `yaw` (0: the way the world's z runs), doing clip `name` of
+  // his motion capture (`time` seconds into it, if given: a climb is kept in step with how far he has climbed, a
+  // fall with how long he has been falling). His gun is put away. His board is slung on his back (sling: false
+  // leaves it where it is, under him). The scene's own cleanup puts all of it back; aboard() does it sooner, for a
+  // scene that has him ride again.
+  function afoot(at, yaw, name, time, sling = true) {
+    const S = scene;
+    if (!S.afoot) {
+      const gun = model.gun?.group, shown = gun?.visible, slung = sling ? model.board.clone() : null, before = S.cleanup;
+      if (slung) {
+        slung.visible = true;
+        slung.position.set(0.03, -0.12, -0.17);
+        slung.rotation.set(Math.PI / 2, 0, 0.32);
+        model.packHolder.add(slung);
+        model.board.visible = false;
+      }
+      if (gun) gun.visible = false;
+      S.afoot = () => { if (slung) { model.packHolder.remove(slung); model.board.visible = true; } if (gun) gun.visible = shown; S.afoot = null; };
+      S.cleanup = () => { S.afoot?.(); before?.(); };
+    }
+    model.root.visible = true;
+    model.root.position.copy(at);
+    model.root.rotation.set(0, yaw, 0);
+    model.tilt.rotation.z = model.tilt.position.x = model.rider.position.y = model.rider.rotation.y = model.torso.rotation.x = 0;
+    model.play?.(name, 1, 1, time, true);
+  }
+  const aboard = () => scene.afoot?.();
   // A blink to black around a hard cut at `at` (0..1).
   const blink = (t, at) => 1 - smooth(Math.abs(t - at) / 0.16);
 
   return {
     get active() { return scene !== null; },
+    get cast() { return cast; },   // (for the editor, and for checking a scene's framing from the console)
     // Where the one that is playing has got to: { time, duration, waiting } (null: nothing is playing). For the editor.
     get info() { return scene ? { time: scene.time, duration: scene.duration, waiting: scene.waiting } : null; },
     // Jump the one that is playing to `seconds` in (the editor's slider; handy from the console too).
@@ -252,8 +338,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           return { fov: 40, lines: 0.5 };
         } },
         { for: 2.4, line: 'He is going to ask for it back. The way there runs through a cemetery.', cam: (k) => {   // over his shoulder, out into the dark where it will come from
-          eye.set(p.x + 1.1, y + 2.0, p.z + 3.2 - 0.6 * k);
-          target.set(p.x - 4, y + 3, p.z - 60);
+          eye.set(p.x + 1.05, y + 1.7, p.z + 3.3 - 0.5 * k);   // (low enough, and far enough back, that his head and his hat stay whole in the corner of the frame)
+          target.set(p.x - 4, y + 2.2, p.z - 60);
           return { fov: 58 - 26 * smooth(k / 0.12), shake: 0.01 };
         } },
         { for: 2.2, line: 'He brought a board, a gun and a boof. Something keeps the cemetery.', at: () => playInhale(1.4), cam: (k, t) => {   // his face: one long drag
@@ -276,7 +362,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           return { fov: 44 - 16 * smooth(k / 0.1) };
         } },
         { for: 2.6, line: 'The catacombs. Everyone who could not pay ends up down here.', at: () => playBones(0.6), cam: (k) => {   // along the floor, down the tunnel
-          eye.set(p.x - 3.5, y + 0.4, p.z + 5 - 2 * k);
+          eye.set(p.x - 3.5, y + 0.4, p.z + 5 - 0.8 * k);   // (it creeps in no further than keeps all of him in the frame)
           target.set(p.x + 1, y + 2.5, p.z - 40);
           return { fov: 62, lines: 0.3 };
         } },
@@ -639,6 +725,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // chandelier, the two of them, as the title lands. b: Babitus.
     houseWins(b, done) {
       const p = skater.pos, tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.8, 3.2], END = 5.4;
+      b.posed = true;
       playCreak(1.6);
       begin(END + 0.2, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), ground = heightAt(b.x, b.z), floor = heightAt(p.x, p.z);
@@ -646,16 +733,15 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         side.set(dir.z, 0, -dir.x);
         b.yaw = Math.atan2(dir.x, dir.z);
         b.roar = 0.6 * k(CUTS[1], 0.2) * (1 - k(CUTS[2] - 0.3, 0.3));
-        model.update(dt, skater, eye.set(p.x, floor + 0.25, p.z), null, false);
-        model.root.quaternion.multiply(spin.setFromAxisAngle(side, Math.PI / 2 * k(0, 0.5)));   // (down, and staying down)
+        afoot(eye.set(p.x, floor + 0.1, p.z), Math.atan2(-dir.x, -dir.z), 'die', 0.4 + t * 1.3, false);   // (down, as he goes when he dies, facing what did it: and staying down)
         horde.draw(dt);
         if (t < CUTS[1]) {            // 1: from the marble beside him, up at what did it
           eye.set(p.x, floor + 0.3, p.z).addScaledVector(dir, 3).addScaledVector(side, 1.6);
           target.set(b.x, ground + tall * 0.7, b.z);
           view(62, 0.02);
         } else if (t < CUTS[2]) {     // 2: his face
-          eye.set(b.x, ground + tall * 0.86, b.z).addScaledVector(dir, wide + 2.2).addScaledVector(side, 0.4);
-          target.set(b.x, ground + tall * 0.86, b.z);
+          if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.86, b.z).addScaledVector(dir, wide * 0.3);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2).addScaledVector(side, 0.4);
           view(40 - 14 * k(CUTS[1], 0.14), 0.04);
         } else {                      // 3: from the chandelier
           eye.set(p.x + 1.5, floor + 13 - 3 * k(CUTS[2], 2), p.z + 1.5);   // (straight down on him)
@@ -765,63 +851,84 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       scene.skippable = true;
     },
 
-    // "Launch": off the lip of the last ramp. In slow motion from the side as he leaves it; from behind, the Moon
-    // ahead and nothing under him; his face, and a drag; and then a long way off, getting smaller against it.
+    // "Launch": off the lip of the last ramp. In slow motion from the side as he leaves it; from out in front of it,
+    // looking back: the dust comes over the ramp and Goyitus Ultimus comes down out of it with both hands out for
+    // him, and gets nothing; from behind, the Moon ahead and nothing under him; his face, and a drag; and then a
+    // long way off, getting smaller against it.
     // descent: systems/descent.js (its launch() clears the hill of ghosts and hangs the Moon).
     launch(descent, done) {
-      const from = skater.pos.clone(), at = new THREE.Vector3(), head = new THREE.Vector3(), moon = new THREE.Vector3(), post = new THREE.Vector3();
-      const CUTS = [0, 2.3, 4.5, 6.6], LINES = ['The hill ends.', 'Kirky does not.', 'He has one boof left.', 'And somewhere quiet to smoke it.'], END = 9.6;
+      const from = skater.pos.clone(), at = new THREE.Vector3(), head = new THREE.Vector3(), moon = new THREE.Vector3(), post = new THREE.Vector3(), hands = new THREE.Vector3();
+      const CUTS = [0, 2.3, 4.9, 7.1, 9.2], LINES = ['The hill ends.', 'So do the brothers.', 'Kirky does not.', 'He has one boof left.', 'And somewhere quiet to smoke it.'], END = 12.2;
+      const course = 48 - from.z;   // (how far down the hill the lip is: the dust is measured down it)
       lamp.color.set(0xdfe8ff);
       playWhoosh();
       playHush(END);
       begin(END + 0.3, (t, dt) => {
-        const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : 3;
-        // Where he is: barely moving through the first shot (slow motion), then away.
-        const d = t < CUTS[1] ? 5 * t : 5 * CUTS[1] + 26 * (t - CUTS[1]) + 60 * Math.max(0, t - CUTS[3]) ** 2;
+        const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : t < CUTS[4] ? 3 : 4;
+        // Where he is: barely moving through the first two shots (slow motion), then away.
+        const slow = 5 * Math.min(t, CUTS[1]) + 9 * Math.max(0, Math.min(t, CUTS[2]) - CUTS[1]);
+        const d = slow + 26 * Math.max(0, t - CUTS[2]) + 60 * Math.max(0, t - CUTS[4]) ** 2;
         at.copy(from).addScaledVector(FLIGHT, d);
         at.y += 4 * Math.sin(Math.min(1, d / 160) * Math.PI);
-        descent.launch(at, 340 + 260 * k(CUTS[1], END - CUTS[1]));
+        descent.launch(at, 340 + 260 * k(CUTS[2], END - CUTS[2]));
+        if (shot === 1) {
+          // What is left of the brothers: out of the dust as it comes down the ramp, both hands a couple of metres
+          // behind him and going through the air where he was; and then down on the lip of it, still reaching, as
+          // he goes on without them.
+          const f = (t - CUTS[1]) / (CUTS[2] - CUTS[1]), down = smooth((f - 0.25) / 0.6);
+          hands.copy(at).addScaledVector(FLIGHT, -2.4).lerp(post.copy(from).addScaledVector(FLIGHT, 2.5), down);
+          hands.y += 1.1 * (1 - down);
+          descent.lunge(course - 74 + 34 * smooth(f), t, hands, at, 0.7 + 0.75 * down, t - CUTS[1]);
+        }
         moon.copy(at).addScaledVector(FLIGHT, 900);
         model.update(dt, skater, at, null, false);
-        if (shot !== 2) model.root.quaternion.multiply(spin.setFromAxisAngle(UP, t * 1.4));
-        model.inhale = shot === 2 ? k(CUTS[2] + 0.3, 0.5) * (1 - k(CUTS[3] - 0.5, 0.3)) : 0;
+        if (shot !== 3) model.root.quaternion.multiply(spin.setFromAxisAngle(UP, t * 1.4));
+        model.inhale = shot === 3 ? k(CUTS[3] + 0.3, 0.5) * (1 - k(CUTS[4] - 0.5, 0.3)) : 0;
         head.set(0, 1.66, 0).applyQuaternion(model.root.quaternion).add(at);
         horde.draw(dt);
         if (shot === 0) {             // 1: side on, very slowly, as the board leaves the lip
           eye.set(at.x + 7.5 - 1.5 * k(0, 2.3), at.y + 0.4, at.z - 1.5);
           target.copy(at).y += 1;
           view(40, 0.01);
-        } else if (shot === 1) {      // 2: from behind and under him: the Moon, and nothing else
-          eye.copy(at).addScaledVector(FLIGHT, -7 + 1.5 * k(CUTS[1], 2.2));
+        } else if (shot === 1) {      // 2: from out in front of the ramp, low, looking back at it: he is clear, and what comes after him is not
+          const f = k(CUTS[1], CUTS[2] - CUTS[1]);
+          eye.copy(from).addScaledVector(FLIGHT, slow + 10 - 2 * f);
+          eye.x += 7 - 1.5 * f; eye.y += 4.5 + 1.5 * f;   // (high enough to see down onto the ramp he has just left)
+          target.copy(at).lerp(hands, 0.5);
+          target.y += 0.6;
+          view(64 - 14 * k(CUTS[1], 0.18), 0.05 + 0.1 * f);
+        } else if (shot === 2) {      // 3: from behind and under him: the Moon, and nothing else
+          eye.copy(at).addScaledVector(FLIGHT, -7 + 1.5 * k(CUTS[2], 2.2));
           eye.x += 2; eye.y -= 1.6;
           target.copy(at).lerp(moon, 0.5);
-          view(70 - 22 * k(CUTS[1], 0.15), 0.04);
-        } else if (shot === 2) {      // 3: his face
+          view(70 - 22 * k(CUTS[2], 0.15), 0.04);
+        } else if (shot === 3) {      // 4: his face
           eye.copy(head).addScaledVector(FLIGHT, 1.5);
           eye.x += 0.5; eye.y -= 0.35;
           target.copy(head);
-          view(32 - 6 * k(CUTS[2], 0.15), 0.006);
-        } else {                      // 4: left behind: he gets smaller, and it gets bigger
-          once('post', t, CUTS[3], () => post.copy(at).addScaledVector(FLIGHT, -9).add(dir.set(2.5, 2, 0)));
+          view(32 - 6 * k(CUTS[3], 0.15), 0.006);
+        } else {                      // 5: left behind: he gets smaller, and it gets bigger
+          once('post', t, CUTS[4], () => post.copy(at).addScaledVector(FLIGHT, -9).add(dir.set(2.5, 2, 0)));
           eye.copy(post);
           target.copy(at).lerp(moon, 0.3);
-          view(52 - 22 * k(CUTS[3], END - CUTS[3]), 0.01);
+          view(52 - 22 * k(CUTS[4], END - CUTS[4]), 0.01);
         }
         lamp.position.copy(eye).y += 1.2;
-        lamp.intensity = shot === 2 ? 14 : 40;
-        hud.lines(shot === 0 ? 0.5 : shot === 1 ? 1 : 0);
+        lamp.intensity = shot === 3 ? 14 : 40;
+        hud.lines(shot === 0 ? 0.5 : shot === 1 ? 0.9 : shot === 2 ? 1 : 0);
         hud.caption(t < END ? LINES[shot] : null, NEXT);
         let pop = 0;
         for (const c of CUTS) if (t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
         hud.flash('#ffffff', Math.max(pop * 0.85, k(END - 0.7, 0.7)));
-        once('title', t, CUTS[1], () => { playTitleSting(); hud.bossIntro('Launch', 'The Long Way Down'); });
-        once('drag', t, CUTS[2] + 0.3, () => playInhale(1.3));
-        once('untitle', t, CUTS[2], () => hud.hideBossIntro());
+        once('reach', t, CUTS[1], () => { playDustWave?.(); playGhosts?.(); });
+        once('title', t, CUTS[2], () => { playTitleSting(); hud.bossIntro('Launch', 'The Long Way Down'); });
+        once('drag', t, CUTS[3] + 0.3, () => playInhale(1.3));
+        once('untitle', t, CUTS[3], () => hud.hideBossIntro());
         if (t >= END) { model.inhale = 0; hud.hideBossIntro(); goHome(); }
       }, () => { model.inhale = 0; hud.hideBossIntro(); done?.(); });
       score('air');
       scene.skippable = true;
-      scene.holds = [CUTS[1] - 0.03, CUTS[2] - 0.03, CUTS[3] - 0.03, END - 0.75];
+      scene.holds = [CUTS[1] - 0.03, CUTS[2] - 0.03, CUTS[3] - 0.03, CUTS[4] - 0.03, END - 0.75];
     },
 
     // ---- The way up: from the Catacombs to the House ---------------------------------------
@@ -870,7 +977,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         glow.color.set(0xcfe0ff);
         glow.position.set(s.x + 0.55, floor + TOP - 1.5, s.z);
         glow.intensity = 260 * open;
-        const kirkyX = s.x + 0.6 * k(CUTS[4], 0.5), kirkyY = floor + (TOP - 0.5) * climb;
+        // (Kirky on the ladder, in the last shot: on its rungs, 1.2 m a second from a moment after the cut)
+        const RUNG_X = s.x + 0.58, kirkyY = floor + Math.max(0, t - CUTS[4] - 0.35) * 1.2;
 
         if (shot === 0) {             // 1: at his feet, looking up as he comes apart
           eye.set(bx, ground + 0.5, bz).addScaledVector(dir, wide + 5.5 - 1.2 * k(0, 2.4)).addScaledVector(side, 2.2);
@@ -892,15 +1000,19 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           eye.y = floor + 0.3;
           target.set(s.x + 0.7, floor + 1.2 + (TOP - 3) * open, s.z);
           view(56, 0.004);
-        } else {                      // 5: from the top of the ladder, down at him coming up it
-          eye.set(s.x - 0.4, floor + TOP - 0.9, s.z + 1.0);
-          target.set(kirkyX, kirkyY + 1.3, s.z);
-          view(62, 0.01);
+        } else {                      // 5: from the top of the ladder, down it at him coming up, hand over hand
+          eye.set(s.x + 0.85, floor + TOP - 0.7, s.z + 0.55);
+          target.set(RUNG_X + 0.1, kirkyY + 1.25, s.z);
+          view(58, 0.01);
           lines = 0.5 * climb;
         }
-        // Kirky himself: where he stood, then across to the ladder and up it.
-        eye.set(kirkyX, kirkyY, s.z);
-        model.update(dt, skater, eye, null, false);
+        // Kirky himself: on his board where he stood; then, for the last shot, off it and on the ladder with it
+        // slung on his back, climbing (his climb is motion capture, kept in step with how far up he has got: a
+        // rung to each hand, 0.8 m to each time round the clip).
+        if (shot < 4) {
+          eye.set(s.x, floor, s.z);
+          model.update(dt, skater, eye, null, false);
+        } else afoot(eye.set(RUNG_X, kirkyY, s.z), Math.PI / 2, 'climb', (((kirkyY - floor) / 0.8) % 1) * 0.78);   // (facing the ladder)
         horde.draw(dt);
 
         lamp.position.copy(camera.position).y += 1.4;
@@ -946,12 +1058,18 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         cover.position.set(P.x + 1.5 * off, y0 + 0.06 + Math.sin(off * Math.PI) * 0.7 + (t < 0.6 ? Math.abs(Math.sin(t * 30)) * 0.04 : 0), P.z);
         cover.rotation.set(0, 0, -Math.PI * off);
         cover.visible = hole.visible = shot < 4;
-        // Kirky: up out of it; standing; away up the hill; and at the top, straight at the doors.
-        if (shot < 3) at.set(P.x, y0 - 1.9 * (1 - k(1.1, 1.3)), P.z);
-        else if (shot === 3) { const z = P.z + 7 * (t - CUTS[3]) ** 2; at.set(P.x, heightAt(P.x, z), z); }
-        else { const z = TOP_Z - 34 + 26 * (t - CUTS[4]); at.set(P.x, heightAt(P.x, Math.min(z, TOP_Z - 6)), z); }
-        model.update(dt, skater, at, null, false);
-        model.root.quaternion.multiply(spin.setFromAxisAngle(UP, Math.PI));   // (he is facing up the hill)
+        // Kirky: up out of it, hand over hand as he came up the ladder, his board on his back; stood in the street;
+        // then on his board, away up the hill; and at the top, straight at the doors.
+        if (shot < 3) {
+          const down = 1.9 * (1 - k(1.1, 1.6));
+          afoot(at.set(P.x, y0 - down, P.z), 0, down > 0.5 ? 'climb' : 'breathe', down > 0.5 ? (((1.9 - down) / 0.8) % 1) * 0.78 : undefined);   // (facing up the hill)
+        } else {
+          aboard();
+          if (shot === 3) { const z = P.z + 7 * (t - CUTS[3]) ** 2; at.set(P.x, heightAt(P.x, z), z); }
+          else { const z = TOP_Z - 34 + 26 * (t - CUTS[4]); at.set(P.x, heightAt(P.x, Math.min(z, TOP_Z - 6)), z); }
+          model.update(dt, skater, at, null, false);
+          model.root.quaternion.multiply(spin.setFromAxisAngle(UP, Math.PI));   // (he is facing up the hill)
+        }
         model.root.visible = !(shot === 4 && at.z > TOP_Z + 1);
         head.set(0, 1.66, 0).add(at);
         horde.draw(dt);
@@ -1006,6 +1124,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     house(b) {
       const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.0, 2.3, 3.3];
       b.rise = 1;
+      b.posed = true;   // (he stands there: see Horde.draw)
       playDread();
       playChandelier();
       begin(5.2, (t, dt) => {
@@ -1021,14 +1140,15 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           target.set(HOUSE.x, 22, HOUSE.z);
           view(64 - 26 * k(0, 0.25), 0.05);
         } else if (t < CUTS[2]) {     // 2: up him, from his shoes to his face
-          const up = k(1.0, 1.1);
-          eye.set(b.x, ground + 0.4 + tall * 0.84 * up, b.z).addScaledVector(dir, wide + 3.6).addScaledVector(side, 0.8 - 0.8 * up);
-          target.set(b.x, ground + 0.5 + tall * 0.84 * up, b.z);
+          // (it ends level with his face, and square on to it, wherever his stance has it: b.eyesAt)
+          const up = k(1.0, 1.1), face = b.eyesAt, top = face ? face.y - ground - 0.5 : tall * 0.84, fx = face ? (face.x - b.x) * up : 0, fz = face ? (face.z - b.z) * up : 0;
+          eye.set(b.x + fx, ground + 0.4 + top * up, b.z + fz).addScaledVector(dir, wide + 3.6).addScaledVector(side, 0.8 - 0.8 * up);
+          target.set(b.x + fx, ground + 0.5 + top * up, b.z + fz);
           view(34, 0.01);
           lines = 0.9;
         } else if (t < CUTS[3]) {     // 3: his eyes
-          eye.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide + 2.6 - 0.5 * k(2.3, 1.0)).addScaledVector(side, 0.2);
-          target.set(b.x, ground + tall * 0.89, b.z);
+          if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide * 0.3);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.6 - 0.5 * k(2.3, 1.0)).addScaledVector(side, 0.2);
           view(22, 0.008);
         } else {                      // 4: over Kirky's shoulder, the whole room between you
           eye.copy(skater.pos).addScaledVector(dir, 3.4 + 0.8 * k(3.3, 1.8)).addScaledVector(side, 1.3);
@@ -1057,7 +1177,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
 
     // "All in": he is down to half. His hand of cards, his eyes lighting up like reels, and the roar.
     allIn(b) {
-      const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.0, 2.2];
+      const tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.0, 2.2], CARDS = 1;   // (CARDS: which hand his cards are in: see Horde's mark())
+      b.posed = true;
       begin(4.2, (t, dt) => {
         dir.set(skater.pos.x - b.x, 0, skater.pos.z - b.z).normalize();
         side.set(dir.z, 0, -dir.x);
@@ -1067,12 +1188,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         horde.draw(dt);
         const ground = heightAt(b.x, b.z), k = (a, len) => smooth((t - a) / len);
         if (t < CUTS[1]) {            // 1: the cards in his hand, a snap zoom
-          eye.set(b.x, ground + tall * 0.36, b.z).addScaledVector(dir, wide + 2.6).addScaledVector(side, -1.9);
-          target.set(b.x, ground + tall * 0.36, b.z).addScaledVector(side, -1.2).addScaledVector(dir, wide * 0.6);
+          const cards = b.handsAt && b.handsAt[CARDS];
+          if (cards) target.copy(cards); else target.set(b.x, ground + tall * 0.36, b.z).addScaledVector(side, -1.2).addScaledVector(dir, wide * 0.6);
+          eye.copy(target).addScaledVector(dir, 3.3).addScaledVector(side, -0.7);
           view(46 - 22 * k(0, 0.2), 0.01);
         } else if (t < CUTS[2]) {     // 2: his eyes: 7, 7, 7
-          eye.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide + 2.2).addScaledVector(side, -0.15);
-          target.set(b.x, ground + tall * 0.89, b.z);
+          if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide * 0.3);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2).addScaledVector(side, -0.15);
           view(18, 0.012);
         } else {                      // 3: from the floor in front of him, arms up
           eye.set(b.x, ground + tall * 0.1, b.z).addScaledVector(dir, wide + 5.4 - 1.2 * k(2.2, 1.2)).addScaledVector(side, 1.5);
@@ -1114,14 +1236,17 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           body.flash = t >= CUTS[2] && Math.random() < 0.2 + 0.6 * k(2.5, 1.4) ? 1 : 0;
         }
         if (t < CUTS[1]) {            // 1: his face, very slowly, as he sees the card
-          eye.set(body.x, ground + tall * 0.86, body.z).addScaledVector(dir, wide + 2.4 - 0.4 * k(0, 1.5)).addScaledVector(side, 0.5);
-          target.set(body.x, ground + tall * 0.86, body.z);
+          if (there && body.eyesAt) target.copy(body.eyesAt); else target.set(body.x, ground + tall * 0.86, body.z).addScaledVector(dir, wide * 0.3);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.4 - 0.4 * k(0, 1.5)).addScaledVector(side, 0.5);
           view(22, 0.006);
-        } else if (t < CUTS[2]) {     // 2: the wheel from above, turning: zero
-          const turn = (t - 1.5) * 1.4;
-          eye.set(HOUSE.x + Math.sin(turn) * 3, 24, HOUSE.z + Math.cos(turn) * 3);
-          target.set(HOUSE.x, -3, HOUSE.z);
-          view(52 - 22 * k(1.5, 0.9), 0.01);
+        } else if (t < CUTS[2]) {     // 2: the wheel, turning: zero
+          // (From over its rim, round it and in on the green pocket. Not from straight above: the great chandelier
+          // hangs there, and all that can be seen through it is its own light.)
+          const turn = (t - 1.5) * 0.5, zero = Math.PI * (1 / 37 - 1), out = HOUSE.pit.r * 0.62;
+          target.set(HOUSE.x + Math.cos(zero) * out, 0, HOUSE.z + Math.sin(zero) * out);
+          target.y = heightAt(target.x, target.z);
+          eye.set(target.x + Math.cos(zero + 0.5 + turn) * 13, target.y + 9.5, target.z + Math.sin(zero + 0.5 + turn) * 13);
+          view(52 - 24 * k(1.5, 0.9), 0.01);
         } else if (t < CUTS[3]) {     // 3: he comes apart
           const around = -0.5 + 0.35 * (t - 2.5);
           eye.set(body.x, 0, body.z).addScaledVector(dir, (wide + 11) * Math.cos(around)).addScaledVector(side, (wide + 11) * Math.sin(around));
@@ -1390,13 +1515,14 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           target.set(b.x, ground + 0.6 + tall * 0.25 * b.rise, b.z);
           view(40, 0.06);
         } else if (t < CUTS[2]) {     // 2: down the tunnel, over Kirky's shoulder: a snap zoom as he stands
-          eye.copy(skater.pos).addScaledVector(dir, 2.6).addScaledVector(side, 0.9);
-          eye.y = skater.pos.y + 1.9;
+          // (stood far enough back, and low enough, that his head and his hat are whole in the corner of the frame after the zoom: not cut off at the chin)
+          eye.copy(skater.pos).addScaledVector(dir, 3.1).addScaledVector(side, 1.05);
+          eye.y = skater.pos.y + 1.7;
           target.set(b.x, ground + tall * 0.55 * b.rise, b.z);
           view(62 - 30 * k(1.2, 0.22), 0.03);
         } else if (t < CUTS[3]) {     // 3: his eyes
-          eye.set(b.x, ground + tall * 0.87, b.z).addScaledVector(dir, wide + 3.4 - 0.5 * k(2.4, 0.8)).addScaledVector(side, 0.3);
-          target.set(b.x, ground + tall * 0.87, b.z);
+          if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.87, b.z);   // (wherever his head is, as he stands now)
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 3.4 - 0.5 * k(2.4, 0.8)).addScaledVector(side, 0.3);
           view(24, 0.015);
         } else {                      // 4: from under his jaw, roaring
           eye.set(b.x, ground + tall * 0.12, b.z).addScaledVector(dir, wide + 5.5 - 1.2 * k(3.2, 1.2)).addScaledVector(side, -1.6);

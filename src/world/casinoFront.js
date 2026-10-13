@@ -4,6 +4,7 @@
 // -z, standing on y = 0 with its middle at x = 0.
 // buildCasinoFront() returns { group, fall(k, time), doors(k) }: fall: k 0 = standing, 1 = gone (and hidden).
 import * as THREE from 'three';
+import { props } from './props.js';
 
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 
@@ -60,7 +61,9 @@ export function buildCasinoFront() {
     g.fillText('C A S I N O', 256, 52);
     const face = new THREE.CanvasTexture(c);
     face.colorSpace = THREE.SRGBColorSpace;
-    add(mid, new THREE.PlaneGeometry(15, 2.8), new THREE.MeshBasicMaterial({ map: face, fog: false, toneMapped: false }), 0, 25.2, -0.25).rotation.y = Math.PI;
+    const sign = add(mid, new THREE.PlaneGeometry(15, 2.8), new THREE.MeshBasicMaterial({ map: face, fog: false, toneMapped: false }), 0, 25.2, -0.3);
+    sign.rotation.y = Math.PI;
+    mid.userData.sign = sign;
   }
 
   // The two towers, each with a belfry, a copper dome and a gold spire.
@@ -83,6 +86,18 @@ export function buildCasinoFront() {
     add(wing, box(14, 3, 5), roof, 0, 22.5, 2.6);
     for (const x of [-4, 0, 4]) for (const y of [5.5, 14]) add(wing, box(2.4, 5.4, 0.3), lit, x, y, -0.1);
   }
+
+  // The building itself is modelled in Blender, and takes the place of the blocks above when it arrives: the middle,
+  // one tower and one wing (each used on both sides: mirrored), one door leaf. What moves stays as it was: the same
+  // pieces fall, the same hinges swing.
+  props().then((P) => {
+    if (!P.casino_mid) return;
+    const painted = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
+    const swap = (g, geometry, mirror, keep = []) => { for (const c of [...g.children]) if (!keep.includes(c)) g.remove(c); const m = new THREE.Mesh(geometry, painted); if (mirror) m.scale.x = -1; g.add(m); };
+    swap(mid, P.casino_mid, false, [mid.userData.sign, ...leaves]);
+    parts.forEach((p) => { if (Math.abs(p.x) === 19 && P.casino_tower) swap(p.g, P.casino_tower, p.x < 0); if (Math.abs(p.x) === 30 && P.casino_wing) swap(p.g, P.casino_wing, p.x < 0); });
+    if (P.casino_door) leaves.forEach((hinge, i) => { hinge.clear(); const leaf = new THREE.Mesh(P.casino_door, painted); leaf.scale.x = i ? -1 : 1; hinge.add(leaf); });
+  });
 
   return {
     group,

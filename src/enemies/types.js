@@ -46,10 +46,17 @@ export const ENEMY_TYPES = {
   },
   // The last boss, in the House (level 4). He doesn't throw filth: the roulette wheel decides what he does (see horde.js).
   boss3: {
-    title: 'Babitus Goyitus', boss: true, house: true, scale: 3.2, speed: 6, hp: 1, hpScale: 1.6, radius: 0.55, height: 2.0, damage: 30, score: 3000, xp: 0, sway: 0.05, stride: 0.5,
+    title: 'Babitus Goyitus', boss: true, house: true, scale: 3.2, speed: 10.5, hp: 1, hpScale: 2.6, radius: 0.55, height: 2.0, damage: 30, score: 3000, xp: 0, sway: 0.02, stride: 0.36,
     blob: 0xf3efe4, splat: 0x1a1a1a, cutIn: 'house',
   },
   boss: { title: 'Hamzitus Goyitus', boss: true, scale: 5.5, speed: 4.5, hp: 1, radius: 0.72, height: 1.95, damage: 30, score: 1000, xp: 60, sway: 0.1, stride: 0.5 },
 };
 // (Babitus again, wearing more of your gold each time: see `babitus` in enemyModels.js.)
+// The hill's boss (systems/descent.js draws him: the horde never spawns him).
+ENEMY_TYPES.ultimus = { title: 'Goyitus Ultimus', boss: true, scale: 5, speed: 0, hp: 1, radius: 0.7, height: 2.7, damage: 0, score: 0, xp: 0, sway: 0, stride: 0.5 };
 for (const more of ['b', 'c', 'd']) ENEMY_TYPES[`boss3${more}`] = ENEMY_TYPES.boss3;
+// More zombies: the same monster in another body (a soldier in what is left of his uniform; a gaunt one, bare to the
+// waist). Whenever a zombie is spawned it is one of these, picked at random (see Horde.spawnAt, and
+// public/models/zombies.glb, made by tools/build_zombies.py).
+export const ZOMBIES = ['shambler', 'zombieb', 'zombiec'];
+for (const name of ZOMBIES.slice(1)) ENEMY_TYPES[name] = ENEMY_TYPES.shambler;

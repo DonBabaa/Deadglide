@@ -15,6 +15,7 @@
 //   drifter    an alien floating round a loop over the night side. Startled: it climbs, speeds up and weaves.
 //   golden     a rare one that crosses the whole arena, there for 25 seconds in every 90. Startled: it bolts.
 import * as THREE from 'three';
+import { spaceSuit } from '../player/kirkyBody.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MOON, CRATERS, daylight, moonHeight } from '../world/moon.js';
 
@@ -62,6 +63,9 @@ export function astronaut() {
     add(new THREE.BoxGeometry(0.3, 0.16, 0.5), grey, s * 0.26, 0.08, 0.08);                                        // boots
   }
   add(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff4a3a }), 0.25, 1.9, -0.66);  // a light that's still on
+  // (the suit modelled in Blender takes the place of all that when it arrives: the one Kirky wears as a costume,
+  // standing empty, at this one's size)
+  spaceSuit().then((real) => { if (!real) return; g.clear(); real.scale.setScalar(3.1 / 1.9); g.add(real); });
   return g;
 }
 function alien(skin, glow, floating) {
@@ -113,6 +117,7 @@ export function createTargets({ scene, ride, onKill, burst }) {
     T.hit = HIT[T.kind === 'hopper' || T.kind === 'burrower' ? 'astronaut' : 'alien'];
     T.model = weld(T.kind === 'hopper' || T.kind === 'burrower' ? astronaut() : T.kind === 'golden' ? alien(0xd9b24a, 0xa87a10, true) : alien(0x7fae8a, 0x1f6a3a, true));
     T.model.scale.setScalar(T.kind === 'golden' ? 1.5 : 1.25);
+    if (T.kind === 'hopper' || T.kind === 'burrower') spaceSuit().then((real) => { if (!real) return; T.model.clear(); real.scale.setScalar(3.1 / 1.9); T.model.add(real); });   // (the suit modelled in Blender, when it arrives)
     T.size = T.model.scale.x;
     group.add(T.model);
   });

@@ -19,21 +19,23 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { world } from '../world/level.js';
 import { HOUSE, houseSpot } from '../world/house.js';
 import { stats } from '../player/stats.js';
-import { ENEMY_TYPES } from './types.js';
+import { ENEMY_TYPES, ZOMBIES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
 import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
+import { withKnees, legLine } from './knees.js';
+import { MOCAP, hasMobAnims, pose, place, aimOf, clipLength, SLAM_LANDS, poseSpider, placeSpider, spiderRate, poseQuad, placeQuad } from './mobAnims.js';
 
 const NEAR = 13, NEAR_MOST = 10;   // a monster this close to the camera (m) is drawn in detail: at most this many of a kind at once
 const MAX = 320;          // hard cap on monsters alive (and instances per type)
 const CELL = 2.5;         // spatial hash cell size
 const CLIMB = 1.3;        // monsters step up anything lower than this
+const SCALE = { most: 8, free: 2.6, lead: 1.2 };   // what a zombie will climb (m): nothing taller than `most`; anything up to `free`; and anything at all if you are up there (its top no more than `lead` above you)
 const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
 const ABLAZE = new THREE.Color(2.4, 1.0, 0.3), FROZEN = new THREE.Color(0.55, 0.95, 1.9);   // tints: on fire, chilled
 const BLOB_GRAVITY = 20;
-const tint = new THREE.Color();
 const BROWN = new THREE.Color(0x5a3416), BONE = new THREE.Color(0xd8d2bf);
 const spot = { x: 0, y: 0, nx: 0, ny: 1 };   // (scratch: a place on the pipe)
 const bx = new THREE.Vector3(), by = new THREE.Vector3(), bz = new THREE.Vector3(), basis = new THREE.Matrix4();
@@ -61,6 +63,82 @@ function webTexture() {
 }
 const cellKey = (x, z) => Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663;
 
+// What Babitus throws, painted: the ace of spades and the back of the deck; a house chip's face and its striped edge.
+function painted(w, h, draw) {
+  const c = Object.assign(document.createElement('canvas'), { width: w, height: h }), g = c.getContext('2d');
+  draw(g, w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+const spade = (g, x, y, s) => { g.beginPath(); g.moveTo(x, y - s); g.bezierCurveTo(x + s * 1.3, y - s * 0.1, x + s * 1.0, y + s * 0.9, x + s * 0.12, y + s * 0.45); g.lineTo(x + s * 0.34, y + s); g.lineTo(x - s * 0.34, y + s); g.lineTo(x - s * 0.12, y + s * 0.45); g.bezierCurveTo(x - s * 1.0, y + s * 0.9, x - s * 1.3, y - s * 0.1, x, y - s); g.fill(); };
+const cardFace = () => painted(352, 512, (g, w, h) => {
+  g.fillStyle = '#f7f3ea'; g.beginPath(); g.roundRect(0, 0, w, h, 26); g.fill();
+  g.strokeStyle = '#1b1b1f'; g.lineWidth = 3; g.beginPath(); g.roundRect(22, 22, w - 44, h - 44, 16); g.stroke();
+  g.fillStyle = '#16161a'; spade(g, w / 2, h / 2, 96);
+  g.fillStyle = '#f7f3ea'; g.font = '900 34px Georgia, serif'; g.textAlign = 'center'; g.fillText('B.G.', w / 2, h / 2 + 22);
+  g.fillStyle = '#16161a';
+  for (const turn of [0, Math.PI]) { g.save(); g.translate(w / 2, h / 2); g.rotate(turn); g.font = '900 64px Georgia, serif'; g.fillText('A', -w / 2 + 56, -h / 2 + 88); spade(g, -w / 2 + 56, -h / 2 + 128, 20); g.restore(); }
+});
+const cardBack = () => painted(352, 512, (g, w, h) => {
+  g.fillStyle = '#f7f3ea'; g.beginPath(); g.roundRect(0, 0, w, h, 26); g.fill();
+  g.save(); g.beginPath(); g.roundRect(20, 20, w - 40, h - 40, 14); g.clip();
+  g.fillStyle = '#7a1420'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#d9a52a'; g.lineWidth = 3;
+  for (let i = -h; i < w + h; i += 26) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + h, h); g.stroke(); g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
+  g.restore();
+  g.fillStyle = '#7a1420'; g.beginPath(); g.arc(w / 2, h / 2, 70, 0, 7); g.fill(); g.strokeStyle = '#d9a52a'; g.lineWidth = 6; g.stroke();
+  g.fillStyle = '#ffc233'; g.font = '900 56px Georgia, serif'; g.textAlign = 'center'; g.fillText('B.G.', w / 2, h / 2 + 20);
+});
+const chipFace = () => painted(512, 512, (g, w) => {
+  const c = w / 2;
+  g.fillStyle = '#b3101e'; g.beginPath(); g.arc(c, c, c, 0, 7); g.fill();
+  for (let i = 0; i < 8; i++) { g.fillStyle = '#f7f3ea'; g.beginPath(); g.moveTo(c, c); g.arc(c, c, c, i * Math.PI / 4 - 0.16, i * Math.PI / 4 + 0.16); g.fill(); }   // the white blocks round its edge
+  g.fillStyle = '#b3101e'; g.beginPath(); g.arc(c, c, c * 0.78, 0, 7); g.fill();
+  g.strokeStyle = '#ffc233'; g.lineWidth = 10; g.beginPath(); g.arc(c, c, c * 0.74, 0, 7); g.stroke();
+  g.setLineDash([10, 12]); g.lineWidth = 5; g.beginPath(); g.arc(c, c, c * 0.64, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#f7f3ea'; g.beginPath(); g.arc(c, c, c * 0.52, 0, 7); g.fill();
+  g.fillStyle = '#7a1420'; g.textAlign = 'center'; g.font = '900 120px Georgia, serif'; g.fillText('100', c, c + 28);
+  g.font = '700 30px "Arial Black", sans-serif'; g.fillText('THE HOUSE', c, c - 78); g.fillText('B. GOYITUS', c, c + 92);
+});
+const chipRim = () => painted(512, 32, (g, w, h) => {
+  for (let i = 0; i < 16; i++) { g.fillStyle = i % 2 ? '#f7f3ea' : '#b3101e'; g.fillRect(i * w / 16, 0, w / 16 + 1, h); }
+  g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, h / 2 - 1, w, 2);
+});
+
+const reach = new THREE.Matrix4();
+// How each kind of monster carries itself (see draw()).
+const GAITS = { shambler: 'lurch', thrower: 'lurch', rattler: 'rattle', wraith: 'float', rat: 'bound', crawler: 'skitter', queen: 'skitter', boss: 'stomp', boss2: 'roll', boss3: 'stride', boss3b: 'stride', boss3c: 'stride', boss3d: 'stride' };
+
+// Where a boss's eyes are, and his hands (the far end of each arm, with whatever is in it: e.handsAt[1] and [-1], by
+// which side of him it is on), as he was last drawn. A scene's camera aims at them: he stands as his motion capture
+// has him, so they are not at some fixed height up him.
+const drawnAs = new THREE.Matrix4();
+function mark(e, parts, i) {
+  let eyes = null;
+  if (e.handsOf !== parts) { e.handsOf = parts; e.handsAt = {}; }   // (he has changed, Babitus with more gold on: these are other parts)
+  for (const part of parts) {
+    if (!eyes && part.glow) eyes = part;   // (the first lit part of him is his eyes: any gold he wears comes after)
+    if (part.role !== 'forearm' && (part.role !== 'arm' || part.elbow)) continue;   // (his hand is on the end of his forearm, if his arm has an elbow in it)
+    if (part.reach === undefined) {        // (how far it reaches from its shoulder, and to where)
+      const at = part.mesh.geometry.attributes.position;
+      part.tip = new THREE.Vector3();
+      part.reach = 0;
+      for (let v = 0; v < at.count; v++) { const d = at.getX(v) ** 2 + at.getY(v) ** 2 + at.getZ(v) ** 2; if (d > part.reach) { part.reach = d; part.tip.set(at.getX(v), at.getY(v), at.getZ(v)); } }
+    }
+    const held = e.handsAt[part.side];
+    if (held && held.part !== part && held.part.reach >= part.reach) continue;   // (several things hang from a shoulder: the one that reaches furthest is the hand, and what is in it)
+    part.mesh.getMatrixAt(i, drawnAs);
+    (e.handsAt[part.side] = Object.assign(held || new THREE.Vector3(), { part })).copy(part.tip).multiplyScalar(0.88).applyMatrix4(drawnAs);
+  }
+  if (!eyes) eyes = parts.find((part) => part.role === 'head');   // (no eyes of their own, lit: the middle of his head, then)
+  if (eyes) {
+    if (!eyes.middle) { eyes.mesh.geometry.computeBoundingBox(); eyes.middle = eyes.mesh.geometry.boundingBox.getCenter(new THREE.Vector3()); }
+    eyes.mesh.getMatrixAt(i, drawnAs);
+    (e.eyesAt ??= new THREE.Vector3()).copy(eyes.middle).applyMatrix4(drawnAs);
+  }
+}
+
 export class Horde {
   constructor(scene) {
     this.enemies = [];
@@ -78,14 +156,26 @@ export class Horde {
         transparent: !!T.opacity, opacity: T.opacity || 1,
       });
       const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });   // eyes: lit from within
-      const build = (parts, most) => parts.map((p) => {
+      const build = (list, most) => withKnees(name, list).map((p, index, all) => {
         const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, most);
         mesh.castShadow = !p.glow;
         mesh.frustumCulled = false;
         mesh.count = 0;
         mesh.setColorAt(0, WHITE);
         scene.add(mesh);
-        return { mesh, pivot: new THREE.Vector3(...p.pivot), swing: p.swing, phase: p.phase };
+        // What it is, worked out from where it hinges: the body itself (hinged at his feet), a head, an arm, a leg, or
+        // something that trails (a tail, a ghost's hem). draw() moves each kind in its own way.
+        const [px, py, pz] = p.pivot, mid = Math.abs(px) < 0.02;
+        const role = p.role ? p.role : Math.hypot(px, py, pz) < 0.01 ? 'core' : mid ? (py > T.height * 0.72 ? 'head' : 'tail') : py > (legLine(name) ?? T.height * 0.6) ? 'arm' : 'leg';
+        // (a shin hangs from its leg: `rel` is its knee, measured from that leg's hip; `local` is where a part has been turned to this frame, for what hangs from it)
+        const rel = p.parent !== undefined ? new THREE.Vector3(...p.pivot).sub(new THREE.Vector3(...all[p.parent].pivot)) : null;
+        // (aim: which way it points as it was made: motion capture turns it from that to where the clip has it)
+        return { mesh, glow: !!p.glow, elbow: !!p.elbow, held: !!p.held, pivot: new THREE.Vector3(...p.pivot), swing: p.swing, phase: p.phase, role, side: Math.sign(px) || (p.parent !== undefined ? Math.sign(all[p.parent].pivot[0]) : 0), parent: p.parent, hinge: p.hinge, flex: p.flex, rel, local: new THREE.Matrix4(), cycle: 0, aim: aimOf(p.geometry, role) };
+      }).map((part, index, all) => {
+        // (what he holds hangs from the same hinge as his arm, and points as his arm does)
+        if (part.role === 'arm') { const first = all.find((o) => o.role === 'arm' && o.pivot.equals(part.pivot)); if (first !== part) part.aim = first.aim; }
+        if (part.held) { const fore = all.find((o) => o.role === 'forearm' && o.parent === part.parent && !o.held); if (fore) part.aim = fore.aim; }   // (and what is in his hand, as his forearm does: see knees.js)
+        return part;
       });
       // A monster with a plain version (ENEMY_LITE) is drawn in detail only when it is close: at most NEAR_MOST of them
       // at once. `meshes` is what the rest are drawn with; `fine` is the detailed set.
@@ -111,7 +201,11 @@ export class Horde {
 
     // What the boss throws, and the puddles it leaves.
     this.blobs = Array.from({ length: 40 }, () => ({ life: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), spin: 0 }));
-    this.blobMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.6, 1), new THREE.MeshStandardMaterial({ roughness: 0.4 }), this.blobs.length);
+    // (filth: a lumpy brown gobbet, wet)
+    const gob = new THREE.IcosahedronGeometry(0.6, 3), gp = gob.attributes.position;
+    for (let i = 0; i < gp.count; i++) { const x = gp.getX(i), y = gp.getY(i), z = gp.getZ(i), k = 1 + 0.16 * Math.sin(x * 9 + y * 5) * Math.sin(z * 8 + x * 3) + 0.08 * Math.sin(y * 17 + z * 11); gp.setXYZ(i, x * k, y * k, z * k); }
+    gob.computeVertexNormals();
+    this.blobMesh = new THREE.InstancedMesh(gob, new THREE.MeshStandardMaterial({ roughness: 0.3 }), this.blobs.length);   // (each one is given its colour as it is thrown: Hamzitus's are brown)
     this.blobMesh.frustumCulled = false;
     this.blobMesh.castShadow = true;
     this.splats = Array.from({ length: 30 }, () => ({ life: 0, x: 0, y: 0, z: 0, size: 1 }));
@@ -128,8 +222,10 @@ export class Horde {
     this.boneMesh.castShadow = true;
     this.blobs.forEach((_, i) => this.boneMesh.setMatrixAt(i, HIDDEN));
     // What Babitus throws: playing cards, and casino chips.
-    this.cardMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.05, 1.6), new THREE.MeshStandardMaterial({ color: 0xf7f3ea, roughness: 0.5, emissive: 0x3a3832 }), this.blobs.length);
-    this.chipMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.75, 0.75, 0.2, 14), new THREE.MeshStandardMaterial({ color: 0xffc233, roughness: 0.35, emissive: 0x4a3200 }), this.blobs.length);
+    const paper = (map) => new THREE.MeshStandardMaterial({ map, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.22 }), edge = new THREE.MeshStandardMaterial({ color: 0xf7f3ea, roughness: 0.6 });
+    this.cardMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.05, 1.6), [edge, edge, paper(cardFace()), paper(cardBack()), edge, edge], this.blobs.length);   // (its face up, its back down)
+    const chipTop = paper(chipFace()), rim = chipRim();
+    this.chipMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.75, 0.75, 0.2, 40), [paper(rim), chipTop, chipTop], this.blobs.length);
     for (const mesh of [this.cardMesh, this.chipMesh]) {
       mesh.frustumCulled = false;
       mesh.castShadow = true;
@@ -153,6 +249,7 @@ export class Horde {
     this.enemies.length = 0;
     this.boss = null;           // the final boss, while he's alive
     this.corpse = null;         // ...and his body while he dies (the cutscene animates it: see cutscenes.js)
+    this.husks = [];            // spiders just killed: over on their backs, legs drawn in, for a moment (see draw)
     this.bossSpawned = false;
     this.mini = null;           // the mini-boss (level 2's Spider Queen), while she's alive
     this.miniSpawned = false;
@@ -199,6 +296,7 @@ export class Horde {
     if (this.enemies.length >= MAX) return;
     const y = heightAt(x, z);
     if (y - groundAt(x, z) > 2.5) return;
+    if (name === 'shambler') name = ZOMBIES[Math.floor(Math.random() * ZOMBIES.length)];   // (a zombie is any of the zombies)
     const T = ENEMY_TYPES[name], tough = 1 + config.horde.hpGrowth * (this.wave - 1);
     this.enemies.push({
       name, T, x, y, z, elite,
@@ -223,7 +321,7 @@ export class Horde {
   // The final boss claws his way up ahead of you.
   spawnBoss(player) {
     const house = world.level === 4;
-    const name = house ? `boss3${this.bossVariant}` : world.level === 2 ? 'boss2' : 'boss';   // each level has its own
+    const name = house ? 'boss3' : world.level === 2 ? 'boss2' : 'boss';   // each level has its own
     const T = ENEMY_TYPES[name], heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.bossHp * (T.hpScale || 1);
     // What he throws, in his colours.
     this.bossTint = new THREE.Color(T.blob ?? 0x5a3418);
@@ -369,6 +467,18 @@ export class Horde {
       e.flash = Math.max(0, e.flash - dt * 6);
       if (e.rise < 1) {   // still clawing out of the ground
         e.rise = Math.min(1, e.rise + dt / (H.riseTime * (e.T.boss ? 4 : 1)));
+        if (e.rise >= 1) e.off = 0;   // (out: and off, from a crouch into its run)
+        continue;
+      }
+      if (e.off < 3) e.off += dt;
+      // Going up the face of something after you (see scale, below): up it, and over the top.
+      if (e.scaling) {
+        const S = e.scaling, k = Math.min(1, (S.t += dt) / S.time), up = Math.min(1, k / 0.78), over = Math.max(0, (k - 0.62) / 0.38);
+        e.y = S.y0 + (S.y1 - S.y0) * up * up * (3 - 2 * up);
+        e.x = S.x0 + (S.x1 - S.x0) * over;
+        e.z = S.z0 + (S.z1 - S.z0) * over;
+        e.yaw = S.yaw;
+        if (k >= 1) { e.scaling = null; e.vy = 0; }
         continue;
       }
       if (e.s !== undefined) {   // one that climbs: it has its own way of getting about
@@ -406,6 +516,7 @@ export class Horde {
         // Fliers go straight over everything, and climb or dive to the player's height.
         e.x = confineX(nx, nz); e.z = nz;
       } else if (heightAt(nx, nz) - e.y < climb) { e.x = nx; e.z = nz; }   // walk over low things...
+      else if (this.scale(e, dx, dz, player, climb)) { /* ...go up what can be climbed (a zombie, after you)... */ }
       else if (heightAt(nx, e.z) - e.y < climb) e.x = nx;                  // ...slide round tall ones
       else if (heightAt(e.x, nz) - e.y < climb) e.z = nz;
       else { e.x -= dz * e.speed * dt; e.z += dx * e.speed * dt; }         // boxed in: sidestep
@@ -418,10 +529,13 @@ export class Horde {
         const cruise = Math.max(player.pos.y + 0.4, ground + 3.5);
         const wantY = Math.max(ground + 0.3, dist < 18 ? player.pos.y + 0.2 : cruise);
         e.y += Math.max(-e.T.climb * dt, Math.min(e.T.climb * dt, wantY - e.y));
-      } else e.y = ground;
+      } else if (e.y > ground + 0.7 && MOCAP[e.name]?.fall) { e.vy = (e.vy || 0) - 34 * dt; e.y = Math.max(ground, e.y + e.vy * dt); }   // off an edge: he drops (and is shown dropping)
+      else { e.y = ground; e.vy = 0; }
 
       const want = Math.atan2(dx, dz);
-      e.yaw += Math.atan2(Math.sin(want - e.yaw), Math.cos(want - e.yaw)) * Math.min(1, 8 * dt);
+      const turned = Math.atan2(Math.sin(want - e.yaw), Math.cos(want - e.yaw)) * Math.min(1, 8 * dt);
+      e.yaw += turned;
+      if (e.T.boss) e.turning = (e.turning || 0) + (turned / Math.max(dt, 1e-4) - (e.turning || 0)) * Math.min(1, 4 * dt);   // (how fast he is having to turn to keep facing you: he steps round, see draw)
 
       // Close enough to claw the player?
       e.ramWait -= dt;
@@ -439,6 +553,21 @@ export class Horde {
     damage = Math.max(damage, this.updateBlobs(dt, player), this.updateWebs(dt, player));
     this.draw(dt);
     return damage;
+  }
+
+  // A zombie has run into something too tall to step up. If it can be climbed (it is not too tall, and either you
+  // are up there or it is no great height), he goes up the face of it and over the top: true if he has started to.
+  // (update() takes him up it; draw() shows him climbing.)
+  scale(e, dx, dz, player, step) {
+    const mo = MOCAP[e.name];
+    if (!mo || !mo.climb || !hasMobAnims() || e.T.boss) return false;
+    let top = -Infinity, far = 0;
+    for (const d of [0.45, 0.8, 1.2]) { const h = heightAt(e.x + dx * d, e.z + dz * d); if (h > top) { top = h; far = d; } }
+    const tall = top - e.y;
+    if (!(tall >= step && tall <= SCALE.most && (tall <= SCALE.free || top <= player.pos.y + SCALE.lead))) return false;
+    const x1 = e.x + dx * (far + 0.55), z1 = e.z + dz * (far + 0.55);
+    e.scaling = { t: 0, time: 0.4 + 0.2 * tall, y0: e.y, y1: top, x0: e.x, z0: e.z, x1: confineX(x1, z1), z1, yaw: Math.atan2(dx, dz) };
+    return true;
   }
 
   // ---- The ones that climb (the Catacombs) ------------------------------------------------
@@ -587,29 +716,112 @@ export class Horde {
   //   black   casino chips raining down round where you are heading
   //   green   the house wins: a ring of cards in every direction, and every slot machine pays out monsters
   // Meanwhile the slot machines in the corners spit out a pack of monsters every so often.
+  // Babitus, in the House: a fight in three hands.
+  //   1  THE DEALER              he lets the wheel play for him: red is a fan of cards, black a rain of chips, zero both
+  //                              and every machine paying out.
+  //   2  ALL IN  (two thirds)    he puts his gold on. Every spin is two things at once, the cards come in rings as
+  //                              well as fans, and he comes for you himself: a run at you, and a slam when he gets there.
+  //   3  THE HOUSE ALWAYS WINS  (one third)   crowned. The ceiling never stops raining, the wheel never stops, and at
+  //                              the very end he bets everything he has left on one LAST HAND: a storm of cards
+  //                              turning out from him for as long as he can keep it up. Live through it and he is
+  //                              spent: he stands there, and everything hurts him twice as much.
+  // Between hands nothing can hurt him (he is not finished talking), and no one shot can take him past the next one.
   houseBoss(e, player, dt) {
-    const C = config.house, hurt = e.hp < e.maxHp * 0.5;
+    const C = config.house, S = C.stages;
+    e.stage ??= 1; e.base ??= e.speed;
+    e.guard = Math.max(0, (e.guard || 0) - dt);
+    e.spent = Math.max(0, (e.spent || 0) - dt);
+    e.landed = Math.max(0, (e.landed || 0) - dt);   // (getting up out of a slam)
     e.roar = Math.max(0, (e.roar || 0) - dt * 1.3);   // (his arms come down again after each throw)
-    if (hurt && !e.half) { e.half = true; e.speed *= 1.3; this.events.push({ type: 'bossHalf', name: e.T.title }); }
+    const frac = e.hp / e.maxHp, dist = Math.hypot(player.pos.x - e.x, player.pos.z - e.z);
+    // The next hand.
+    if (e.stage < 3 && frac <= (e.stage === 1 ? S.second : S.third) + 1e-6) {
+      e.stage++;
+      e.guard = S.guard;
+      e.call = e.slam = e.rush = null;
+      e.wheel = S.guard + 0.6; e.adds = S.guard + 2; e.rain = S.guard + 1; e.lunge = S.guard + 4;
+      e.name = e.stage === 2 ? 'boss3c' : 'boss3d';                 // (more of his gold on: and at the last, his crown)
+      e.title = `${e.T.title}  ·  ${e.stage === 2 ? 'All In' : 'The House Always Wins'}`;
+      e.speed = e.base * (e.stage === 2 ? 1.25 : 1.5);
+      e.roar = 1.6;
+      for (let k = 0; k < HOUSE.slots.length; k++) if (e.stage === 3 || k % 2 === 0) this.payOut(k);   // the machines pay out for him
+      this.dealCards(e, player, e.stage === 2 ? 18 : 26, Math.PI);  // and the table goes over: cards, all round
+      this.events.push({ type: 'bossStage', stage: e.stage });
+      return;
+    }
+    if (e.guard > 0) { e.roar = Math.max(e.roar, 0.9); return; }
+    // The last hand.
+    if (e.stage === 3 && !e.last && frac <= S.lastHand) {
+      e.last = { t: 0, turn: Math.random() * 6 };
+      e.call = e.slam = e.rush = null;
+      this.events.push({ type: 'lastHand' });
+    }
+    if (e.last) {
+      const L = e.last;
+      L.t += dt;
+      e.speed = 0;
+      if (L.t < S.lastTime) {
+        e.roar = 1;
+        e.yaw += dt * 2.5;
+        if ((L.next = (L.next || 0) - dt) <= 0) {                   // arms of cards, turning out from him; a chip on your head now and again
+          L.next = 0.11;
+          L.turn += 0.21 * (L.t > S.lastTime / 2 ? -1 : 1);         // (half way through it turns the other way)
+          for (let arm = 0; arm < 3; arm++) this.dealCards({ ...e, x: e.x, z: e.z }, { pos: { x: e.x + Math.sin(L.turn + arm * 2.094) * 10, y: player.pos.y, z: e.z + Math.cos(L.turn + arm * 2.094) * 10 }, vel: { x: 0, z: 0 } }, 1, 0);
+          if (Math.random() < 0.12) this.rainChips(player, 2);
+        }
+      } else if (!L.done) { L.done = true; e.spent = S.spentTime; this.events.push({ type: 'spent' }); }
+      else if (e.spent <= 0) { e.last = { t: 0, turn: L.turn, again: true }; e.speed = 0; this.events.push({ type: 'lastHand', again: true }); }   // (not finished off in time: he deals it again)
+      return;
+    }
+    // He comes for you himself (from the second hand): a run at you, then a slam where he stops.
+    if (e.stage >= 2) {
+      if (e.slam) {
+        e.speed = 0;
+        e.roar = 1;
+        if ((e.slam.wait -= dt) <= 0) {
+          e.slam = null;
+          e.landed = 0.6;
+          e.speed = e.base * (e.stage === 2 ? 1.25 : 1.5);
+          this.ring.position.set(e.x, e.y + 0.3, e.z);
+          this.ring.userData.radius = S.slamRadius;
+          this.ringLife = 1;
+          this.events.push({ type: 'houseSlam', hit: dist < S.slamRadius && player.grounded ? S.slamDamage : 0 });   // (be in the air when it lands)
+          this.rainChips(player, 4);
+        }
+      } else if (e.rush) {
+        e.speed = e.base * 2.5;   // (he is quick enough already: this is still a run you have to get out of the way of)
+        if ((e.rush -= dt) <= 0 || dist < 7) { e.rush = null; e.slam = { wait: S.slamTell }; this.events.push({ type: 'houseTell' }); }
+      } else if ((e.lunge = (e.lunge ?? 5) - dt) <= 0) {
+        e.lunge = (e.stage === 2 ? S.lungeEvery : S.lungeEvery * 0.7) * (0.8 + Math.random() * 0.4);
+        e.rush = 1.4;
+        this.events.push({ type: 'houseRush' });
+      }
+    }
+    // The ceiling, in the last hand: it never stops.
+    if (e.stage === 3 && (e.rain = (e.rain ?? 1) - dt) <= 0) { e.rain = S.rainEvery; this.rainChips(player, 2); }
+    // The wheel.
+    const quick = e.stage === 1 ? 1 : e.stage === 2 ? 0.8 : 0.62, more = e.stage === 1 ? 1 : e.stage === 2 ? 1.25 : 1.5;
     if (e.call) {
       if ((e.call.wait -= dt) > 0) return;
       const colour = e.call.colour;
       e.call = null;
       e.roar = 0.5;
-      if (colour === 'red') this.dealCards(e, player, Math.round(C.cards * (hurt ? 1.5 : 1)), 0.5);
-      else if (colour === 'black') this.rainChips(player, Math.round(C.chips * (hurt ? 1.5 : 1)));
-      else { this.dealCards(e, player, 16, Math.PI); for (let k = 0; k < HOUSE.slots.length; k++) this.payOut(k); }
+      const cards = () => { this.dealCards(e, player, Math.round(C.cards * more), 0.5); if (e.stage >= 2) this.dealCards(e, player, 14 + 4 * e.stage, Math.PI); };
+      const chips = () => this.rainChips(player, Math.round(C.chips * more));
+      if (colour === 'red') { cards(); if (e.stage === 3) this.rainChips(player, 5); }
+      else if (colour === 'black') { chips(); if (e.stage >= 2) this.dealCards(e, player, 5, 0.3); }
+      else { cards(); chips(); for (let k = 0; k < HOUSE.slots.length; k++) this.payOut(k); }
       this.events.push({ type: 'wheelDone', colour });
       return;
     }
     if ((e.wheel -= dt) <= 0) {
-      e.wheel = hurt ? C.wheelFast : C.wheelEvery;
-      const r = Math.random(), colour = r < 0.1 ? 'green' : r < 0.55 ? 'red' : 'black';
-      e.call = { colour, wait: C.wheelTell };
+      e.wheel = C.wheelEvery * quick;
+      const r = Math.random(), colour = r < 0.08 + 0.05 * e.stage ? 'green' : r < 0.55 ? 'red' : 'black';
+      e.call = { colour, wait: C.wheelTell * (e.stage === 3 ? 0.8 : 1) };
       this.events.push({ type: 'wheel', colour });
     }
     if ((e.adds -= dt) <= 0) {
-      e.adds = C.addsEvery * (hurt ? 0.7 : 1);
+      e.adds = C.addsEvery / more;
       if (this.enemies.length < C.addsMax) this.payOut(Math.floor(Math.random() * HOUSE.slots.length));
     }
   }
@@ -760,6 +972,12 @@ export class Horde {
   // quiet: don't report non-lethal hits (for damage that ticks many times a second).
   damage(e, amount, dirX, dirZ, headshot = false, knock = 1, quiet = false) {
     if (e.dead) return;   // (died with the boss, but something still had hold of it)
+    if (e.T.house) {      // Babitus: nothing touches him between hands, no one shot takes him past the next, and spent he takes it double
+      if (e.guard > 0) return;
+      if (e.spent > 0) amount *= 2;
+      const S = config.house.stages, stage = e.stage || 1, floor = stage === 3 ? (e.last ? -Infinity : e.maxHp * S.lastHand) : e.maxHp * (stage === 1 ? S.second : S.third);
+      if (e.hp > floor) amount = Math.min(amount, e.hp - floor);
+    }
     e.hp -= amount;
     e.flash = 1;
     const push = e.T.boss || e.T.miniboss ? 0 : (e.elite ? 1.5 : 6) * knock;
@@ -778,6 +996,7 @@ export class Horde {
     const burst = 1;
     // (The boss doesn't burst yet: his body stays standing for his death scene.)
     if (e.T.boss) this.corpse = { ...e, rise: 1, flash: 0, roar: 0, dying: 0 };
+    else if (MOCAP[e.name]?.spider && hasMobAnims() && this.husks && this.husks.length < 14) this.husks.push({ ...e, husk: 0.001, rise: 1, flash: 0, fire: 0, chill: 0, elite: false });
     if (e === this.mini) { this.mini = null; this.events.push({ type: 'miniDead', name: e.T.title }); }
     for (let k = 0; k < (e.T.boss ? 0 : e.elite || e.T.miniboss ? 40 : 9); k++) {
       const g = this.gibs[this.nextGib++ % this.gibs.length];
@@ -905,31 +1124,186 @@ export class Horde {
   draw(dt) {
     const counts = {}, close = {};
     for (const name in this.meshes) counts[name] = close[name] = 0;
-    for (const e of this.corpse ? [...this.enemies, this.corpse] : this.enemies) {
+    // (what is left of a spider: it lies there a moment, and goes into the ground)
+    const HUSK = 2.3;
+    if (this.husks && this.husks.length) { for (const h of this.husks) h.husk += dt; this.husks = this.husks.filter((h) => h.husk < HUSK); }
+    const drawn = (this.husks && this.husks.length) || this.corpse ? [...this.enemies, ...(this.husks || []), ...(this.corpse ? [this.corpse] : [])] : this.enemies;
+    for (const e of drawn) {
       const near = this.fine[e.name] && close[e.name] < NEAR_MOST && (e.x - this.eye.x) ** 2 + (e.z - this.eye.z) ** 2 < NEAR * NEAR;
+      if (e.husk && (near ? close : counts)[e.name] >= (near ? this.fine : this.meshes)[e.name][0].mesh.instanceMatrix.count) continue;   // (no room to draw it: the living come first)
       const parts = near ? this.fine[e.name] : this.meshes[e.name], i = near ? close[e.name]++ : counts[e.name]++;
       const walk = this.time * e.speed * e.T.stride + e.phase;
-      // Lurching walk (fliers lean into the chase and bob); sinking below ground while still rising.
+      // ---- How it moves ----
+      // Every kind has its own gait (GAITS): a zombie lurches and reaches, a skeleton rattles, a rat bounds, a spider
+      // skitters and rears, a ghost drifts, a boss stomps. On top of the gait: clawing its way up out of the ground,
+      // flinching when it is shot, going for you when it is close, winding up before it throws.
+      const gait = GAITS[e.name] || (e.T.boss ? 'stomp' : 'lurch'), t = this.time + e.phase * 3.7;
       const roar = e.roar || 0;   // the boss, bellowing: he rears back, arms up, shuddering
       const dying = e.dying || 0;   // ...and dying: he shakes harder and harder, sags and topples backwards
-      e3.set(e.T.flying ? 0.45 : 0.12 - 0.45 * roar - 0.75 * dying * dying, e.yaw + (Math.random() - 0.5) * 0.12 * dying, Math.sin(walk) * e.T.sway * (1 - dying) + (Math.random() - 0.5) * (0.05 * roar + 0.16 * dying));
-      const bob = e.T.flying ? Math.sin(this.time * 3 + e.phase) * 0.2 : Math.abs(Math.sin(walk)) * 0.06;
-      v.set(e.x, e.y - (1 - e.rise) * e.T.height * e.scale + bob - dying * dying * e.T.height * e.scale * 0.22, e.z);
+      const sw = Math.sin(walk), up = 1 - e.rise, hit = e.T.boss ? e.flash * 0.25 : e.flash;
+      const close2 = Math.max(0, 1 - Math.hypot(e.x - this.eye.x, e.z - this.eye.z) / 11), going = e.rise >= 1 ? 1 : 0.25;
+      const wind = e.T.throws && e.throwTimer < 0.7 ? 1 - Math.max(0, e.throwTimer) / 0.7 : 0;   // (about to throw: 0 -> 1)
+      let pitch = e.T.flying ? 0.45 : 0.12, roll = sw * e.T.sway, yaw = e.yaw, bob = Math.abs(sw) * 0.06, breathe = 1;
+      if (gait === 'lurch') { pitch += 0.07 * Math.sin(2 * walk + 0.6) + 0.22 * close2; roll *= 1.5; yaw += 0.1 * Math.sin(walk * 0.5); bob = Math.abs(sw) ** 1.6 * 0.08; }
+      else if (gait === 'rattle') { pitch += 0.05 * Math.sin(2 * walk); roll += 0.035 * Math.sin(t * 27); yaw += 0.05 * Math.sin(t * 31); bob = Math.abs(sw) * 0.1 + 0.012 * Math.sin(t * 40); }
+      else if (gait === 'float') { roll = 0.2 * Math.sin(t * 1.7); pitch += 0.12 * Math.sin(t * 1.1) + 0.2 * close2; yaw += 0.18 * Math.sin(t * 0.8); bob = Math.sin(t * 2.3) * 0.22 + Math.sin(t * 5.1) * 0.04; }
+      else if (gait === 'bound') { pitch = 0.05 + 0.3 * Math.sin(2 * walk); roll = 0.06 * sw; bob = Math.max(0, Math.sin(2 * walk + 0.9)) * 0.2; }
+      else if (gait === 'skitter') { pitch = 0.04 - 0.5 * close2 * close2; roll = 0.05 * Math.sin(2 * walk); yaw += 0.06 * Math.sin(walk * 2); bob = 0.025 * Math.abs(sw) + 0.14 * close2 * close2; }
+      else if (gait === 'stomp') { pitch += 0.05 * Math.sin(2 * walk); roll = sw * (e.T.sway + 0.05); bob = Math.abs(sw) ** 3 * 0.1; breathe = 1 + 0.018 * Math.sin(t * 2.1); }
+      else if (gait === 'roll') {   // a mountain of skulls: it does not walk, it rolls (its body is turned, further down, by how far it has come)
+        pitch = 0; roll = 0; bob = 0.05 * Math.abs(Math.sin(t * 6.5)) + 0.03 * Math.sin(t * 17);
+        e.rolled = (e.rolled || 0) + (e.rise >= 1 ? e.speed * dt / (1.04 * e.scale) : 0) + 2.5 * roar * dt;
+      }
+      else if (gait === 'stride') {
+        // Babitus: he does not hurry. Each step is planted and held, and all of him comes down on it: his weight
+        // goes over from side to side, his shoulders turn into the step, and the nearer he gets the more he looms.
+        const fall = Math.abs(sw) ** 8;                       // (0, and then sharply 1 as a foot comes down)
+        pitch = 0.1 + 0.22 * close2 + 0.04 * fall; roll = sw * 0.075; yaw += 0.11 * sw;
+        bob = 0.025 - 0.075 * fall; breathe = 1 + 0.014 * Math.sin(t * 1.3);
+      }
+      // Motion capture, for the ones that walk on two legs (see mobAnims.js): the clip moves his body, and all that
+      // is left of the gait above is which way he is facing.
+      const mo = hasMobAnims() ? MOCAP[e.name] : null;
+      if (mo) { pitch = 0.03; roll = 0; yaw = e.yaw; bob = 0; }
+      pitch += -0.45 * roar * (mo ? 0 : 1) - 0.75 * dying * dying * (mo && mo.die ? 0 : 1) - 0.4 * hit - 0.35 * wind * (mo ? 0 : 1);
+      e3.set(pitch, yaw + (Math.random() - 0.5) * 0.12 * dying, roll * (1 - dying) + (Math.random() - 0.5) * (0.05 * roar + 0.16 * dying) + 0.12 * hit * Math.sin(e.phase * 9));
+      v.set(e.x, e.y - up * (mo && mo.rise ? up * 0.6 : 1) * e.T.height * e.scale + bob * (gait === 'bound' || gait === 'skitter' ? e.scale : 1) - dying * dying * e.T.height * e.scale * 0.22 - (e.husk ? Math.max(0, (e.husk - HUSK + 0.7) / 0.7) ** 2 * e.T.height * e.scale * 1.3 : 0), e.z);
       if (e.s !== undefined) {
         // A climber: feet on the surface, whichever way up that is, facing the way it's going along it.
         by.set(e.nx, e.ny, 0);
         bz.set(e.ny * e.fs, -e.nx * e.fs, e.fz).normalize();
         bx.crossVectors(by, bz).normalize();
-        v.set(e.x, e.y, e.z).addScaledVector(by, -(1 - e.rise) * e.T.height * e.scale);
+        v.set(e.x, e.y, e.z).addScaledVector(by, -up * e.T.height * e.scale);
         m.makeBasis(bx, by, bz).scale(sc.setScalar(e.scale)).setPosition(v);
       } else m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale));
       const color = e.flash > 0 ? HURT : e.fire > 0 ? ABLAZE : e.chill > 0 ? FROZEN : e.elite ? ELITE : WHITE;
-      // Each part hangs off the body at its pivot and swings with the stride
-      // (not while still climbing out of the ground).
-      const moving = e.rise >= 1 ? 1 : 0.25;
+      if (mo && mo.quad) {
+        // A rat: its run, as fast as it is going (its clip is a third of a second to the stride), or stood, if it is going nowhere.
+        const still = !(e.speed > 0.4);
+        e.step = (e.step ?? t) + dt * going * (still ? 1 : Math.max(0.7, Math.min(1.6, e.speed / 11)));
+        placeQuad(parts, poseQuad(still ? mo.idle : mo.walk, e.step), (part, local) => {
+          part.mesh.setMatrixAt(i, out.multiplyMatrices(m, local));
+          part.mesh.setColorAt(i, color);
+        });
+        continue;
+      }
+      if (mo && mo.spider) {
+        // A spider: its walk (as fast as it is going), and on top of it: up on its back legs as it closes on you (or,
+        // the queen, as she is about to spit), biting when it is on you; standing, if it is going nowhere; and dead.
+        const spit = e.T.webs && e.throwTimer < 0.7 && e.throwTimer > 0 ? 1 - e.throwTimer / 0.7 : 0, still = !(e.speed > 0.4);
+        e.step = (e.step ?? t) + dt * going * (still ? 1 : spiderRate(parts, mo.walk, e.speed, e.scale));
+        let other = null, at = 0, w = 0, loop = false;
+        if (e.husk) { other = mo.die; w = Math.min(1, e.husk * 10); at = e.husk * 2.2; }
+        else if (spit > 0.02) { other = mo.rear; w = Math.min(1, spit * 3); at = spit * 0.95; }
+        else if (close2 > 0.72) { other = mo.attack; w = Math.min(1, (close2 - 0.72) * 6); at = t * 1.15; loop = true; }
+        else if (close2 > 0.4) { other = mo.rear; w = Math.min(1, (close2 - 0.4) * 3.2); at = 0.85 + 0.12 * Math.sin(t * 3); }
+        placeSpider(parts, poseSpider(still ? mo.idle : mo.walk, e.step, other, at, e.husk ? w : w * going, loop), (part, local) => {
+          part.mesh.setMatrixAt(i, out.multiplyMatrices(m, local));
+          part.mesh.setColorAt(i, color);
+        });
+        continue;
+      }
+      if (mo) {
+        // His walk, and on top of it whatever he is doing: bellowing, throwing (or dealing), or going for you.
+        // (a boss about to throw: it winds up as the smaller ones do; and whoever has just thrown follows it through)
+        const far = Math.hypot(e.x - this.eye.x, e.z - this.eye.z);
+        const windUp = e.T.boss && !e.T.house ? (e.throwTimer < 0.7 && far < config.horde.bossRange ? 1 - Math.max(0, e.throwTimer) / 0.7 : 0) : wind;
+        if (windUp < (e.wound || 0) - 0.5) e.follow = 0.5;
+        e.wound = windUp;
+        e.follow = Math.max(0, (e.follow || 0) - dt);
+        const acting = e.T.house ? (e.call || e.last ? 1 : Math.min(1, (e.roar || 0) * 2)) : windUp;
+        const near = e.T.boss ? Math.max(0, 1 - far / (8 + 3 * e.scale)) : close2;   // (a boss reaches further)
+        const spin = e.turning || 0, round = Math.min(0.85, Math.max(0, (Math.abs(spin) - 0.25) / 0.7));
+        // (his legs keep time with how fast he is going; a boss's run at you is a run of its own, or his walk, fast)
+        // (`posed`: a scene has him standing where he is: his arrival, his hands. He does not run on the spot through it.)
+        const gait = mo.idle && (e.posed || !(e.speed > 0.3)) && !e.rush ? mo.idle : e.rush && mo.run ? mo.run : mo.alt && (e.phase * 97.13) % 1 < 0.3 ? mo.alt : mo.walk;
+        e.step = (e.step ?? t) + dt * going * (mo.pace ? Math.max(0.6, Math.min(1.7, e.speed / mo.pace)) : mo.speed * (e.rush ? (mo.run ? 1.5 : 2.3) : 1));
+        const S = config.house.stages, ran = e.rush ? 1.4 - e.rush : 9;
+        let other = null, at = 0, w = 0, loop = false;
+        if (dying > 0.02 && mo.die) { other = mo.die; w = Math.min(1, dying * 6); at = dying * clipLength(mo.die) * 0.95; }                 // going down
+        else if (up > 0 && mo.rise) { other = mo.rise; w = 1 / going; at = e.rise * clipLength(mo.rise) * 0.97; }                              // getting up, out of the ground
+        else if (e.scaling && mo.climb) { other = mo.climb; w = 1; at = 0.22 + Math.min(1, e.scaling.t / e.scaling.time) * 1.5; }             // up a wall after you
+        else if (mo.start && e.off < clipLength(mo.start) + 0.2) { other = mo.start; w = Math.min(1, (clipLength(mo.start) + 0.2 - e.off) * 5); at = e.off; }   // out of the ground: up from a crouch, running
+        else if (mo.fall && e.vy < -1.5) { other = mo.fall; w = Math.min(1, -e.vy / 5); at = 0.72 + Math.min(0.5, -e.vy / 28); }               // and off an edge
+        // (the slam: down into it and up and over fill the warning, he comes down as it lands, and gets up out of it)
+        else if (e.slam && mo.jump) { other = mo.jump; w = Math.min(1, 0.25 + (S.slamTell - e.slam.wait) * 8); at = 0.3 + (1 - Math.max(0, e.slam.wait) / S.slamTell) * (SLAM_LANDS - 0.3); }
+        else if (e.landed > 0 && mo.jump) { other = mo.jump; w = Math.min(1, e.landed * 3); at = SLAM_LANDS + (0.6 - e.landed) * 1.3; }
+        else if (e.guard > 0 && mo.roar && e.T.house) { other = mo.roar; w = 1; at = (1 - e.guard / S.guard) * clipLength(mo.roar) * 0.98; }   // between hands: he screams
+        else if (e.spent > 0 && mo.jump) { other = mo.jump; w = Math.min(1, e.spent * 2, (S.spentTime - e.spent) * 3 + 0.2); at = SLAM_LANDS + 0.15 + 0.06 * Math.sin(t * 2.4); }   // spent: down where he landed, heaving
+        else if (ran < clipLength(mo.leap || '') && mo.leap) { other = mo.leap; w = Math.min(1, ran * 8, (clipLength(mo.leap) - ran) * 6); at = ran; }   // he leaps into his run
+        else if (roar > 0.05 && mo.roar && !e.T.house) { other = mo.roar; w = Math.min(1, roar * 1.5); at = (1.6 - Math.min(1.6, roar)) * 1.4 + 0.6; }
+        else if (acting > 0.02 && mo.act) { other = mo.act; w = Math.min(1, acting * 3); at = e.T.house ? (t * 1.2) % clipLength(mo.act) : acting * clipLength(mo.act) * 0.62; }
+        else if (e.follow > 0 && mo.act) { other = mo.act; w = Math.min(1, e.follow * 5); at = clipLength(mo.act) * (0.62 + 0.3 * (1 - e.follow / 0.5)); }   // (and through, after it has gone)
+        else if (mo.attack && near > 0.5 && !e.posed) { other = mo.attack; w = Math.min(1, (near - 0.5) * 4); at = t * 1.1; loop = true; }
+        else if (round > 0.02 && mo.turnL) { other = spin > 0 ? mo.turnL : mo.turnR; w = round; at = t; loop = true; }                       // you have got round him: he steps round after you
+        const P = pose(gait, e.step, other, at, w * going, loop);
+        parts.hipY ??= (parts.find((o) => o.role === 'leg') || { pivot: { y: e.T.height * 0.5 } }).pivot.y;
+        place(parts, P, parts.hipY, mo.arms !== false || w > 0.3, (part, local) => {
+          limb.copy(local);
+          if (part.role === 'arm' && up > 0 && !mo.rise) limb.multiply(reach.makeRotationX(-1.6 * up + 0.4 * up * Math.sin(t * 13 + part.phase)));   // (clawing up out of the ground)
+          part.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
+          part.mesh.setColorAt(i, color);
+        });
+        if (e.T.boss) mark(e, parts, i);
+        continue;
+      }
+      // Each part hangs off the body at its pivot, and moves as what it is.
       for (const p of parts) {
-        const s = Math.sin(walk + p.phase) * moving - (p.swing[0] > 0.4 ? 4.4 * roar : 0);   // (only his arms swing that far)
-        limb.makeRotationFromEuler(e3.set(p.swing[0] * s, p.swing[1] * s, p.swing[2] * s)).setPosition(p.pivot);
+        const a = walk + p.phase, s0 = Math.sin(a) * going;
+        let rx = p.swing[0] * s0, ry = p.swing[1] * s0, rz = p.swing[2] * s0, grow = 1;
+        if (p.role === 'shin') {
+          // The lower half of a leg: it folds at the knee as the leg comes forward, and straightens to take the weight.
+          const leg = parts[p.parent], c = leg.cycle;
+          if (p.hinge === 'x') limb.makeRotationX(p.flex * Math.max(0, -Math.cos(c)) * going + 0.12 + 0.5 * up + 0.3 * hit);
+          else limb.makeRotationZ(-leg.side * p.flex * Math.max(0, Math.cos(c)) * going);
+          limb.setPosition(p.rel).premultiply(leg.local);
+          p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
+          p.mesh.setColorAt(i, color);
+          continue;
+        }
+        if (p.role === 'forearm') {
+          // The lower half of an arm: on the end of the upper half, bent a little at the elbow, more as it reaches for you.
+          limb.makeRotationX(-0.3 - 0.35 * close2).setPosition(p.rel).premultiply(parts[p.parent].local);
+          p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
+          p.mesh.setColorAt(i, color);
+          continue;
+        }
+        if (p.role === 'arm') {
+          if (gait === 'lurch' || gait === 'rattle') { rx += -0.4 * close2 + 0.16 * close2 * Math.sin(t * 9 + p.phase) + 0.1 * Math.sin(2 * a); rz += p.side * 0.12 * Math.sin(a + 1); }   // reaching, clawing at you
+          else if (gait === 'float') { rx = 0.22 * Math.sin(t * 1.9 + p.phase) - 0.5 * close2; rz = p.side * (0.15 + 0.15 * Math.sin(t * 1.3 + p.phase)); }
+          else if (gait === 'stomp') { rx = p.swing[0] * Math.sin(a) * 1.3 * going; rz += p.side * (0.1 + 0.08 * Math.sin(a)); }
+          else if (gait === 'stride') { rx = 0.05 * Math.sin(a) - 0.22 * close2 + 0.05 * Math.abs(sw) ** 8; rz = p.side * (0.04 + 0.03 * Math.sin(t * 1.3)); }   // (what he holds, he holds still: his arms hardly swing, and come up as he closes on you)
+          if (p.swing[0] > 0.4) rx -= p.swing[0] * 4.4 * roar;                                    // (the boss, roaring: both arms thrown up)
+          if (wind && p.swing[0] >= 0.8) rx -= 1.1 * wind * wind;                                 // the arm that throws, drawn back
+          rx += -2.3 * up + 0.5 * up * Math.sin(t * 13 + p.phase);                                // clawing its way up out of the ground
+          rx += 0.6 * hit; rz -= p.side * 0.7 * hit;                                             // flung out when it is hit
+        } else if (p.role === 'leg') {
+          p.cycle = gait === 'bound' ? 2 * walk + (p.pivot.z > 0 ? 0 : 2.2) + Math.PI / 2 : a;
+          if (gait === 'skitter') { rz += p.side * (0.22 * Math.max(0, Math.cos(a)) - 0.3 * close2 * close2 * (p.pivot.z > 0.05 ? 1 : 0)); rx *= 1.2; }   // each foot lifted as it comes forward; the front pairs raised when it rears
+          else if (gait === 'bound') rx = p.swing[0] * Math.sin(2 * walk + (p.pivot.z > 0 ? 0 : 2.2)) * going;   // front pair together, then the back pair
+          else if (gait === 'stomp') { const k = Math.sin(a); rx = p.swing[0] * Math.sign(k) * Math.abs(k) ** 0.6 * going; }   // (held at the end of each stride: weight)
+          else if (gait === 'stride') { const k = Math.sin(a); rx = p.swing[0] * 1.3 * Math.sign(k) * Math.abs(k) ** 0.4 * going; }   // (thrown out, planted, held)
+          else rx += p.swing[0] * 0.22 * Math.sin(2 * a) * going;
+          rx += 0.25 * hit;
+        } else if (p.role === 'head') {
+          ry += 0.22 * Math.sin(t * 0.9) + 0.1 * Math.sin(t * 2.3);                               // looking about
+          rx += -0.25 * close2 * Math.abs(Math.sin(t * 7)) - 0.5 * hit;                           // snapping at you; knocked back
+        } else if (p.role === 'tail') {
+          if (gait === 'float') { rx = 0.3 * Math.sin(t * 2.2); rz = 0.26 * Math.cos(t * 1.7); ry = 0.5 * Math.sin(t * 0.9); }   // a ghost's hem, turning under it
+          else { ry += 0.35 * Math.sin(t * 5 + 1) * (1 + close2); rx += 0.2 * Math.sin(2 * walk) + 0.3 * close2; }   // a tail: whipping, and up when it is after you
+        } else grow = breathe;
+        if (gait === 'roll' && p.role === 'core') {
+          // (turned about its own middle, not its foot: forward, the way it is going)
+          limb.makeRotationX(e.rolled).setPosition(0, 1.04 * (1 - Math.cos(e.rolled)), -1.04 * Math.sin(e.rolled));
+          p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
+          p.mesh.setColorAt(i, color);
+          continue;
+        }
+        if (gait === 'roll' && p.role === 'head') { rx = 0.12 * Math.sin(t * 6.5) - 0.9 * roar + 0.2 * close2; ry = 0.3 * Math.sin(t * 0.7); rz = 0.1 * Math.sin(t * 5.1); }   // the great skull, riding it: jolted, looking about, thrown back to roar
+        limb.makeRotationFromEuler(e3.set(rx, ry, rz));
+        if (grow !== 1) limb.scale(sc.set(1, grow, 1 + (grow - 1) * 1.5));
+        limb.setPosition(p.pivot);
+        p.local.copy(limb);
         p.mesh.setMatrixAt(i, out.multiplyMatrices(m, limb));
         p.mesh.setColorAt(i, color);
       }

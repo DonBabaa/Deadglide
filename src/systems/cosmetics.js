@@ -6,34 +6,37 @@
 // default. Options marked `casino: true` can't be bought: they are prizes from
 // the casino's slot machines (see casino/slots.js). To add one, add it here and make SkaterModel.applyLook() (or, for
 // tracers, main.js) understand its value.
-import { profile, pay, saveProfile } from './profile.js';
+import { profile, pay, saveProfile, EDITOR } from './profile.js';
 import { WEAPONS } from '../player/weapons.js';
 import { COSTUMES } from '../player/costumes.js';
 
 export const SLOTS = [
-  { id: 'hoodie', name: 'Hoodie', price: 150, options: [
-    { id: 'red', name: 'Blood red', color: '#7a2f2b' },
-    { id: 'black', name: 'Black', color: '#1f2024' },
-    { id: 'green', name: 'Forest', color: '#2f5a3a' },
-    { id: 'bone', name: 'Bone', color: '#d6cfbd' },
-    { id: 'purple', name: 'Purple', color: '#55307a' },
-    { id: 'midnight', name: 'Midnight blue', color: '#1d2b55' },
-    { id: 'toxic', name: 'Toxic green', color: '#6fae1f' },
-    { id: 'orange', name: 'Hazard orange', color: '#c9591c' },
-    { id: 'pink', name: 'Bubblegum', color: '#c9487e' },
-    { id: 'lame', name: 'Gold lam\u00e9', color: '#c9a23a', casino: true },
-    { id: 'velvet', name: 'High-roller velvet', color: '#6a0f2c', casino: true },
+  { id: 'hoodie', name: 'T-shirt', price: 150, options: [
+    { id: 'red', name: 'His own', color: '#7a2f2b' },
+    { id: 'flame', name: 'Flame logo (black)', color: '#7b2f2b' },
+    { id: 'black', name: 'Skull and boards', color: '#1f2024' },
+    { id: 'green', name: 'Rest in Pieces (forest)', color: '#2f5a3a' },
+    { id: 'bone', name: 'Skull and boards (bone)', color: '#d6cfbd' },
+    { id: 'purple', name: 'Free Ride (purple)', color: '#55307a' },
+    { id: 'midnight', name: 'Free Ride (midnight)', color: '#1d2b55' },
+    { id: 'toxic', name: 'Toxic', color: '#6fae1f' },
+    { id: 'orange', name: 'Danger', color: '#c9591c' },
+    { id: 'pink', name: 'Flame logo (bubblegum)', color: '#c9487e' },
+    { id: 'lame', name: 'Gold lam\u00e9: the chip', color: '#c9a23a', casino: true },
+    { id: 'velvet', name: 'Velvet: ace of spades', color: '#6a0f2c', casino: true },
   ] },
-  { id: 'beanie', name: 'Beanie', price: 100, options: [
-    { id: 'charcoal', name: 'Charcoal', color: '#24262c' },
-    { id: 'red', name: 'Red', color: '#8a2a26' },
-    { id: 'mustard', name: 'Mustard', color: '#c79a2a' },
-    { id: 'green', name: 'Green', color: '#2e5d43' },
-    { id: 'blue', name: 'Blue', color: '#2f4f8a' },
-    { id: 'white', name: 'Bone white', color: '#d8d2bf' },
-    { id: 'purple', name: 'Purple', color: '#5a2f86' },
-    { id: 'orange', name: 'Orange', color: '#c9591c' },
-    { id: 'none', name: 'No beanie' },
+  // (his hat. The slot is still called `beanie` in the save: there were beanies in it once. Each is the felt and the
+  // band of his fedora done over: see HATS in player/kirkyBody.js, which goes by these colours.)
+  { id: 'beanie', name: 'Fedora', price: 100, options: [
+    { id: 'tan', name: 'His own (tan)', color: '#c99a45' },
+    { id: 'black', name: 'Black, red band', color: '#1d1d21' },
+    { id: 'pinstripe', name: 'Pinstripe', color: '#2a2d3a' },
+    { id: 'cream', name: 'Cream, black band', color: '#e4dcc6' },
+    { id: 'oxblood', name: 'Oxblood', color: '#8e1f1c' },
+    { id: 'green', name: 'Racing green, gold band', color: '#2f5a3a' },
+    { id: 'purple', name: 'Purple velvet', color: '#55307a' },
+    { id: 'check', name: 'Houndstooth', color: '#bdb8ac' },
+    { id: 'leopard', name: 'Leopard', color: '#d2a24c' },
     { id: 'gold', name: 'Gold', color: '#d9b24a', casino: true },
   ] },
   { id: 'deck', name: 'Deck graphic', price: 200, options: [
@@ -94,7 +97,7 @@ export const GOLD_GUNS = Object.values(WEAPONS).map((w) => ({ id: w.id, name: w.
 const C = profile.cosmetics;
 const key = (slot, option) => `${slot.id}:${option.id}`;
 
-export const owns = (slot, option) => option === slot.options[0] || C.owned.includes(key(slot, option));
+export const owns = (slot, option) => EDITOR || option === slot.options[0] || C.owned.includes(key(slot, option));
 // The option being worn in a slot (the default if nothing else is chosen).
 export const wearing = (slot) => slot.options.find((o) => o.id === C.look[slot.id] && owns(slot, o)) || slot.options[0];
 
@@ -116,7 +119,7 @@ export function award(slot, option) {
   saveProfile();
 }
 
-export const ownsGold = (gunId) => C.gold.includes(gunId);
+export const ownsGold = (gunId) => EDITOR || C.gold.includes(gunId);
 export const goldOn = (gunId) => ownsGold(gunId) && !C.goldOff.includes(gunId);
 export const buyGold = (gunId) => !ownsGold(gunId) && pay(GOLD_SKIN_PRICE, () => { C.gold.push(gunId); });
 export function toggleGold(gunId) {

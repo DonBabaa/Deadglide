@@ -9,7 +9,7 @@ import { buildArena } from './world/arena.js';
 import { SEED, setLevel } from './world/terrain.js';
 import { LEVELS } from './world/level.js';
 import { HOUSE, houseSpot } from './world/house.js';
-import { MOON, ventAt, lavaAt, LAVA_LAKE } from './world/moon.js';
+import { MOON, ventAt, lavaAt, LAVA_LAKE, GEYSER, HOOPS, domeAt } from './world/moon.js';
 import { Lines } from './systems/lines.js';
 import { createRide } from './freeride/ride.js';
 import { createTargets } from './freeride/targets.js';
@@ -59,6 +59,10 @@ import { setMusicStyle, MUSIC_STYLES } from './fx/music.js';
 import * as SOUNDS from './fx/audio.js';
 import { createModelViewer } from './ui/modelViewer.js';
 import { playCue, stopCue } from './fx/score.js';
+import { loadRealMobs } from './enemies/realMobs.js';
+import { loadMobAnims } from './enemies/mobAnims.js';
+
+await Promise.all([loadRealMobs(), loadMobAnims()]);   // the monsters made in Blender take the place of the built ones before anything is made of them
 
 const STEP = 1 / 240;   // physics timestep (small, because top speed is high)
 
@@ -314,7 +318,10 @@ shop.onLook(applyLook);
 
 const panel = createTweakPanel({ onRespawn: () => { if (!inMenu) restart(); } });
 
+let demo = null;   // (the editor: the boss's move being shown, { act, wait })
+let slowed = 0, lastBeam = null;   // (The Long Way Down: how much longer a hit holds you back; the last beam it has been shown)
 function hurt(amount) {
+  model.express?.('surprise', 0.7);
   if (LEVELS[level].freeRide) return;   // (nothing hurts in Free Ride)
   if (invulnerable > 0 || shield > 0 || dead || won || creative?.noDamage) return;
   if (powerups.absorb(amount)) {   // the HotBox shield takes it
@@ -340,7 +347,7 @@ function hurt(amount) {
 }
 
 // The run is over. (Killed by Babitus: first, the house wins.)
-let losing = false;
+let losing = false, fallen = 0, deathCard = null;   // (fallen: how long he has been going down, dead; deathCard: the "You died" card, waiting for him to land)
 function die() {
   if (LEVELS[level].descent && !losing && !preview) {   // (on the hill: knocked down, and then the hill arrives)
     losing = true;
@@ -356,10 +363,12 @@ function die() {
   document.exitPointerLock?.();
   const record = !creative && score.finish();   // Creative runs don't count toward your best
   const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
-  hud.showOverlay('You died', `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
-Survived ${hud.clock(horde.time)}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
-${gold.carried >= 1 ? `${Math.floor(gold.carried).toLocaleString()} gold lost  ·  ` : ''}Click to try again`);
-  offerPost(false);
+  // (the card comes up once he has hit the ground: until then there is nothing between you and him going down)
+  const lost = gold.carried >= 1 ? `${Math.floor(gold.carried).toLocaleString()} gold lost  ·  ` : '', lasted = hud.clock(horde.time);
+  const card = `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
+Survived ${lasted}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
+${lost}Click to try again`;
+  deathCard = { wait: 1.5, show: () => { hud.showOverlay('You died', card); offerPost(false); } };
 }
 
 // The Long Way Down: the collapse caught you. (Click, and the run starts again from the doors.)
@@ -370,17 +379,6 @@ function buried(fell = false) {
   playHurt();
   hud.showOverlay(fell ? 'Gone' : 'Buried', `${fell ? 'Off the side of the hill' : 'The hill caught you'} ${Math.round(fell ? 48 - skater.pos.z : descent.state.wall)} m down, after ${hillTime(descent.state.time)}
 Click to run again`);
-}
-
-// ...or you left the last ramp ahead of it.
-function runComplete(time, record) {
-  won = true;
-  paused = true;
-  document.exitPointerLock?.();
-  playPortal();
-  if (!creative) leaderboard.postRun(time);
-  hud.showOverlay('Out', `Down the hill in ${hillTime(time)}  ·  ${record ? 'your fastest yet' : `your best is ${hillTime(descent.best)}`}
-Click to return to the menu`);
 }
 
 // What Kirky left on the Moon: once you have finished the game, the stub of the last cigarette is still lying where
@@ -462,7 +460,7 @@ ${first ? 'Yours to keep: the Golden BOOF (Shop, Style)\n' : ''}Click to return 
 
 // The editor's tabs (Scenes, Music, Sounds, Models), and its model library (ui/modelViewer.js): every monster, boss,
 // costume and gun on a turntable, in place of the menu's scene while the Models tab is open.
-const viewer = createModelViewer({ renderer, look: currentLook });
+const viewer = createModelViewer({ renderer, look: currentLook, horde });
 {
   const tabs = [...document.querySelectorAll('#editor-tabs button')], pages = [...document.querySelectorAll('.editor-tab')];
   const list = document.getElementById('model-list'), info = document.getElementById('model-info');
@@ -611,6 +609,41 @@ function updateSpectate(dt, dx, dy) {
     b.addEventListener('click', () => startSpectate(n));
     spec('spectate-list').append(play, b);
   }
+  // The bosses' moves, one at a time: the level starts (nothing can hurt you, and you have a gun), the boss arrives,
+  // and he does that one thing, again every few seconds, for as long as you want to watch it.
+  const head = Object.assign(document.createElement('h3'), { textContent: 'Boss moves' });
+  spec('spectate-list').append(head);
+  const boss = () => { if (!horde.boss) horde.spawnBoss(skater); return horde.boss; };
+  const hand = (n) => { const b = boss(); if ((b.stage || 1) < n) { b.guard = 0; b.hp = b.maxHp * (n === 2 ? 0.6 : 0.3); } return b; };
+  const MOVES = [
+    [1, 'Hamzitus: a volley of filth', () => { boss().throwTimer = 0; }],
+    [1, 'Hamzitus: his roar', () => { boss().roar = 1.6; }],
+    [2, 'The Spider Queen: spits a web', () => { if (!horde.mini) horde.spawnMini(skater); if (horde.mini) horde.mini.throwTimer = 0; }],
+    [2, 'Rubistus: a volley of bones', () => { boss().throwTimer = 0; }],
+    [2, 'Rubistus: sheds skeletons', () => { horde.shed(boss()); }],
+    [4, 'Babitus: red (a fan of cards)', () => { const b = boss(); b.call = { colour: 'red', wait: 0.9 }; b.wheel = 99; }],
+    [4, 'Babitus: black (a rain of chips)', () => { const b = boss(); b.call = { colour: 'black', wait: 0.9 }; b.wheel = 99; }],
+    [4, 'Babitus: zero (the house wins)', () => { const b = boss(); b.call = { colour: 'green', wait: 0.9 }; b.wheel = 99; }],
+    [4, 'Babitus: the second hand (All In)', () => { hand(2); }],
+    [4, 'Babitus: his run at you, and the slam', () => { const b = hand(2); b.wheel = 99; if (b.guard <= 0 && !b.rush && !b.slam) b.lunge = 0; }],
+    [4, 'Babitus: the third hand (The House Always Wins)', () => { hand(3); }],
+    [4, 'Babitus: the Last Hand', () => { const b = hand(3); if (b.stage === 3 && !b.last && b.guard <= 0) { b.hp = b.maxHp * 0.12; } }],
+    [5, 'Goyitus Ultimus: a shot at you', () => { const B = descent.state.boss; B.harass = 0; B.wait = 99; }],
+    [5, 'Goyitus Ultimus: the rite (shoot the sigils)', () => { const B = descent.state.boss; if (!B.rite) B.wait = 0; B.harass = 99; }],
+    [5, 'Goyitus Ultimus: the rite fails (the barrage)', () => { const B = descent.state.boss; if (B.rite) B.rite.t = B.rite.time; else B.wait = 0; B.harass = 99; }],
+  ];
+  for (const [n, name, act] of MOVES) {
+    const b = Object.assign(document.createElement('button'), { type: 'button' });
+    b.innerHTML = `${name}<small>${SPECTATE_NAMES[n]}: watch it, over and over</small>`;
+    b.addEventListener('click', () => {
+      if (spectate) stopSpectate(false);
+      viewer.hide(); document.body.classList.remove('model-view'); preview = null;
+      startRun({ weapons: ['machineGun'], upgrades: {}, powers: {}, monsters: n !== 5, noDamage: true }, n, { direct: true });
+      if (n === 5) onHill(260, 22);
+      demo = { act, wait: 1.2, hill: n === 5 };
+    });
+    spec('spectate-list').append(b);
+  }
   const step = (by) => startSpectate(SPECTATE[(SPECTATE.indexOf(spectate.level) + by + SPECTATE.length) % SPECTATE.length]);
   spec('spectate-light').addEventListener('click', (e) => { spectateLights(!spectate.bright); e.target.blur(); });
   spec('spectate-prev').addEventListener('click', () => step(-1));
@@ -650,7 +683,8 @@ const CINEMATICS = [
   { name: 'Rubistus dies, the manhole, the city, the doors', where: 'Level 2, then the hill', run: () => enterHouse(false) },
   { name: 'Babitus arrives', where: 'The House', run: () => at(4) },
   { name: 'All in', where: 'The House', run: () => at(4), replace: () => cutscenes.allIn(horde.boss) },
-  { name: 'Bust, and the takings', where: 'The House', run: () => at(4), replace: () => horde.damage(horde.boss, 1e9, 0, 0) },
+  // (he cannot be taken past his next hand in one go: so he is put in his last one first, and then killed)
+  { name: 'Bust, and the takings', where: 'The House', run: () => at(4), replace: () => { const b = horde.boss; b.stage = 3; b.last = { t: 0, turn: 0 }; horde.damage(b, 1e9, 0, 0); } },
   { name: 'Out through the doors', where: 'The House', run: () => at(4), replace: () => { const d = houseSpot([HOUSE.doors.x, HOUSE.doors.z]); portal.open(d.x, 0, d.z, true); cutscenes.leaveHouse(); } },
   { name: 'The house wins', where: 'The House', run: () => at(4), replace: () => cutscenes.houseWins(horde.boss) },
   { name: 'Run: the casino comes down', where: 'The Long Way Down', run: () => { at(5); cutscenes.collapse(descent, () => descent.reset()); } },
@@ -884,6 +918,7 @@ document.getElementById('menu-casino-open').addEventListener('click', () => {
 // ({ host } or { join }), or { direct: true } from the editor: straight into the level, without the story that leads to it.
 function startRun(loadout, chosen = 1, session = null) {
   creative = loadout;
+  demo = null;
   const direct = !!session?.direct, story = LEVELS[chosen].finale && !loadout && !direct;   // (the House opens with how you got there)
   if (!story) setWorld(chosen);
   ride.leave();
@@ -1072,6 +1107,7 @@ function speedLines() {
 function handleEvents() {
   for (const e of skater.events) {
     if (e.type === 'land') {
+      if (e.impact > 2) model.express?.('smile', 1.2, 0.7);
       chase.onLand(e.impact);
       if (freeRide()) {   // Free Ride: it all goes on your line
         const F = config.freeRide;
@@ -1090,6 +1126,7 @@ function handleEvents() {
         floatPoints(before, skater.pos, 2.4, 'trick');
       } else rideFx.land(skater, 0);
     } else if (e.type === 'sloppy') {
+      model.express?.('sad', 1.0, 0.7);
       lines.fail('Sloppy landing');
       overLava = false;
       chase.onSloppy();
@@ -1117,6 +1154,7 @@ function handleEvents() {
       trickLanded();
       score.trick(8);
     } else if (e.type === 'trick') {
+      model.express?.('ooh', 0.8);
       hud.popup(e.name, 'pending');
       playAir();
     } else if (e.type === 'ollie') {
@@ -1162,7 +1200,19 @@ function handleEvents() {
     else if (e.type === 'wheel') { arena.houseSignal(e.colour); hud.popup(e.colour === 'red' ? 'Red  \u00b7  cards' : e.colour === 'black' ? 'Black  \u00b7  chips' : 'Zero  \u00b7  the house wins', 'alert'); playSwitch(); }
     else if (e.type === 'wheelDone') arena.houseSignal(null);
     else if (e.type === 'payout') playChest();
-    else if (e.type === 'bossHalf') { if (horde.boss) cutscenes.allIn(horde.boss); }
+    else if (e.type === 'bossHalf') { if (horde.boss && !horde.boss.T.house) cutscenes.allIn(horde.boss); }
+    // Babitus's three hands.
+    else if (e.type === 'bossStage') {
+      SOUNDS.playBossIntro?.();
+      if (e.stage === 2) { if (horde.boss) cutscenes.allIn(horde.boss); hud.place('All In', 'The second hand'); }
+      else { SOUNDS.playThunder?.(); arena.houseSignal('red'); hud.place('The House Always Wins', 'The last hand'); }
+      model.express?.(e.stage === 2 ? 'angry' : 'surprise', 2.5);
+    }
+    else if (e.type === 'houseRush') { hud.popup('He is coming for you', 'alert'); SOUNDS.playWhoosh?.(); }
+    else if (e.type === 'houseTell') { hud.popup('\u25b2  Jump  \u25b2', 'alert'); SOUNDS.playDread?.(); }
+    else if (e.type === 'houseSlam') { SOUNDS.playBossBurst?.(); if (e.hit) { hurt(e.hit); hud.popup('Slammed', 'sloppy'); } else hud.popup('Over it', 'trick'); }
+    else if (e.type === 'lastHand') { SOUNDS.playThunder?.(); hud.place(e.again ? 'Double or Nothing' : 'LAST HAND', e.again ? 'He deals it again' : 'He bets everything he has left'); model.express?.('surprise', 2); }
+    else if (e.type === 'spent') { hud.popup('He is spent  \u00b7  FINISH HIM', 'loot'); SOUNDS.playBossPop?.(); model.express?.('angry', 3); }
     else if (e.type === 'throw') playBones(0.2);   // a bone-thrower lets fly
     else if (e.type === 'clatter') playBones(0.15);   // ...and it lands
     else if (e.type === 'miniboss') cutscenes.queen();   // the Spider Queen arrives
@@ -1236,9 +1286,10 @@ function updateDrag(dt) {
   // The camera swings to just in front of his face, a little to one side, and back again.
   // (He stands side-on to the board, so find his face from his head and his cigarette.)
   model.root.updateMatrixWorld();
-  model.torso.localToWorld(face.set(0, 0.8, 0));
+  if (model.faceAt) model.faceAt(face); else model.torso.localToWorld(face.set(0, 0.8, 0));
   model.ember.getWorldPosition(facing).sub(face).setY(0).normalize();
-  close.copy(facing).multiplyScalar(1.7).addScaledVector(marker.set(facing.z, 0, -facing.x), 0.7);   // (as an offset from his face)
+  const big = 1 + ((model.faceBig || 1) - 1) * 0.72;   // (his head is bigger than a man's: the camera stands off by that much)
+  close.copy(facing).multiplyScalar(1.7 * big).addScaledVector(marker.set(facing.z, 0, -facing.x), 0.7 * big);   // (as an offset from his face)
   close.y += 0.08;
   // The ember lights his face (borrowing the gun's muzzle-flash light, which is idle).
   weapon.flash.position.copy(face).addScaledVector(facing, 0.45);
@@ -1358,6 +1409,12 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
   ride.update(dt);
   hud.ride(ride.active || ride.status ? ride : null);
 
+  // Paused, he is still on his board (nothing is posing him, but he has not got off it). Dead, he goes down.
+  if (deathCard && (!dead || (deathCard.wait -= dt) <= 0)) { if (dead) deathCard.show(); deathCard = null; }
+  if (paused && !inMenu && !cutscenes.active && !casino.active) {
+    if (dead && !won) model.play?.('die', 1, 1, 0.5 + (fallen += dt) * 1.4, true);   // (from where his knees go, and a little quicker than it was acted)
+    else if (model.riding) model.riding = performance.now();
+  } else fallen = 0;
   if (!paused && drag) updateDrag(dt);
   else if (!paused && cutscenes.active) cutscenes.update(preview ? (preview.paused ? 0 : dt * preview.speed) : dt);
   else if (!paused) {
@@ -1410,6 +1467,43 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
       playVent();
     }
 
+    // (The Moon) The Geyser, in the Base, throws you to the top of the dome; a hoop is worth going through; and the
+    // glass is a ceiling.
+    if (LEVELS[level].freeRide) {
+      if (ventWait <= 0 && skater.grounded && Math.hypot(skater.pos.x - GEYSER.x, skater.pos.z - GEYSER.z) < GEYSER.radius) {
+        ventWait = 1.5;
+        // Up to the Helter's top turn, on the bearing he was headed: how fast up puts the top of his flight just over
+        // it (against gravity and the drag of the air), and how fast along has him out to it by then.
+        const g = config.physics.gravity * (stats.gravity || 1), k = config.skate.airDrag, px = skater.pos.x - GEYSER.x, pz = skater.pos.z - GEYSER.z;
+        let dx = skater.vel.x, dz = skater.vel.z;
+        if (Math.hypot(dx, dz) < 1) { dx = skater.fwd.x; dz = skater.fwd.z; }
+        const flat = Math.hypot(dx, dz) || 1, on = (px * dx + pz * dz) / flat;
+        dx /= flat; dz /= flat;
+        const reach = (r) => -on + Math.sqrt(Math.max(0, on * on - px * px - pz * pz + r * r));   // (how far along his line he meets a ring that far out from the Geyser)
+        let aim = { r: 30 };
+        for (let i = 0; i < 3; i++) { const far = reach(aim.r); aim = GEYSER.aim(Math.atan2(pz + dz * far, px + dx * far)); }
+        const rise = aim.y + 0.3 - skater.pos.y, height = (v) => v / k - (g / (k * k)) * Math.log(1 + (k * v) / g);   // (how high a throw that fast gets)
+        let low = 0, up = Math.sqrt(2 * g * rise) * 2;
+        for (let i = 0; i < 40; i++) { const mid = (low + up) / 2; if (height(mid) < rise) low = mid; else up = mid; }
+        const along = (reach(aim.r) * k) / (1 - Math.exp(-Math.log(1 + (k * up) / g)));
+        skater.vel.set(dx * along, up, dz * along);
+        skater.takeoff();
+        hud.popup('Geyser!', 'loot');
+        playVent();
+      }
+      for (const h of HOOPS) {
+        // (which side of it he is on, and where he was when he changed sides: inside its ring?)
+        const side = (skater.pos.x - h.x) * h.nx + (skater.pos.y + 0.9 - h.y) * h.ny + (skater.pos.z - h.z) * h.nz;
+        if (h.side !== undefined && side * h.side < 0 && Math.abs(side) < 8 && Math.abs(h.side) < 8) {
+          const x = skater.pos.x - h.x - h.nx * side, y = skater.pos.y + 0.9 - h.y - h.ny * side, z = skater.pos.z - h.z - h.nz * side;
+          if (x * x + y * y + z * z < h.r * h.r) { lines.add('Hoop', h.pts || 600); if (!h.quiet) hud.popup('Through the hoop!', 'trick'); playPickup(); }
+        }
+        h.side = side;
+      }
+      const glass = domeAt(skater.pos.x, skater.pos.z) - 2.4;
+      if (skater.pos.y > glass) { skater.pos.y = glass; if (skater.vel.y > 0) skater.vel.y = 0; }
+    }
+
     // Draw between the last two physics states for smooth motion.
     renderPos.lerpVectors(skater.prevPos, skater.pos, accumulator / STEP);
     const { aimHeld: aiming, fireHeld: firing } = input;
@@ -1460,8 +1554,12 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
 
     handleEvents();
     runTime = horde.time;
+    if (demo && !cutscenes.active) {
+      if (demo.hill) descent.state.wall = Math.min(descent.state.wall, 48 - skater.pos.z - 60);   // (the collapse keeps its distance while you watch)
+      if ((demo.wait -= dt) <= 0) { demo.wait = 7; try { demo.act(); } catch (error) { console.warn(error); } }
+    }
     const big = horde.boss || horde.mini;   // the boss, or the mini-boss: either gets the health bar
-    hud.boss(big ? big.hp / big.maxHp : null, big?.T.title);
+    hud.boss(big ? big.hp / big.maxHp : null, big?.title || big?.T.title);
 
     // The exit portal (open once the boss is dead): ride into it to finish the level.
     const exit = portal.update(dt, skater);
@@ -1479,10 +1577,18 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
     shield = Math.max(0, shield - dt);
     // The Long Way Down: the collapse behind you, the ghosts either side, and the clock.
     if (LEVELS[level].descent && !dead && !won) {
-      const d = descent.update(dt);
+      const d = descent.update(dt, weapon.bullets, weapon.def.beam && weapon.shot && weapon.shot !== lastBeam ? (lastBeam = weapon.shot) : null);
       hud.run(hillTime(descent.state.time), d.gap);
-      if (d.tell) { hud.popup(d.tell < 0 ? '◀  Incoming' : d.tell === 1 ? 'Incoming  ▶' : '▲  Incoming  ▲', 'alert'); playGhostTell(d.tell < 0 ? -1 : d.tell === 1 ? 1 : 0); }
+      // Goyitus Ultimus: what he is up to, and how you are doing against him.
+      if (d.met) { hud.place('Goyitus Ultimus', 'Three brothers. One grudge.'); playGhostTell(0); }
+      if (d.rite) { hud.popup(`▲  Shoot the ${d.rite} sigils  ▲`, 'alert'); playGhostTell(0); }
+      if (d.sigil) { hud.hitMarker('crit'); model.express?.('smile', 0.6); }
+      if (d.stun) { hud.popup(d.broken ? 'GOYITUS ULTIMUS IS BROKEN' : d.lost ? `${d.lost} is torn away` : 'Rite broken: he is stunned', 'loot'); playZone(); run.heal(d.broken ? 40 : 8); }
+      if (d.barrage) { hud.popup('The rite is done: MOVE', 'alert'); playGhostTell(1); model.express?.('surprise', 1.2); }
       if (d.thrown) playGhostThrow();
+      hud.boss(d.boss, d.charge > 0 ? 'Goyitus Ultimus: the rite' : 'Goyitus Ultimus');
+      if (d.hit) { slowed = config.descent.slowTime; skater.vel.multiplyScalar(config.descent.slow); }   // (what hits you holds you back: and the collapse is right there)
+      if (slowed > 0) { slowed -= dt; skater.vel.multiplyScalar(Math.exp(-0.9 * dt)); hud.lines?.(0); }
       if (d.zone) { hud.place(d.zone, 'The Long Way Down'); playZone(); }
       if (d.hit) { hurt(d.hit); hud.popup('Hit', 'sloppy'); }
       if (d.caught) { if (d.fell) buried(true); else cutscenes.buried(descent, () => buried()); }   // (it catches him: see it happen, then the end screen)

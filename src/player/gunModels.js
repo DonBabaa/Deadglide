@@ -10,12 +10,14 @@
 // `metal` is the main finish, shared by every gun, so the "gold gun" cosmetic
 // can repaint it. Wood, polymer and bone keep their own colours.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const HALF = Math.PI / 2;
 
 export function buildGuns(metal) {
   const std = (color, roughness, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
-  const steel = std(0x6a7078, 0.35, { metalness: 0.5 }), polymer = std(0x0d0e10, 0.85), wood = std(0x5e3a1c, 0.6);
+  const steel = std(0x6a7078, 0.32, { metalness: 0.65 }), polymer = std(0x121316, 0.7), wood = std(0x5e3a1c, 0.55);
   const bone = std(0xd9d2bd, 0.75), boneDark = std(0x9d957f, 0.85), brass = std(0xc79a3a, 0.4, { metalness: 0.4 });
   const glass = new THREE.MeshBasicMaterial({ color: 0x7fd4ff, toneMapped: false });
 
@@ -26,13 +28,19 @@ export function buildGuns(metal) {
     m.castShadow = true;
     return m;
   };
-  const box = (w, h, d, material, x, y, z, rx) => mesh(new THREE.BoxGeometry(w, h, d), material, x, y, z, rx);
+  // Every block has its edges broken (machined steel and moulded plastic have no knife edges: it is the line of light
+  // along a rounded edge that makes a gun read as metal).
+  const box = (w, h, d, material, x, y, z, rx) => mesh(new RoundedBoxGeometry(w, h, d, 3, Math.min(w, h, d) * 0.22), material, x, y, z, rx);
   // A tube lying along the barrel, from z = from to z = to.
-  const tube = (radius, from, to, material, y = 0, x = 0, tip = radius, sides = 12) =>
-    mesh(new THREE.CylinderGeometry(tip, radius, to - from, sides).rotateX(HALF), material, x, y, (from + to) / 2);
-  const ring = (radius, thick, material, y, z) => mesh(new THREE.TorusGeometry(radius, thick, 6, 16), material, 0, y, z);
+  // (turned on a lathe: round, with a chamfer at each end)
+  const tube = (radius, from, to, material, y = 0, x = 0, tip = radius, sides = 12) => {
+    const length = to - from, c = Math.min(length * 0.2, Math.min(radius, tip) * 0.3);
+    const profile = [[0, -length / 2], [radius - c, -length / 2], [radius, -length / 2 + c], [tip, length / 2 - c], [tip - c, length / 2], [0, length / 2]].map(([r, y2]) => new THREE.Vector2(Math.max(r, 0), y2));
+    return mesh(new THREE.LatheGeometry(profile, Math.max(sides * 2, 20)).rotateX(HALF), material, x, y, (from + to) / 2);
+  };
+  const ring = (radius, thick, material, y, z) => mesh(new THREE.TorusGeometry(radius, thick, 10, 28), material, 0, y, z);
   const grip = (material, lean = 0.22, length = 0.115) => box(0.034, length, 0.05, material, 0, -0.055, -0.012, lean);   // what the hand holds
-  const guard = (z = 0.045) => mesh(new THREE.TorusGeometry(0.024, 0.005, 5, 12, Math.PI).rotateY(HALF).rotateX(Math.PI), metal, 0, -0.012, z);   // trigger guard
+  const guard = (z = 0.045) => mesh(new THREE.TorusGeometry(0.024, 0.005, 8, 20, Math.PI).rotateY(HALF).rotateX(Math.PI), metal, 0, -0.012, z);   // trigger guard
   // scale: drawn a little larger than life so it reads from the chase camera.
   // inset: long guns sit slightly inboard of the hand and a touch higher, so the stock runs beside his forearm, not through it.
   const gun = (parts, muzzle, support, scale = 1.25, inset = [-0.05, 0.03]) => {
@@ -44,7 +52,7 @@ export function buildGuns(metal) {
     return { group, muzzle: placed(muzzle), support: placed(support) };
   };
 
-  return {
+  const guns = {
     // Semi-automatic pistol: slide over a frame, sights, hammer, a magazine base poking out of the grip.
     pistol: gun([
       box(0.036, 0.046, 0.21, metal, 0, 0.046, 0.065),                 // slide
@@ -183,4 +191,28 @@ export function buildGuns(metal) {
       grip(boneDark, 0.2, 0.11), guard(0.05),
     ], [0.06, 0.68], [-0.07, 0.385]),
   };
+  // The ones that have been modelled in Blender (public/models/guns.glb: see tools/build_guns.py) take the place of
+  // the built ones when the file arrives: the same size, held the same way, firing from the same place. Each of
+  // their meshes is called <gun>_<finish>, and takes that finish's material here (so the gold skin still works).
+  const finishes = { Metal: metal, Steel: steel, Polymer: polymer, Wood: wood, Bone: bone, BoneDark: boneDark, Brass: brass, Glass: glass, Light: new THREE.MeshBasicMaterial({ color: 0xffa040, toneMapped: false }) };
+  realGuns().then((scene) => {
+    if (!scene) return;
+    const swapped = new Set();
+    scene.traverse((o) => {
+      const is = o.isMesh && o.name.match(/^([a-zA-Z]+)_(Metal|Steel|Polymer|Wood|BoneDark|Bone|Brass|Glass|Light)/);
+      if (!is || !guns[is[1]]) return;
+      const group = guns[is[1]].group;
+      if (!swapped.has(is[1])) { swapped.add(is[1]); group.clear(); }
+      const m = new THREE.Mesh(o.geometry, finishes[is[2]]);
+      m.castShadow = true;
+      group.add(m);
+    });
+  });
+  return guns;
+}
+
+let loading = null;
+export function realGuns() {
+  loading ||= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/guns.glb`).then((gltf) => gltf.scene, () => null);
+  return loading;
 }

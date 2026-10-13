@@ -3,7 +3,7 @@
 // places, and the horde draws that for the ones further off. The bosses are only ever drawn like this.
 // All of them are sculpted with the kit in sculpt.js: skins through points, pushed and crumpled and painted.
 import * as THREE from 'three';
-import { tube, lump, sculpt, dent, rough, dirty, sheet, fineHand, fineFoot, paint, part, slab, between, noise, boneShaft, fineSkull, ribCage, spikes } from './sculpt.js';
+import { tube, lump, sculpt, dent, rough, dirty, sheet, fineHand, fineFoot, paint, part, slab, between, boneShaft, fineSkull, ribCage, spikes } from './sculpt.js';
 
 const PI = Math.PI;
 const lit = (p) => ({ ...p, glow: true });

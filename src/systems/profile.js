@@ -77,9 +77,11 @@ function save() {
 }
 
 export const level = (id) => profile.upgrades[id] || 0;
+// The editor (?editor in the address) has everything: every gun, every cosmetic, every costume, every level.
+export const EDITOR = new URLSearchParams(location.search).has('editor');
 export const hasUnlock = (id) => !!profile.unlocks[id];
 // Can this gun turn up in chests?
-export const gunUnlocked = (id) => { const g = GUNS.find((gun) => gun.id === id); return !g || g.unlock === 0 || profile.guns.includes(id); };
+export const gunUnlocked = (id) => { if (EDITOR) return true; const g = GUNS.find((gun) => gun.id === id); return !g || g.unlock === 0 || profile.guns.includes(id); };
 
 // The casino won `amount` off you this hand (negative: you won it off the casino). `bet`: what you had put down.
 export function houseTook(amount, bet = 0) {
