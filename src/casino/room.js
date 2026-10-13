@@ -811,6 +811,8 @@ export class CasinoRoom {
     if (!on) return model.applyLook(model.look);
     for (const kind in model.mouth) for (const piece of model.mouth[kind]) piece.visible = kind === 'cigarette';
     model.ember.visible = model.smoking = true;
+    model.placeEmber?.('cigarette');   // (on the end of the one he is smoking now, not of whatever he usually has in his mouth: the golden one's is somewhere else)
+    model.emberSize = 1;
   }
   // Its shots: a snap zoom on him, the ember in close-up as he draws on it, a hard cut to his profile holding it in,
   // then from low across the felt as the cloud rolls out.
@@ -826,10 +828,14 @@ export class CasinoRoom {
     const tip = k.ember.getWorldPosition(new THREE.Vector3());
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     let s;
-    if (t < 0.7) s = { pos: at(1.5, 0.55, 0.15), look: head, fov: 46 - 22 * smooth(t / 0.18), lines: 1 };                                                    // snap zoom: his hand comes up
-    else if (t < 1.9) s = { pos: at(0.6, 0.3, -0.02), look: tip.lerp(head, 0.35), fov: 26 - 5 * smooth((t - 0.7) / 1.2), lines: 0.3 + 0.6 * k.inhale, shake: 0.003 * k.inhale };   // the ember, flaring
-    else if (t < 2.15) s = { pos: at(0.45, -1.4, -0.05), look: at(0.3, 0, 0.05), fov: 30, lines: 1 };                                                          // hard cut: in profile, holding it
-    else s = { pos: at(1.3 + 0.3 * smooth((t - 2.15) / 2), -0.9, -0.3), look: at(0.4, 0, 0.12), fov: 42 - 6 * smooth((t - 2.15) / 2), title: t > 3.1 ? 'Smooth.' : '' };   // and out it rolls
+    // (At the bar what is in front of him is the bar, and behind that the wall: the camera stays on his side of
+    // the counter, out along it, and no further in front of him than over the counter's top.)
+    const out = smooth((t - 2.15) / 2), bar = this.bar >= 0;
+    const from = bar ? [[0.5, 1.35, 0.12], [0.4, 0.55, 0.02], [0.28, -1.4, -0.03], [0.55, -1.2 - 0.25 * out, 0.04]] : [[1.5, 0.55, 0.15], [0.6, 0.3, -0.02], [0.45, -1.4, -0.05], [1.5 + 0.3 * out, -0.8, -0.1]];
+    if (t < 0.7) s = { pos: at(...from[0]), look: head, fov: 46 - 22 * smooth(t / 0.18), lines: 1 };                                                           // snap zoom: his hand comes up
+    else if (t < 1.9) s = { pos: at(...from[1]), look: tip.lerp(head, 0.35), fov: 26 - 5 * smooth((t - 0.7) / 1.2), lines: 0.3 + 0.6 * k.inhale, shake: 0.003 * k.inhale };   // the ember, flaring
+    else if (t < 2.15) s = { pos: at(...from[2]), look: at(0.15, 0, 0.02), fov: 30, lines: 1 };                                                                // hard cut: in profile, holding it
+    else s = { pos: at(...from[3]), look: at(0.08, 0, -0.02), fov: 40 - 6 * out, title: t > 3.1 ? 'Smooth.' : '' };                                           // and out it rolls: on him, the cloud coming at the camera
     return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.7) * 0.6, pop(1.9), pop(2.15) * 0.8) };
   }
 
@@ -1211,7 +1217,13 @@ export class CasinoRoom {
         : drunk ? (moving > 0.12 ? (who.speed < 0 ? 'drunkback' : 'drunkwalk') : who.turned > 0.7 ? 'drunkturn' : 'drunkidle')
         : Math.abs(who.speed) > C.walkSpeed * 1.35 ? 'run' : moving > 0.12 ? 'walk' : Math.floor(this.time / 11 + who.pos.x) % 2 ? 'idle2' : 'idle';
       k.play?.(clip, 1 - sat * 3, moving > 0.12 && !cheering ? 0.6 + 0.6 * moving : 1, undefined, !busy || cheering);
-    } else k.play?.(cheering ? 'cheersit' : 'sit', Math.min(1, (sat - 0.3) * 3), 1, undefined, !busy || cheering, { seated: true, upright: cheering ? 0.3 : 0.85 });   // (upright: the clip has his chin on his chest: his back and his head are mostly as he holds them himself, looking at the table)
+    } else {
+      // (settling onto it first: the end of a man sitting down, for the second it takes him)
+      who.satFor = (who.satFor || 0) + dt;
+      const settling = !cheering && who.satFor < 0.95;
+      k.play?.(cheering ? 'cheersit' : settling ? 'sitdown' : 'sit', Math.min(1, (sat - 0.3) * 3), 1, settling ? 1.3 + who.satFor : undefined, !busy || cheering, { seated: true, upright: cheering ? 0.3 : settling ? 0.55 : 0.85 });
+    }
+    if (sat < 0.05) who.satFor = 0;   // (upright: the clip has his chin on his chest: his back and his head are mostly as he holds them himself, looking at the table)
     k.frontLeg.rotation.x = lerp(swing, -1.5, sat);
     k.backLeg.rotation.x = lerp(-swing, -1.5, sat);
     k.frontLeg.knee.rotation.x = lerp(Math.max(0, -swing) * 1.3, 1.4, sat);   // on foot, the trailing knee bends

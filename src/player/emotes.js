@@ -85,6 +85,8 @@ export function createEmoter(model, driven = false) {
     if (!on) { k.inhale = 0; k.applyLook(k.look); return; }
     for (const kind in k.mouth) for (const piece of k.mouth[kind]) piece.visible = kind === 'cigarette';
     k.ember.visible = k.smoking = true;
+    k.placeEmber?.('cigarette');   // (on the end of the one he is smoking now: see the casino's light())
+    k.emberSize = 1;
   };
 
   const emoter = {
