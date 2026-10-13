@@ -36,6 +36,7 @@ CLIPS = {
     'hamz': 'hamzitus goyitus.fbx', 'rubi': 'rubistus goyitus.fbx',   # (the clip each of the two brothers came with)
     'runstop': 'Action Adventure Pack/run to stop.fbx',   # (pulling up out of a run: Babitus, before he does anything else)
     'rummage': 'rummaging.fbx',   # (both hands going through something in front of him: Goyitus Ultimus, reaching for Kirky off the last ramp)
+    'breathe': 'Breathing Idle.fbx', 'shift': 'Action Adventure Pack/idle.fbx',   # (stood, breathing; stood, shifting about: Babitus at his table in the players' casino, with nobody to deal to)
 }
 # Turning on the spot: the game turns him (he always faces you), so what is kept of these is the stepping round, and
 # not the turn itself (his heading is taken back out of every frame).

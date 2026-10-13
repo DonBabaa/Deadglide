@@ -21,8 +21,9 @@ export const DRINKS = [
   { id: 'champagne', name: 'Champagne', price: 40, liquid: 0xf2d27a, tool: 'bottle', bottle: 0x1f4a2a, cork: true },
 ];
 
-// She moves by one long clip of a barman at work (`bartend`, in public/models/barman.glb: tools/build_staff.py), and
-// whatever she is doing is a stretch of it. The show, cut to cut with the camera: [from, to (seconds of the show), the
+// She works by one long clip of a barman at work (`bartend`, in public/models/barman.glb: tools/build_staff.py), and
+// whatever she is doing is a stretch of it. With nothing to do she stands at ease (two more clips: `idle`, breathing,
+// and `shift`, her weight going from one foot to the other), and finds herself something every so often: CHORES. The show, cut to cut with the camera: [from, to (seconds of the show), the
 // frame of the clip it starts on, the frame it ends on]. (The clip, for whoever changes these: 1-25 stood, his hands
 // on the bar. 37-61 down under it. 61-97 up, and something set down in front of him. 109-133 a bottle fetched from
 // his right. 133-163 poured. 169-205 put back, and down on his left. 217-250 both hands up by his shoulder. 253-277
@@ -39,6 +40,14 @@ const SHOW = [
   [5.35, 6.05, 337, 361],   // slid across to you
   [6.05, 6.9, 361, 394],    // and back, with a bow
 ];
+// What she finds to do, with nobody to serve: [the frame of `bartend` it starts on, the frame it ends on, how long she
+// takes over it (seconds), there and back (true) or straight through].
+const CHORES = {
+  wipe: [337, 372, 2.0, true],     // a wipe of the bar: both hands out across it, and back
+  under: [28, 72, 1.9, false],     // a look under it for something
+  polish: [283, 293, 3.0, true],   // a glass, polished: her hands together in front of her (a glass in them: see update)
+  tidy: [109, 133, 2.4, true],     // a bottle straightened, off to her right
+};
 const WORK = { shaker: [224, 236], bottle: [212, 232] };   // (the shaker: up by her shoulder, going like the clappers; the bottle: brought up there, spinning by its neck)
 const TALL = 1.18;       // how much bigger than life she is: her hands come to the top of this bar, and she can be seen over it
 const REACH = 0.7;       // how far in front of him the middle of the clip is: where his glass goes
@@ -76,6 +85,13 @@ export class Bar {
     this.headAt = new THREE.Vector3(backX, 1.6, homeZ);   // where her face is (for whoever points a camera at it)
     this.frame = 1;
     this.fading = 0;
+    this.ease = 1;            // 0..1: how far she is stood at ease, not at a frame of her work
+    this.chore = null;        // what she has found to do: { kind, t }
+    this.nextChore = 5;       // seconds until she finds something
+    // (the glass she polishes: in her hand while she does)
+    this.polished = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.03, 0.09, 12, 1, true), this.mats.glass);
+    this.polished.visible = false;
+    scene.add(this.polished);
     new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/barman.glb`).then((gltf) => {
       const body = gltf.scene;
       body.traverse((o) => {
@@ -86,7 +102,10 @@ export class Bar {
       b.add(body);
       this.mixer = new THREE.AnimationMixer(body);
       // (two of the one clip: what she is doing, and what she was doing a moment ago, fading out under it)
-      this.decks = [gltf.animations[0], gltf.animations[0].clone()].map((clip) => { const action = this.mixer.clipAction(clip); action.play(); action.paused = true; return action; });
+      const named = (name) => gltf.animations.find((clip) => clip.name === name);
+      this.decks = [named('bartend'), named('bartend').clone()].map((clip) => { const action = this.mixer.clipAction(clip); action.play(); action.paused = true; return action; });
+      // (and stood at ease: these two run by themselves, round and round, under whatever she is doing)
+      this.atEase = ['idle', 'shift'].map((name) => { const action = this.mixer.clipAction(named(name)); action.play(); action.setEffectiveWeight(0); return action; });
       const bone = (name) => { let found = null; body.traverse((o) => { if (!found && o.isBone && o.name.endsWith(name) && /^mixamorig\d*$/.test(o.name.slice(0, -name.length))) found = o; }); return found; };   // (Mixamo's bones: `mixamorig`, or that and a number, then what it is)
       this.bones = { head: bone('Head'), neck: bone('Neck'), spine: bone('Spine'), chest: bone('Spine2'), right: bone('RightHand'), foreR: bone('RightForeArm'), armR: bone('RightArm'), armL: bone('LeftArm'), foreL: bone('LeftForeArm') };
     }).catch((error) => console.warn('The bar: nobody to tend it.', error));
@@ -220,9 +239,26 @@ export class Bar {
     const show = this.show;
     this.fading = Math.max(0, this.fading - dt);
 
-    // At rest: at his post, his hands on the bar, looking up and down it; and every so often a wipe of it.
-    let frame = 9 + 7 * Math.sin(this.time * 0.8), fade = 0.3, bow = 0, turn = Math.sin(this.time * 0.5) * 0.3, tilt = 0;
-    { const wipe = (this.time + 6) % 13; if (wipe < 1.7 && !show) frame = 337 + wipe * 30; }
+    // At rest: at her post, stood at ease, looking up and down the bar; and every so often something to do (CHORES).
+    let frame = this.frame, fade = 0.3, bow = 0, turn = Math.sin(this.time * 0.5) * 0.3 + 0.2 * Math.sin(this.time * 0.19 + 1), tilt = 0, ease = 1;
+    const idling = !show && !(this.alarmed > 0) && !(this.scolding > 0);
+    if (!idling) this.chore = null;
+    else if (this.chore) {
+      const C = CHORES[this.chore.kind], k = (this.chore.t += dt) / C[2];
+      if (k >= 1) { this.chore = null; this.nextChore = 6 + Math.random() * 7; }
+      else if (this.chore.t > 0.3) {   // (she has stopped standing about, by then)
+        const through = (this.chore.t - 0.3) / (C[2] - 0.3), there = C[3] ? (this.chore.kind === 'polish' ? 0.5 + 0.5 * Math.sin(through * 22) : Math.sin(through * Math.PI)) : through;
+        frame = lerp(C[0], C[1], there);
+        fade = 0;
+      }
+      ease = this.chore && this.chore.t < C[2] - 0.35 ? 0 : 1;
+    } else if ((this.nextChore -= dt) <= 0) {
+      const kinds = Object.keys(CHORES);
+      this.chore = { kind: kinds[Math.floor(Math.random() * kinds.length)], t: 0 };
+      this.frame = frame = CHORES[this.chore.kind][0];
+    }
+    this.polished.visible = !!this.chore && this.chore.kind === 'polish' && this.ease < 0.4;
+    if (this.polished.visible) this.polished.position.copy(this.grip);
     if (!show) {
       b.position.y = 0;
       if (this.alarmed > 0) {
@@ -233,7 +269,8 @@ export class Bar {
         turn = 0;
         if (e < 1.0) { frame = lerp(40, 56, span(e, 0, 0.3)) + Math.sin(this.time * 30) * 1.2; fade = 0.12; }
         else if (e < 2.8) { frame = lerp(337, 359, span(e, 1.0, 1.45)); fade = 0.15; }
-        else { frame = 229; turn = 1.5 * span(e, 2.8, 3.0); tilt = 0.25; }   // turned away, a claw up between him and it
+        else { frame = 229; turn = 1.5 * span(e, 2.8, 3.0); tilt = 0.25; }   // turned away, a hand up between her and it
+        ease = 0;
       } else if (this.scolding > 0) {
         // A customer has had enough: he comes over, shakes his head and wags a claw.
         this.scolding -= dt;
@@ -241,8 +278,10 @@ export class Bar {
         turn = Math.sin(this.time * 13) * 0.4;
         frame = 131 + Math.sin(this.time * 16) * 3;
         fade = 0.2;
+        ease = 0;
       } else b.position.z = lerp(b.position.z, homeZ, 1 - Math.exp(-2 * dt));
-      this.pose(frame, fade, bow, turn, tilt);
+      this.ease = lerp(this.ease, ease, 1 - Math.exp(-(ease ? 4 : 9) * dt));
+      this.pose(frame, fade, bow, turn, tilt, null, 0, dt);
     } else {
       const t = (show.t += dt * (show.t > 2.35 && show.t < 2.95 ? 0.35 : 1)), { drink, glass } = show,   // (the toss hangs in the air)
       tool = drink.tool === 'shaker' ? this.shaker : this.bottle;
@@ -260,7 +299,8 @@ export class Bar {
       const pouring = span(t, 3.3, 3.6) * (1 - span(t, 4.7, 4.95));
       const glassAt = v3.set(backX - REACH, counterY, show.z);
       // (and she stands up to it, her eyes on the glass, not bent under her own arm)
-      this.pose(frame, cut === SHOW[0] ? 0.25 : 0, bow - 0.32 * pouring, 0, -0.22 * pouring, pouring > 0 ? v.set(glassAt.x + 0.36, counterY + glass.lip + 0.13, glassAt.z - 0.03) : null, pouring);
+      this.ease = lerp(this.ease, 0, 1 - Math.exp(-9 * dt));   // (to work)
+      this.pose(frame, cut === SHOW[0] ? 0.25 : 0, bow - 0.32 * pouring, 0, -0.22 * pouring, pouring > 0 ? v.set(glassAt.x + 0.36, counterY + glass.lip + 0.13, glassAt.z - 0.03) : null, pouring, dt);
 
       // What he is working with is in his right hand: the shaker going over his shoulder, or the bottle spun by its
       // neck; then up in the air and back into his grip.
@@ -329,18 +369,22 @@ export class Bar {
     }
   }
 
-  // Put him at `frame` of his clip (`fade`: seconds to ease into it, if it is not where he was: 0 across a cut), and on
-  // top of that: bowed (his back bent that far), his head turned (to look down the bar, to shake it) and tipped.
-  pose(frame, fade, bow, turn, tilt, reach = null, reaching = 0) {
+  // Put her at `frame` of her work (`fade`: seconds to ease into it, if it is not where she was: 0 across a cut), as far
+  // as she is not stood at ease (this.ease: her two clips for that run on by themselves, `dt` at a time, her weight
+  // shifting every so often); and on top of that: bowed (her back bent that far), her head turned (to look down the
+  // bar, to shake it) and tipped.
+  pose(frame, fade, bow, turn, tilt, reach = null, reaching = 0, dt = 0) {
     if (!this.bones) return;
     const [now, was] = this.decks, B = this.bones;
     if (Math.abs(frame - this.frame) > 5) { was.time = now.time; this.fading = this.faded = fade; }
     this.frame = frame;
     now.time = Math.max(0, Math.min(now.getClip().duration - 0.01, (frame - 1) / 30));
-    const old = this.fading > 0 ? smooth(this.fading / this.faded) : 0;
-    now.setEffectiveWeight(1 - old);
-    was.setEffectiveWeight(old);
-    this.mixer.update(0);
+    const old = this.fading > 0 ? smooth(this.fading / this.faded) : 0, ease = smooth(this.ease), shifting = smooth((Math.sin(this.time * 0.37) - 0.35) / 0.3);
+    now.setEffectiveWeight((1 - old) * (1 - ease));
+    was.setEffectiveWeight(old * (1 - ease));
+    this.atEase[0].setEffectiveWeight(ease * (1 - shifting));
+    this.atEase[1].setEffectiveWeight(ease * shifting);
+    this.mixer.update(dt);
     B.spine.rotateX(bow * 0.55);
     B.chest.rotateX(bow * 0.45);
     B.neck.rotateY(turn * 0.4);

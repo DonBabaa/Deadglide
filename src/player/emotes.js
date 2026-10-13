@@ -5,7 +5,9 @@
 //
 // To add one: an entry here, with a pose(k, t, w, P) that moves the model. An entry with a `clip` (a name) is motion
 // capture on his feet, in the casino: the clip plays, all of him, and pose() is only for when he is on his board,
-// where there is no room for it (`sat`: the clip for when he is sat down; without one he is posed by hand there too).
+// where there is no room for it (`sat`: the clip for when he is sat down; without one he is posed by hand there too.
+// A list of them: he does one and then the next, turn about. Sat down, a clip that is not made for it is his from the
+// waist up, and one that has him get up off his seat is fitted to how long the emote is: see SAT below).
 //   k   the SkaterModel        t   seconds since it began
 //   w   0..1: how much of the emote to show (it eases in and out by itself)
 //   P   helpers: P.left(x, y, z) and P.right(x, y, z) aim the two arms (radians),
@@ -14,9 +16,13 @@
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
+// How a clip is played on him sat down, when it is not simply played with his hips where they are: from the waist up
+// (his legs as he sits), or the whole of it (`whole`: how long it is, seconds: he gets up, and sits down again).
+const SAT = { cheer: { seated: true, upright: 0.2, legs: false }, cheerup: { whole: 3.45 } };
+
 export const EMOTES = [
   { id: 'wave', name: 'Wave', icon: '\u{1F44B}', time: 3.0, clip: 'wave', pose: (k, t, w, P) => P.left(-2.6, 0, Math.sin(t * 11) * 0.45) },
-  { id: 'cheer', name: 'Cheer', icon: '\u{1F64C}', time: 2.8, clip: 'cheer', sat: 'cheersit', pose: (k, t, w, P) => {
+  { id: 'cheer', name: 'Cheer', icon: '\u{1F64C}', time: 2.8, clip: 'cheer', sat: ['cheersit', 'cheer', 'cheerup'], pose: (k, t, w, P) => {
     const pump = Math.sin(t * 13) * 0.14;
     P.left(-2.7 + pump, 0, 0.15);
     P.right(-1.35 + pump, 0, 0);
@@ -89,13 +95,14 @@ export function createEmoter(model, driven = false) {
     k.emberSize = 1;
   };
 
+  let turn = -1;   // (how many emotes he has done: which of an emote's seated clips is next)
   const emoter = {
     // Which emote is playing, as a number to send to the others: 0 for none, otherwise its place in EMOTES plus one.
     get playing() { return index + 1; },
     play(i) {
       if (!EMOTES[i]) return;
       emoter.stop();
-      index = i; t = 0;
+      index = i; t = 0; turn++;
       dress(true);
     },
     stop() {
@@ -116,9 +123,12 @@ export function createEmoter(model, driven = false) {
       const E = EMOTES[index];
       if ((t += dt) >= E.time) return emoter.stop();
       P.w = smooth(t / 0.2) * smooth((E.time - t) / 0.25);
-      const clip = k.onBoard === false && k.play ? (k.sitting ? E.sat : typeof E.clip === 'string' ? E.clip : null) : null;
+      const sat = Array.isArray(E.sat) ? E.sat[turn % E.sat.length] : E.sat;
+      const clip = k.onBoard === false && k.play ? (k.sitting ? sat : typeof E.clip === 'string' ? E.clip : null) : null;
       k.emoting = E.clip === true || clip ? 0 : P.w;   // (posed by hand: whatever clip he is standing or walking by gives way to it, see kirkyBody.js)
-      if (clip) k.play(clip, P.w, 1, undefined, true, k.sitting ? { seated: true } : null);
+      const how = k.sitting ? SAT[clip] : null;
+      if (clip && how && how.whole) k.play(clip, P.w, 1, t * (how.whole / E.time), true);   // (up off his seat and down again, in the time there is)
+      else if (clip) k.play(clip, P.w, 1, undefined, true, k.sitting ? how || { seated: true } : null);
       else E.pose(k, t, P.w, P, dt);
     },
   };

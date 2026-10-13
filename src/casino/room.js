@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { SkaterModel } from '../player/skaterModel.js';
 import { createEmoter } from '../player/emotes.js';
 import { Bar, DRINKS, SERVED } from './bar.js';
-import { standIn, laughing } from '../enemies/standIn.js';
+import { standIn, laughing, reaching, stance, standing, stood } from '../enemies/standIn.js';
 import * as FIT from './decor.js';
 import { ENEMY_PARTS } from '../enemies/enemyModels.js';
 import { WHEEL, SPOTS, LAYOUT, colour } from './roulette.js';
@@ -37,6 +37,9 @@ const CROUPIER_X = -0.55;                          // where the croupier stands 
 const WOOZY_TIME = 4.8;                            // seconds of the cut-in when the drink catches up with you
 const TABLE_SIP = 3.4;                             // seconds his drink takes, at the blackjack table: down in one, with a cut-in
 const TABLE_FULL = 0.75, REFILL = 16;              // how full his glass is there, and seconds until it is full again
+// A hand won, sat down: he cheers one of three ways, turn about (each is this long): where he sits; the cheer he does
+// on his feet, from the waist up; and up off his seat and down onto it again.
+const GLAD = { cheersit: 2.1, cheer: 2.9, cheerup: 3.45 }, GLAD_TURNS = Object.keys(GLAD);
 const JACK_TIME = 3.4;                             // seconds of the cut-in when he is dealt a blackjack (the length of his cheer: `cheerup`)
 // A jump on the casino floor. up: how fast he leaves it (m/s); down: how hard he comes back (m/s2): high enough to
 // get up on a table, or the bar. From a standstill it is his `jump` clip, the whole of it: the crouch (wind: seconds
@@ -51,6 +54,17 @@ const SMOKE_TIME = 4.4;                            // seconds of the cut-in for 
 // back, played round and round while there are cards to go out. from, to: its frames. flick: the frame the card
 // leaves his hand on. rate: how fast it is played (a card every (to - from) / 30 / rate seconds).
 const DEAL = { from: 85, to: 109, flick: 103, rate: 2.3 };
+// With nobody to deal to (and at the wheel, with nobody betting), Babitus stands as a man stands (`breathe`, and
+// `shift`, his weight going from one foot to the other, under hands that keep hold of the deck), and every so often
+// does one of these: [how long it takes him, seconds; and for the ones that are a stretch of his dealing clip, the
+// frame it starts on and the frame it ends on].
+const FIDGETS = {
+  riffle: [1.1, 19, 43],     // the deck squared up, out to one side of him and back
+  cut: [1.5, 205, 247],      // cut, and put together again
+  look: [2.6],               // a long look round the room, one way and then the other
+  tie: [2.0],                // his tie straightened, his chin up
+  cuffs: [1.8],              // his cuffs shot: both arms out in front of him, and back
+};
 const DEALER_SIZE = 0.93;                          // how big he is, against how he was made (he comes to a little over two metres)
 const DRINK_TIME = 3.6;                            // seconds to down a drink
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -477,7 +491,40 @@ export class CasinoRoom {
       ...[-1, 1].map((side) => add(new THREE.SphereGeometry(0.15, 10, 8), gold, side * 0.75, 3.08, -0.6, d)), add(new THREE.OctahedronGeometry(0.18), diamond, 0, 3.17, -0.6, d)] : []));
     this.scene.add(d);
     this.wealth = -1;
-    return { him, group: d, riches: rich, worn, face: new THREE.Vector3(0, 1.8, 0) };
+    return { him, group: d, riches: rich, worn, face: new THREE.Vector3(0, 1.8, 0), stance: stance(), fidget: null, next: 3 + Math.random() * 5, phase: Math.random() * 9 };
+  }
+
+  // What one of the two of him (`who`: see buildDealer) is doing with nothing to do. Every frame: how he stands is
+  // worked out (who.stance: for stood()), and, if he is `free`, the next of his fidgets (FIDGETS; `kinds`: which of
+  // them he has here) is begun when it is due. Returns the one he is in the middle of: { kind, k: 0..1 through it,
+  // w: 0..1, eased in and out }, or null.
+  fidgets(who, dt, free, kinds = Object.keys(FIDGETS)) {
+    const t = this.time * 0.9 + who.phase;
+    standing(who.stance, 'breathe', t, 'shift', smooth((Math.sin(t * 0.33) - 0.3) / 0.35));
+    if (!free) { who.fidget = null; who.next = Math.max(who.next, 2.5); return null; }
+    if (!who.fidget) {
+      if ((who.next -= dt) > 0) return null;
+      who.fidget = { kind: kinds[Math.floor(Math.random() * kinds.length)], t: 0, side: Math.random() < 0.5 ? -1 : 1 };
+    }
+    const F = who.fidget, long = FIDGETS[F.kind][0];
+    if ((F.t += dt) >= long) { who.fidget = null; who.next = 6 + Math.random() * 8; return null; }
+    F.k = F.t / long;
+    F.w = smooth(F.t / 0.3) * smooth((long - F.t) / 0.35);
+    return F;
+  }
+  // The ones of those that are not a stretch of a clip, put on his pose `P` (a tweak for it).
+  fidgeting(P, F) {
+    if (!F) return;
+    if (F.kind === 'look') {
+      turned.setFromAxisAngle(UP, 0.55 * F.side * Math.sin(F.k * TAU) * F.w);
+      P.hips.premultiply(turned); P.chest.premultiply(turned);
+    } else if (F.kind === 'tie') {
+      // (his right hand up to the knot of it, a tug or two, and his chin lifted clear)
+      turned.setFromAxisAngle(RIGHT, -0.1 * F.w);
+      P.chest.multiply(turned);
+      P.upperR.lerp(v.set(-0.18, -0.62, 0.76).normalize(), F.w).normalize();
+      P.foreR.lerp(v.set(0.5, 0.72 + 0.06 * Math.sin(F.k * 30), 0.48).normalize(), F.w).normalize();
+    } else if (F.kind === 'cuffs') reaching(P, F.w * Math.sin(Math.min(1, F.k * 1.4) * Math.PI) ** 0.5, [0.22, -0.28, 0.93], [0.05, -0.1, 0.99], 0);
   }
 
   // Dress the dealer for how much the house has taken from the players, and put it on his sign.
@@ -749,7 +796,7 @@ export class CasinoRoom {
   // sees them, and all of him from low over the felt as he goes up.
   celebrate(blackjack) {
     if (this.seat < 0) return;
-    if (!blackjack) { this.glad = 2.1; return; }
+    if (!blackjack) { this.gladKind = GLAD_TURNS[(this.gladTurn = (this.gladTurn ?? -1) + 1) % GLAD_TURNS.length]; this.glad = this.gladFor = GLAD[this.gladKind]; return; }
     this.rising = JACK_TIME;
     this.kirky.express?.('smile', JACK_TIME);
     playThunder();
@@ -1026,7 +1073,10 @@ export class CasinoRoom {
       const watching = t >= 0 && t < ROU_CALL ? smooth(t / 0.3) : 0;
       c.group.rotation.set(-0.1 * ha + shake * 0.02 + 0.14 * reach, Math.sin(this.time * 0.6 + 2) * 0.04 - 0.3 * reach, 0);
       c.group.position.y = Math.abs(shake) * 0.05;
-      c.him.pose('cards', 0.3 + 0.22 * Math.sin(this.time * 0.8 + 1), null, 0, 0, false, (P) => {
+      const F = this.fidgets(c, dt, t < 0 && ha <= 0, ['look', 'tie', 'cuffs']), clip = F && FIDGETS[F.kind][1] ? [(lerp(FIDGETS[F.kind][1], FIDGETS[F.kind][2], F.k) - 1) / 30, F.w] : [0, 0];
+      c.him.pose('cards', 0.3 + 0.22 * Math.sin(this.time * 0.8 + 1), 'cards', clip[0], clip[1], false, (P) => {
+        stood(P, c.stance, (1 - ha) * (1 - reach));
+        this.fidgeting(P, F);
         if (ha > 0) laughing(P, ha, this.time);
         if (watching > 0) { turned.setFromAxisAngle(UP, -0.75 * watching * (1 - ha)); P.hips.premultiply(turned); P.chest.premultiply(turned); }   // (the wheel is on his right)
         if (reach > 0) {   // (his right arm: out over the wheel, and across it)
@@ -1255,16 +1305,23 @@ export class CasinoRoom {
     } else {
       // (settling onto it first: the end of a man sitting down, for the second it takes him)
       who.satFor = (who.satFor || 0) + dt;
-      const settling = !cheering && who.satFor < 0.95;
+      const settling = !cheering && who.satFor < 0.95, glad = who.glad > 0 ? who.gladKind : null;
+      // (on a sofa his legs are his own, not the clip's: it was sat on something higher, and its feet are through this floor)
       if (who.rising > 0) k.play?.('cheerup', 1, 1, JACK_TIME - who.rising, true);   // (a blackjack: up off his stool, his arms in the air, and down onto it again)
-      else k.play?.(cheering ? 'cheersit' : settling ? 'sitdown' : 'sit', Math.min(1, (sat - 0.3) * 3), 1, settling ? 1.3 + who.satFor : undefined, !busy || cheering, { seated: true, upright: cheering ? 0.3 : settling ? 0.55 : 0.85 });
+      else if (glad === 'cheerup') k.play?.('cheerup', 1, 1, who.gladFor - who.glad, true);
+      else if (glad === 'cheer') k.play?.('cheer', 1, 1, who.gladFor - who.glad, true, { seated: true, upright: 0.2, legs: false });
+      else k.play?.(cheering ? 'cheersit' : settling ? 'sitdown' : 'sit', Math.min(1, (sat - 0.3) * 3), 1, settling ? 1.3 + who.satFor : undefined, !busy || cheering, { seated: true, upright: cheering ? 0.3 : settling ? 0.55 : who.lounge >= 0 ? 0.6 : 0.85, legs: !(who.lounge >= 0) });
     }
     if (sat < 0.05) who.satFor = 0;   // (upright: the clip has his chin on his chest: his back and his head are mostly as he holds them himself, looking at the table)
-    k.frontLeg.rotation.x = lerp(swing, -1.5, sat);
-    k.backLeg.rotation.x = lerp(-swing, -1.5, sat);
-    k.frontLeg.knee.rotation.x = lerp(Math.max(0, -swing) * 1.3, 1.4, sat);   // on foot, the trailing knee bends
-    k.backLeg.knee.rotation.x = lerp(Math.max(0, swing) * 1.3, 1.25, sat);
-    k.backLeg.rotation.z = 0;
+    // (sat on a stool, his thighs are level and his shins hang; sunk in a sofa, his knees are a little higher than his
+    // hips and apart, and his feet are flat on the floor under them)
+    const soft = (who.soft = lerp(who.soft || 0, who.lounge >= 0 ? 1 : 0, 1 - Math.exp(-7 * dt)));
+    k.frontLeg.rotation.x = lerp(swing, lerp(-1.5, -1.63, soft), sat);
+    k.backLeg.rotation.x = lerp(-swing, lerp(-1.5, -1.6, soft), sat);
+    k.frontLeg.knee.rotation.x = lerp(Math.max(0, -swing) * 1.3, lerp(1.4, 1.52, soft), sat);   // on foot, the trailing knee bends
+    k.backLeg.knee.rotation.x = lerp(Math.max(0, swing) * 1.3, lerp(1.25, 1.46, soft), sat);
+    k.frontLeg.rotation.z = 0.17 * soft * sat;
+    k.backLeg.rotation.z = -0.17 * soft * sat;
     const sip = who.sip || 0;   // raising a glass: the arm comes up and he leans back into it
     const hold = who.gripAt ? who.hold || 0 : 0;   // (his hand on his glass: before it leaves the bar, and until it is back on it)
     const hand = Math.max(sip, who.drag || 0, hold);   // (the same arm comes up for a drag on a cigarette, without the lean)
@@ -1272,7 +1329,7 @@ export class CasinoRoom {
     const hic = who.hic || 0;   // a hiccup: his chest jumps
     k.root.rotation.z = who.lean || 0;
     k.root.position.y += 0.05 * hic;
-    k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip + 0.42 * hold * (1 - sip) - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
+    k.torso.rotation.x = lerp(0.06 + 0.05 * moving, lerp(0.22, -0.1, soft), sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip + 0.42 * hold * (1 - sip) - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
     // Arms: swinging against the legs on foot, forearms on the table sat down, straight up for a win, out to a lever.
     k.gunArm.rotation.set(lerp(lerp(1.42 - swing * 0.5, 0.95, sat), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(0.06, -0.15, sat), 0);
     k.foreArm.rotation.set(-lerp(lerp(0.25 + Math.max(0, -swing) * 0.7, 1.05, sat), 0.15, Math.max(cheer, reach)), 0, 0);   // (all of it, every frame: whatever kept his arm out of his belly last frame had turned it, and it was never turned back: his hand shook)
@@ -1542,7 +1599,10 @@ export class CasinoRoom {
     d.rotation.set(-0.1 * ha + shake * 0.02, Math.sin(this.time * 0.7) * 0.04, 0);
     d.position.y = Math.abs(shake) * 0.05 + 0.03 * hack;
     const laugh = ha > 0;
-    B.him.pose('cards', 0.3 + 0.22 * Math.sin(this.time * 0.9), 'cards', (DEAL.from - 1) / 30 + (this.dealClock % CYCLE), this.dealing * (1 - fit) * (1 - ha), false, (P) => {
+    const F = this.fidgets(B, dt, !due && this.dealing < 0.05 && fit <= 0 && !laugh && !(this.gloat > 0)), riffling = F && FIDGETS[F.kind][1];
+    B.him.pose('cards', 0.3 + 0.22 * Math.sin(this.time * 0.9), 'cards', riffling ? (lerp(FIDGETS[F.kind][1], FIDGETS[F.kind][2], F.k) - 1) / 30 : (DEAL.from - 1) / 30 + (this.dealClock % CYCLE), riffling ? F.w : this.dealing * (1 - fit) * (1 - ha), false, (P) => {
+      stood(P, B.stance, (1 - this.dealing) * (1 - fit) * (1 - ha));   // (under his hands, he stands as a man does)
+      this.fidgeting(P, F);
       if (laugh) laughing(P, ha, this.time);
       if (fit <= 0) return;
       turned.setFromAxisAngle(RIGHT, (0.3 + 0.2 * hack) * fit);   // (bent over it)

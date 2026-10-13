@@ -81,3 +81,26 @@ export function reaching(P, w, upper, fore, lean = 0) {
     f.lerp(v.set(side * fore[0], fore[1], fore[2]).normalize(), w).normalize();
   }
 }
+
+// How he stands, apart from his arms: for laying one clip's stance under another's hands (Babitus at his table,
+// stood breathing as a man does while his hands keep hold of the deck as his dealing clip has them).
+//   const S = stance();                    somewhere to keep one
+//   standing(S, clip, time, other, w)      fill it from `clip` at `time` (round and round), mixed `w` of the way to `other`
+//   stood(P, S, w)                         a tweak for a pose: his hips, chest, head and legs go `w` of the way to it
+const QUATS = ['hips', 'chest', 'head'], LEGS = ['thighL', 'thighR', 'calfL', 'calfR'];
+export const stance = () => ({ hips: new THREE.Quaternion(), chest: new THREE.Quaternion(), head: new THREE.Quaternion(), thighL: new THREE.Vector3(), thighR: new THREE.Vector3(), calfL: new THREE.Vector3(), calfR: new THREE.Vector3(), drop: 0, ready: false });
+export function standing(S, clip, time, other = null, w = 0) {
+  if (!hasMobAnims()) return S;
+  const P = pose(clip, time, other, time, w, true);
+  for (const k of QUATS) S[k].copy(P[k]);
+  for (const k of LEGS) S[k].copy(P[k]);
+  S.drop = P.drop;
+  S.ready = true;
+  return S;
+}
+export function stood(P, S, w) {
+  if (!S.ready || w <= 0) return;
+  for (const k of QUATS) P[k].slerp(S[k], w);
+  for (const k of LEGS) P[k].lerp(S[k], w).normalize();
+  P.drop += (S.drop - P.drop) * w;
+}
