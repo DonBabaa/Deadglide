@@ -12,7 +12,7 @@
 //
 // room.js owns the room; this file owns everything behind the counter.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel } from '../models.js';
 import { playShake, playPour, playClink, playCork, playGlassDown } from '../fx/audio.js';
 
 export const DRINKS = [
@@ -92,7 +92,7 @@ export class Bar {
     this.polished = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.03, 0.09, 12, 1, true), this.mats.glass);
     this.polished.visible = false;
     scene.add(this.polished);
-    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/barman.glb`).then((gltf) => {
+    loadModel('barman.glb').then((gltf) => {
       const body = gltf.scene;
       body.traverse((o) => {
         if (!o.isMesh) return;

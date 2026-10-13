@@ -32,6 +32,25 @@ const CELL = 2.5;         // spatial hash cell size
 const CLIMB = 1.3;        // monsters step up anything lower than this
 const SCALE = { most: 8, free: 2.6, lead: 1.2 };   // what a zombie will climb (m): nothing taller than `most`; anything up to `free`; and anything at all if you are up there (its top no more than `lead` above you)
 const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
+
+// How many copies of a batch are to be drawn this frame. None: it is not handed to the renderer at all (which would
+// otherwise set everything up to draw it, twice over with its shadow, and then draw nothing). Some: only that many
+// are sent to the card, not all it has room for.
+function shown(mesh, n) {
+  mesh.count = n;
+  mesh.visible = n > 0;
+  if (!n) return;
+  const at = mesh.instanceMatrix, tint = mesh.instanceColor;
+  at.clearUpdateRanges(); at.addUpdateRange(0, n * 16); at.needsUpdate = true;
+  if (tint) { tint.clearUpdateRanges(); tint.addUpdateRange(0, n * 3); tint.needsUpdate = true; }
+}
+
+// The same for what is thrown about (gibs, filth, bones, cards, chips, webs, splats): each has a place for every one
+// there could be, and most of the time there are none.
+function strewn(mesh, any) {
+  mesh.visible = any;
+  if (any) mesh.instanceMatrix.needsUpdate = true;
+}
 const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
@@ -161,7 +180,9 @@ export class Horde {
         const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, most);
         mesh.castShadow = !p.glow;
         mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;   // (it stays where it is: each of its copies is put in its own place)
         mesh.count = 0;
+        mesh.visible = false;            // (...and with no copies it is not drawn: see shown)
         mesh.setColorAt(0, WHITE);
         scene.add(mesh);
         // What it is, worked out from where it hinges: the body itself (hinged at his feet), a head, an arm, a leg, or
@@ -1332,32 +1353,24 @@ export class Horde {
         p.mesh.setColorAt(i, color);
       }
     }
-    for (const name in this.fine) {
-      for (const { mesh } of this.fine[name]) {
-        mesh.count = close[name];
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      }
-    }
-    for (const name in this.meshes) {
-      for (const { mesh } of this.meshes[name]) {
-        mesh.count = counts[name];
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      }
-    }
+    for (const name in this.fine) for (const { mesh } of this.fine[name]) shown(mesh, close[name]);
+    for (const name in this.meshes) for (const { mesh } of this.meshes[name]) shown(mesh, counts[name]);
 
+    let gibs = false;
     this.gibs.forEach((g, i) => {
       if (g.life <= 0) return;
       g.life -= dt;
       g.vel.y -= 22 * dt;
       g.pos.addScaledVector(g.vel, dt);
+      if (g.life > 0) gibs = true;
       this.gibMesh.setMatrixAt(i, g.life > 0 ? m.makeTranslation(g.pos.x, g.pos.y, g.pos.z) : HIDDEN);
     });
-    this.gibMesh.instanceMatrix.needsUpdate = true;
+    strewn(this.gibMesh, gibs);
 
+    let filth = false, bones = false, cards = false, chips = false;
     this.blobs.forEach((b, i) => {
       const bone = b.kind === 'bone', card = b.kind === 'card', chip = b.kind === 'chip', live = b.life > 0;
+      if (live) { if (bone) bones = true; else if (card) cards = true; else if (chip) chips = true; else if (!b.kind || b.kind === 'web') filth = true; }
       if (live) {
         if (card) e3.set(0, b.spin + this.time * 14, 0.15);                 // a card, spinning flat like a thrown blade
         else if (chip) e3.set(this.time * 9 + b.spin, b.spin, 0);            // a chip, tumbling end over end
@@ -1369,23 +1382,26 @@ export class Horde {
       this.cardMesh.setMatrixAt(i, live && card ? m : HIDDEN);
       this.chipMesh.setMatrixAt(i, live && chip ? m : HIDDEN);
     });
-    this.cardMesh.instanceMatrix.needsUpdate = true;
-    this.chipMesh.instanceMatrix.needsUpdate = true;
-    this.blobMesh.instanceMatrix.needsUpdate = true;
-    this.boneMesh.instanceMatrix.needsUpdate = true;
+    strewn(this.cardMesh, cards);
+    strewn(this.chipMesh, chips);
+    strewn(this.blobMesh, filth);
+    strewn(this.boneMesh, bones);
+    let webs = false, splats = false;
     this.webs.forEach((w, i) => {
       if (w.life <= 0) { this.webMesh.setMatrixAt(i, HIDDEN); return; }
+      webs = true;
       const size = w.r * Math.min(1, (ENEMY_TYPES.queen.webs.life - w.life) * 5) * Math.min(1, w.life);   // flung open; shrivels at the end
       this.webMesh.setMatrixAt(i, m.compose(v.set(w.x, w.y, w.z), q.setFromEuler(e3.set(0, w.turn, 0)), sc.set(size, 1, size)));
     });
-    this.webMesh.instanceMatrix.needsUpdate = true;
+    strewn(this.webMesh, webs);
     this.splats.forEach((sp, i) => {
       if (sp.life <= 0) { this.splatMesh.setMatrixAt(i, HIDDEN); return; }
+      splats = true;
       sp.life -= dt;
       const size = Math.min(1, (5 - sp.life) * 6) * Math.min(1, Math.max(0, sp.life)) * sp.size;   // spreads fast, shrinks away at the end
       this.splatMesh.setMatrixAt(i, m.compose(v.set(sp.x, sp.y, sp.z), q.identity(), sc.set(size, 1, size)));
     });
-    this.splatMesh.instanceMatrix.needsUpdate = true;
+    strewn(this.splatMesh, splats);
 
     if (this.ringLife > 0) {
       this.ringLife -= dt * 3;

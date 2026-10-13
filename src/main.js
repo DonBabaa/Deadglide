@@ -50,7 +50,6 @@ import { goldTally } from './ui/goldTally.js';
 import { DESCENT, descentHeight } from './world/descent.js';
 import { load, store } from './systems/storage.js';
 import { createCutscenes } from './cutscenes.js';
-import { createCasino } from './casino/casino.js';
 import { createDescent } from './systems/descent.js';
 import { runTime as hillTime } from './ui/leaderboard.js';
 import { createEmoter } from './player/emotes.js';
@@ -75,6 +74,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
+// Where each thing is in the world is worked out afresh for every frame, and three does that for everything in the
+// scene whether it is drawn or not: the Moon's astronauts while you are in the cemetery, the Long Way Down, whichever
+// Kirky is not the one on screen (and every bone in him). What is hidden is left alone until it is shown. (Whatever
+// needs to know where a hidden thing is asks it, and it is worked out there and then.)
+scene.updateMatrixWorld = function (force) { for (const child of this.children) if (child.visible) child.updateMatrixWorld(force); };
 const camera = new THREE.PerspectiveCamera(config.camera.fov, 1, 0.1, 3000);
 const arena = buildArena(scene);
 document.getElementById('seed').textContent = `World seed ${SEED}  (add ?seed=${SEED} to the address to revisit it)`;
@@ -348,6 +352,7 @@ function hurt(amount) {
 
 // The run is over. (Killed by Babitus: first, the house wins.)
 let losing = false, fallen = 0, deathCard = null;   // (fallen: how long he has been going down, dead; deathCard: the "You died" card, waiting for him to land)
+const DOWN = 9;   // (fallen, once he has been all the way down for a while: the scene of his death has already shown him fall)
 function die() {
   if (LEVELS[level].descent && !losing && !preview) {   // (on the hill: knocked down, and then the hill arrives)
     losing = true;
@@ -356,7 +361,15 @@ function die() {
   }
   if (LEVELS[level].finale && horde.boss && !losing && !preview) {
     losing = true;
-    return cutscenes.houseWins(horde.boss, () => { die(); losing = false; });
+    return cutscenes.houseWins(horde.boss, () => { fallen = DOWN; die(); losing = false; });   // (he is down already: see DOWN)
+  }
+  // Anywhere else: the hit, and him going down, in a scene of its own (cutscenes.death). It leaves him lying where
+  // he fell (fallen: all the way down already), and the card comes up over the end of it.
+  if (!losing && !preview && !cutscenes.active) {
+    losing = true;
+    let by = null, near = 16 * 16;   // (what did it: as near as makes no difference, whatever is nearest him)
+    for (const e of horde.enemies) { const far = (e.x - skater.pos.x) ** 2 + (e.z - skater.pos.z) ** 2; if (far < near) { near = far; by = e; } }
+    return cutscenes.death(by || horde.boss, () => { fallen = DOWN; die(); losing = false; });
   }
   dead = true;
   paused = true;
@@ -368,7 +381,7 @@ function die() {
   const card = `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Survived ${lasted}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 ${lost}Click to try again`;
-  deathCard = { wait: 1.5, show: () => { hud.showOverlay('You died', card); offerPost(false); } };
+  deathCard = { wait: fallen >= DOWN ? 0.35 : 1.5, show: () => { hud.showOverlay('You died', card); offerPost(false); } };
 }
 
 // The Long Way Down: the collapse caught you. (Click, and the run starts again from the doors.)
@@ -687,6 +700,13 @@ const CINEMATICS = [
   { name: 'Bust, and the takings', where: 'The House', run: () => at(4), replace: () => { const b = horde.boss; b.stage = 3; b.last = { t: 0, turn: 0 }; horde.damage(b, 1e9, 0, 0); } },
   { name: 'Out through the doors', where: 'The House', run: () => at(4), replace: () => { const d = houseSpot([HOUSE.doors.x, HOUSE.doors.z]); portal.open(d.x, 0, d.z, true); cutscenes.leaveHouse(); } },
   { name: 'The house wins', where: 'The House', run: () => at(4), replace: () => cutscenes.houseWins(horde.boss) },
+  { name: 'Dead', where: 'Level 1, with what did it', run: () => {
+    at(1);
+    const p = skater.pos;
+    for (const [name, turn, far] of [['shambler', 0.4, 2.2], ['shambler', 2.2, 6], ['rattler', 3.9, 8], ['shambler', 5.2, 11], ['shambler', 1.2, 13]]) horde.spawnAt(name, p.x + Math.sin(turn) * far, p.z + Math.cos(turn) * far, turn + Math.PI);
+    for (const e of horde.enemies) e.rise = 1;
+    cutscenes.death(horde.enemies[0] || null);
+  } },
   { name: 'Run: the casino comes down', where: 'The Long Way Down', run: () => { at(5); cutscenes.collapse(descent, () => descent.reset()); } },
   { name: 'Buried', where: 'The Long Way Down', run: () => { at(5); onHill(700); descent.state.wall = 690; cutscenes.buried(descent); } },
   { name: 'Launch', where: 'The Long Way Down', run: () => { at(5); onHill(DESCENT.ramp[1] - 0.5, 45); cutscenes.launch(descent); } },
@@ -899,18 +919,25 @@ function showMenu() {
   leaderboard.showMenu();
 }
 
-// The casino: its own 3D room, entered from the menu. Leaving it comes back to the menu.
-const casino = createCasino({ onLeave: showMenu });
+// The casino: its own 3D room, entered from the menu. Leaving it comes back to the menu. A run never needs it, and it
+// is a good part of the game's code, a room to build and a model of its own to fetch: so none of that is done until
+// it is wanted. openCasino() fetches and builds it (once: the pointer coming over its button is what starts it, so
+// that it is there by the time the button is pressed), and until then `casino` is somebody who is never in.
+let casino = { active: false, emote() {} }, casinoComing = null;
+const openCasino = () => (casinoComing ||= import('./casino/casino.js').then(({ createCasino }) => (casino = createCasino({ onLeave: showMenu }))));
 // Emotes (hold T): in the casino and in Free Ride.
 const emoter = createEmoter(model);
 const emoteWheel = createEmoteWheel({
   canOpen: () => casino.active || (LEVELS[level].freeRide && !inMenu && !paused && !dead && !cutscenes.active),
   onPick: (i) => (casino.active ? casino.emote(i) : emoter.play(i)),
 });
-document.getElementById('menu-casino-open').addEventListener('click', () => {
-  menu.hide();
+for (const sign of ['pointerenter', 'focus', 'touchstart']) document.getElementById('menu-casino-open').addEventListener(sign, openCasino, { passive: true });
+document.getElementById('menu-casino-open').addEventListener('click', (e) => {
+  const button = e.currentTarget;
+  if (button.disabled) return;
   if (unlockAudio()) startMusic();
-  casino.enter();
+  button.disabled = true;   // (for the moment it takes, the first time)
+  openCasino().then((made) => { menu.hide(); made.enter(); }).catch((error) => { casinoComing = null; console.warn('The casino would not open.', error); }).finally(() => { button.disabled = false; });
 });
 
 // From the menu's Start button. `loadout` is the Creative setup, or null.
@@ -1664,4 +1691,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, casino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { renderer, scene, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

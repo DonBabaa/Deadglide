@@ -1322,6 +1322,21 @@ export function playSnap() {
     tone('sine', midi(63), midi(63), 0.7, 0.06, 0.44);
   });
 }
+// He is dead: the hit that did it, the breath going out of him, a heart that beats on each cut of the scene and
+// more faintly each time, his knees coming down (at `knees` seconds), and a low note going down under all of it.
+export function playDeath(cuts = [0.9, 1.6, 2.5], knees = 2.3) {
+  if (!ready()) return;
+  loud(1.7, () => {
+    tone('sine', 120, 34, 0.5, 0.7);
+    blast(900, 90, 0.35, 0.3);
+    hiss('bandpass', 620, 170, 1.0, 0.13, 0.06);
+    cuts.forEach((at, i) => { tone('sine', 64, 38, 0.17, 0.55 - 0.13 * i, at); tone('sine', 60, 36, 0.15, 0.34 - 0.1 * i, at + 0.28); });
+    tone('sine', 86, 36, 0.3, 0.6, knees);
+    hiss('lowpass', 500, 120, 0.25, 0.2, knees);
+    tone('triangle', midi(51), midi(39), 3.0, 0.06, 0.3);
+    tone('sine', midi(44), midi(32), 3.2, 0.09, 0.4);
+  });
+}
 // The end: a chord that has finally got where it was going, and stays there.
 export function playEndChord() {
   if (!ready()) return;

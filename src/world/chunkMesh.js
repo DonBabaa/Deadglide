@@ -50,19 +50,28 @@ function weldChunk(group, skip) {
     }
     group.add(mesh);
   }
+  return settle(group);
+}
+
+// A chunk never moves, and nor does anything in it: where its parts are is worked out once, here, and three is not
+// left to work it out again for every frame (a thousand things, with the chunks round you loaded).
+function settle(group) {
+  group.updateMatrixWorld(true);
+  group.traverse((o) => { o.matrixAutoUpdate = false; });
+  group.updateMatrixWorld = () => {};
   return group;
 }
 
 export function createChunkBuilder() {
-  const stoneMap = stoneTexture(), glow = glowTexture(), regolith = regolithTexture(), plates = plateTexture();
+  // What only one level is made of (the Moon's ground and plating, the House's floor, the Catacombs' and the Moon's
+  // decor) is made the first time a chunk of that level is built, not while the game is starting: it is the same
+  // when it comes, and most of a second of every start is not spent on places you may not go this time. (once: see below)
+  const stoneMap = stoneTexture(), glow = glowTexture(), regolith = once(regolithTexture), plates = once(plateTexture);
   const mat = {
     ground: new THREE.MeshStandardMaterial({ map: groundTexture(), vertexColors: true, roughness: 0.95 }),
-    dust: new THREE.MeshStandardMaterial({ map: regolith, vertexColors: true, roughness: 1 }),   // the Moon's ground
-    marble: new THREE.MeshStandardMaterial({ map: marbleTexture(), vertexColors: true, roughness: 0.35 }),   // the House's floor
     ramp: new THREE.MeshStandardMaterial({ map: rampTexture(), roughness: 0.8, side: THREE.DoubleSide }),
     tomb: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95, side: THREE.DoubleSide }),
     wall: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), roughness: 0.95 }),
-    rock: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, roughness: 1, side: THREE.DoubleSide }),
     ember: new THREE.MeshBasicMaterial({ color: 0xff8a3a }),
     stone: new THREE.MeshStandardMaterial({ map: stoneMap, roughness: 0.95 }),
     carved: new THREE.MeshStandardMaterial({ map: stoneMap, vertexColors: true, roughness: 0.95 }),   // the sculpted scenery (scenery.js): its paint, over the stone
@@ -80,19 +89,20 @@ export function createChunkBuilder() {
   // Every stone and concrete surface catches the light on its cracks, joints and pits (a normal map read off its
   // own picture: see relief() in textures.js).
   const bumps = new Map();
-  for (const [name, depth] of [['ground', 1.8], ['dust', 2.2], ['ramp', 1.6], ['tomb', 2.6], ['wall', 3.2], ['rock', 3.2], ['stone', 2.6], ['carved', 2.2], ['marble', 0.6]]) {
-    const m = mat[name];
-    if (!m || !m.map) continue;
-    if (!bumps.has(m.map)) bumps.set(m.map, relief(m.map, depth));
-    m.normalMap = bumps.get(m.map);
-  }
-  // The Catacombs' ramps and coffins are old stone, not skatepark concrete.
-  const under = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
-  under.ramp.color.set(0x7a7262);
-  under.tomb.color.set(0x8c8474);
+  const bumped = (m, depth) => { if (!bumps.has(m.map)) bumps.set(m.map, relief(m.map, depth)); m.normalMap = bumps.get(m.map); return m; };
+  for (const [name, depth] of [['ground', 1.8], ['ramp', 1.6], ['tomb', 2.6], ['wall', 3.2], ['stone', 2.6], ['carved', 2.2]]) bumped(mat[name], depth);
+  const dust = once(() => bumped(new THREE.MeshStandardMaterial({ map: regolith(), vertexColors: true, roughness: 1 }), 2.2));               // the Moon's ground
+  const marble = once(() => bumped(new THREE.MeshStandardMaterial({ map: marbleTexture(), vertexColors: true, roughness: 0.35 }), 0.6));   // the House's floor
+  // The Catacombs' ramps and coffins are old stone, not skatepark concrete; and its roof is rock.
+  const under = once(() => {
+    const set = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
+    set.ramp.color.set(0x7a7262);
+    set.tomb.color.set(0x8c8474);
+    set.rock = bumped(new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, roughness: 1, side: THREE.DoubleSide }), 3.2);
+    return set;
+  });
   const rand = seededRandom(11);
-  const D = fineDecor(), U = fineUnder(), M = fineLunar();
-  for (const set of [D, U, M]) for (const g of Object.values(set)) g.userData.shared = true;   // (made once: a chunk being unloaded must not throw them away)
+  const D = sharedAll(fineDecor()), fineU = once(() => sharedAll(fineUnder())), fineM = once(() => sharedAll(fineLunar()));   // (made once: a chunk being unloaded must not throw them away)
   const headstones = fineHeadstones().map(shared);
   const trees = [0, 1, 2, 3].map(() => shared(fineTree(rand, 4)));
   const shrubGeo = shared(fineTree(rand, 1));   // (dead shrubs: there are a dozen or two to a chunk, so they are far simpler than the trees)
@@ -101,11 +111,14 @@ export function createChunkBuilder() {
   const casino = { ...mat, ramp: new THREE.MeshStandardMaterial({ color: 0x0f5a35, roughness: 0.95, side: THREE.DoubleSide }), tomb: new THREE.MeshStandardMaterial({ color: 0x3a2116, roughness: 0.5, side: THREE.DoubleSide }),
     steel: new THREE.MeshStandardMaterial({ color: 0xc9a44a, roughness: 0.35, metalness: 0.5, emissive: 0x2a1c04 }) };
   // ---- The Moon's props: what is drawn on top of the plain shapes you ride. ----
-  const lunar = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
-  lunar.ramp.map = lunar.tomb.map = plates;   // the Base is plated
-  lunar.ramp.color.set(0xc9cbd0);
-  lunar.tomb.color.set(0xd4d4d8);
-  lunar.slab = new THREE.MeshStandardMaterial({ map: regolith, color: 0x9a999c, roughness: 1, side: THREE.DoubleSide });   // (slabs of rock are rock)
+  const lunar = once(() => {
+    const set = { ...mat, ramp: mat.ramp.clone(), tomb: mat.tomb.clone() };
+    set.ramp.map = set.tomb.map = plates();   // the Base is plated
+    set.ramp.color.set(0xc9cbd0);
+    set.tomb.color.set(0xd4d4d8);
+    set.slab = new THREE.MeshStandardMaterial({ map: regolith(), color: 0x9a999c, roughness: 1, side: THREE.DoubleSide });   // (slabs of rock are rock)
+    return set;
+  });
   // (Nothing here is shiny metal: with a black sky there is nothing for metal to reflect, and it draws as black.)
   const hull = new THREE.MeshStandardMaterial({ color: 0xd4d5da, roughness: 0.75 });
   const gear = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });   // the sculpted fittings (scenery.js), in their own paint
@@ -120,7 +133,7 @@ export function createChunkBuilder() {
       // The lander: a foil-wrapped descent stage on four legs, the cabin on top, a dish, and the flag beside it.
       add(new THREE.CylinderGeometry(2.4, 2.7, 1.6, 8), foil, 0, 2.4, 0);
       add(new THREE.CylinderGeometry(1.5, 1.9, 1.7, 8), hull, 0, 4.0, 0);
-      add(new THREE.BoxGeometry(0.9, 0.7, 0.5), lunar.tomb, 0, 4.3, 1.7);                                   // the hatch
+      add(new THREE.BoxGeometry(0.9, 0.7, 0.5), lunar().tomb, 0, 4.3, 1.7);                                   // the hatch
       for (let k = 0; k < 4; k++) {
         const a = (k / 4) * Math.PI * 2 + Math.PI / 4, far = new THREE.Vector3(Math.cos(a) * 4.3, 0.1, Math.sin(a) * 4.3);
         g.add(new THREE.Mesh(tubeGeometry(new THREE.Vector3(Math.cos(a) * 2.2, 2.6, Math.sin(a) * 2.2), far, 0.09), hull));
@@ -173,13 +186,13 @@ export function createChunkBuilder() {
   const crowGeo = shared(D.crow);
   const flowerGeo = shared(D.flower);
   const tintOf = new THREE.Color();
-  const underMat = {
+  const underMats = once(() => ({
     oldBone: new THREE.MeshStandardMaterial({ color: 0x9a927c, roughness: 0.85 }),
     drip: new THREE.MeshStandardMaterial({ map: stoneWallTexture(), color: 0x8f8474, vertexColors: true, roughness: 1, side: THREE.DoubleSide }),   // stalactites
     moss: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }),
     wax: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x2a1c0a }),
     fungus: new THREE.PointsMaterial({ map: glow, color: 0x5ff0e0, size: 0.5, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
-  };
+  }));
   const moreMat = {
     leaf: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }),
     shroom: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
@@ -204,16 +217,17 @@ export function createChunkBuilder() {
   // Everywhere: rocks, big and small. Round the Base: crates, fuel tanks, cracked helmets, bones, a rover that
   // will never move again. On the night side: crystals that glow, and things that might be eggs.
   const visorGeo = shared(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0.5, 1.2).rotateX(Math.PI / 2).translate(0, 0.21, 0.07));
-  const moonMat = {
-    rock: new THREE.MeshStandardMaterial({ map: regolith, color: 0x8a898c, roughness: 1, flatShading: true }),
-    crate: new THREE.MeshStandardMaterial({ map: plates, color: 0xb9b08a, vertexColors: true, roughness: 0.8 }),
+  const moonMats = once(() => ({
+    rock: new THREE.MeshStandardMaterial({ map: regolith(), color: 0x8a898c, roughness: 1, flatShading: true }),
+    crate: new THREE.MeshStandardMaterial({ map: plates(), color: 0xb9b08a, vertexColors: true, roughness: 0.8 }),
     tank: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }),
     visor: new THREE.MeshStandardMaterial({ color: 0x2a1a08, roughness: 0.2, emissive: 0x241405 }),
     crystal: new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, toneMapped: false }),
     egg: new THREE.MeshStandardMaterial({ color: 0x5a8052, vertexColors: true, roughness: 0.4, emissive: 0x0f2a12 }),
     spark: new THREE.PointsMaterial({ map: glow, color: 0x8ff0ff, size: 1.2, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
-  };
+  }));
   function buildMoonDecor(c, group) {
+    const M = fineM(), moonMat = moonMats();
     const dice = seededRandom((Math.imul(c.cx, 73856093) ^ Math.imul(c.cz, 19349663) ^ 0x1969) | 0), BIG = 2;
     const put = (geometry, material, list, tint) => {   // list: [x, y, z, turn, sx, sy, sz, colour?]
       if (!list.length) return;
@@ -278,6 +292,7 @@ export function createChunkBuilder() {
   // Kept sparse: sewer pipes along the walls, bones on the floor, and stalactites and chained lanterns
   // hanging from the roof.
   function buildUnderDecor(c, group) {
+    const U = fineU(), underMat = underMats();
     const dice = seededRandom((Math.imul(c.cz - Math.floor(c.cz / CATA.loop) * CATA.loop, 19349663) ^ c.seed ^ 0xbead) | 0);   // (the same every lap)
     const seed = c.seed, at = { x: 0, y: 0, nx: 0, ny: 1 }, n = new THREE.Vector3(), Zaxis = new THREE.Vector3(0, 0, 1);
     const place = (geometry, material, list, tint) => {   // list: [x, y, z, quaternion, sx, sy, sz, colour?]
@@ -455,9 +470,9 @@ export function createChunkBuilder() {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
 
   function build(c) {
-    const group = new THREE.Group(), ground = buildGround(c, mat);
+    const group = new THREE.Group(), ground = buildGround(c, c.level === 4 ? marble() : c.level === 3 ? dust() : mat.ground);
     group.add(ground);
-    if (c.level === 2 && c.cx === 0) group.add(buildTunnelWalls(c, under));
+    if (c.level === 2 && c.cx === 0) group.add(buildTunnelWalls(c, under()));
     for (const b of c.bowls) {   // steel coping round each bowl, following the ground at its lip
       const ring = [];
       for (let k = 0; k <= 72; k++) {
@@ -478,7 +493,7 @@ export function createChunkBuilder() {
       else if (p.type === 'brazier') group.add(buildBrazier(p, mat));
       else if (p.type === 'pillar') continue;   // (the House draws its own columns: world/houseScene.js)
       else {
-        group.add(buildProp(p, c.level === 4 ? casino : c.level === 2 ? under : c.level === 3 ? (p.kind === 'slab' ? { ...lunar, ramp: lunar.slab, tomb: lunar.slab } : lunar) : mat, c));
+        group.add(buildProp(p, c.level === 4 ? casino : c.level === 2 ? under() : c.level === 3 ? (p.kind === 'slab' ? { ...lunar(), ramp: lunar().slab, tomb: lunar().slab } : lunar()) : mat, c));
         const extras = p.kind && lunarExtras(p);
         if (extras) group.add(extras);
       }
@@ -574,7 +589,7 @@ export function createChunkBuilder() {
 // ---- Ground ------------------------------------------------------------------
 
 // One grid per chunk, 1 m cells, tinted concrete or grass per vertex.
-function buildGround(c, mat) {
+function buildGround(c, material) {
   const n = CHUNK, positions = [], uvs = [], colors = [], indices = [];
   for (let j = 0; j <= n; j++) {
     for (let i = 0; i <= n; i++) {
@@ -604,7 +619,7 @@ function buildGround(c, mat) {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, c.level === 4 ? mat.marble : c.level === 3 ? mat.dust : mat.ground);
+  const ground = new THREE.Mesh(geo, material);
   ground.receiveShadow = true;
   return ground;
 }

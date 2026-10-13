@@ -9,12 +9,11 @@
 // What he carries and wears on top (the gun, the board, the beanie, what is in his mouth, a costume's head, a pack)
 // still hangs off the old figure, which is kept the same size as the new one so that it all lands in the right place.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel } from '../models.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { COSTUMES } from './costumes.js';
 import { glowTexture } from '../world/textures.js';
 
-const FILE = `${import.meta.env.BASE_URL}models/kirky.glb`;
 // A vertex that was bound to no bone when the file was made is bound, in the file, to one of its own that nothing
 // ever moves ('neutral_bone': a few dozen, on the chest of his shirt and its print). They stay where he stood when
 // the rest of him does not (down on his hands, flat on his back), drawn out into threads. Each is given the binding
@@ -41,17 +40,17 @@ function mend(scene) {
 }
 let template = null, failed = false;
 const waiting = [];
-new GLTFLoader().load(FILE, (gltf) => {
+loadModel('kirky.glb').then((gltf) => {
   template = gltf.scene;
   mend(template);
   template.updateMatrixWorld(true);
   for (const go of waiting.splice(0)) go();
-}, undefined, (error) => { failed = true; console.warn('Kirky: no body to load, so he stays as he was.', error); });
+}).catch((error) => { failed = true; console.warn('Kirky: no body to load, so he stays as he was.', error); });
 
 // His lighter (public/models/lighter.glb: tools/build_lighter.py; "Lighter" by Johnathon Goswick, CC-BY-4.0). Fetched
 // the first time anybody strikes one.
 let lighterFile = null;
-const lighterMade = () => (lighterFile ||= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/lighter.glb`).then((gltf) => {
+const lighterMade = () => (lighterFile ||= loadModel('lighter.glb').then((gltf) => {
   let found = null;
   gltf.scene.traverse((o) => { if (o.isMesh && !found) found = o; });
   return found;
@@ -61,23 +60,23 @@ const lighterMade = () => (lighterFile ||= new GLTFLoader().loadAsync(`${import.
 // own, so it is posed bone for bone from his. It may arrive after he does: whoever is waiting for it is told.
 let alienTemplate = null;
 const wantAlien = [];
-new GLTFLoader().load(`${import.meta.env.BASE_URL}models/alien.glb`, (gltf) => {
+loadModel('alien.glb').then((gltf) => {
   alienTemplate = gltf.scene;
   mend(alienTemplate);
   alienTemplate.updateMatrixWorld(true);
   for (const go of wantAlien.splice(0)) go();
-}, undefined, (error) => console.warn('Kirky: no alien body to load, so those costumes are heads on his own.', error));
+}).catch((error) => console.warn('Kirky: no alien body to load, so those costumes are heads on his own.', error));
 
 // The space suit he wears as the Dead Astronaut, the Cosmonaut and the Golden Boy (public/models/astronaut.glb: see
 // tools/build_astronaut.py): on his skeleton too, and posed from it the same way.
 let suitTemplate = null;
 const wantSuit = [];
-new GLTFLoader().load(`${import.meta.env.BASE_URL}models/astronaut.glb`, (gltf) => {
+loadModel('astronaut.glb').then((gltf) => {
   suitTemplate = gltf.scene;
   mend(suitTemplate);
   suitTemplate.updateMatrixWorld(true);
   for (const go of wantSuit.splice(0)) go();
-}, undefined, (error) => console.warn('Kirky: no space suit to load, so those costumes are a helmet on his own body.', error));
+}).catch((error) => console.warn('Kirky: no space suit to load, so those costumes are a helmet on his own body.', error));
 // A suit standing by itself, for whoever wants one (a Free Ride target): resolves to an Object3D, 1.9 m tall, or null.
 export const spaceSuit = (suit = 0xd9d9de, trim = 0x77787e, visor = 0x1a1206) => new Promise((done) => {
   const make = () => {
@@ -92,7 +91,7 @@ export const spaceSuit = (suit = 0xd9d9de, trim = 0x77787e, visor = 0x1a1206) =>
 // library in dl/). While he is riding, his body is played from these and not posed by hand: see `mocap` in attachBody.
 let animFile = null, animDrop = null;   // (animDrop: how far his hips are from standing, clip by clip, frame by frame: kirky_anims.json)
 fetch(`${import.meta.env.BASE_URL}models/kirky_anims.json`).then((r) => r.json()).then((d) => { animDrop = d; }).catch(() => {});
-new GLTFLoader().load(`${import.meta.env.BASE_URL}models/kirky_anims.glb`, (gltf) => { animFile = gltf; }, undefined, () => console.warn('Kirky: no motion capture to load, so he is posed by hand.'));
+loadModel('kirky_anims.glb').then((gltf) => { animFile = gltf; }).catch(() => console.warn('Kirky: no motion capture to load, so he is posed by hand.'));
 
 // Call `go` once the file has arrived (straight away, if it has; never, if it could not be loaded).
 export function whenBody(go) {
@@ -377,6 +376,11 @@ export function attachBody(model) {
   // (true: seated, and nothing else.)
   model.play = (name, weight = 1, rate = 1, at, whole = false, how = null) => { model.acting = { name, weight, rate, at: performance.now(), time: at, whole, seated: how === true || !!how?.seated, upright: how?.upright || 0, legs: how?.legs !== false }; };
   const LEG_BONES = new Set(['thigh_l', 'calf_l', 'foot_l', 'ball_l', 'thigh_r', 'calf_r', 'foot_r', 'ball_r']);
+  // Clips in which he goes over. In every other his hips are held as the figure holds them (upright under him: they
+  // hang from nothing a clip could turn them on), and that is right for a man riding, sat or dancing; but a man
+  // going down who stays bolt upright as his hips reach the floor has sunk into it to the waist. In these his hips
+  // turn as the clip has them.
+  const OVER = new Set(['die']);
   const STRAIGHT = { spine_01: 0.45, spine_02: 0.7, spine_03: 0.9, neck_01: 1, neck_02: 1, head: 1 };   // (how much of that each takes: his chest most of it, his head all of it)
   model.clips = () => (animFile ? animFile.animations.map((c) => ({ name: c.name, length: c.duration })) : []);
   const RIDING = new Set(['ride', 'push', 'ollie', 'air', 'hit', 'land']), RUNGS = new Set(['climb']);   // (RUNGS: his hips are not where they stand, and stay there: a ladder)
@@ -404,6 +408,7 @@ export function attachBody(model) {
     if (told) mocap.whole = !!told.whole; else if (riding) mocap.whole = false;
     mocap.upright = told ? told.upright : 0;
     mocap.ownLegs = !!told && !told.legs;
+    mocap.over = !!told && OVER.has(told.name);
     if (mocap.blend < 0.01) return 0;
     if (!riding) { mocap.mixer.update(dt); if (told) mocap.share = told.weight * (1 - (model.emoting || 0)); return mocap.blend * (mocap.share ?? 1); }   // (how much of him is the clip, and how much the pose he was given by hand: an emote is by hand)
     const kick = model.kick ?? 1, air = model.air || 0, crouch = model.crouch || 0, tricking = (model.tuck || 0) > 0.05;
@@ -545,8 +550,8 @@ export function attachBody(model) {
       else o.world.copy(above).multiply(o.rest);
       // (motion capture: this bone as the clip has it, on whatever it hangs from; his hips also turned to the board)
       const joint = played && (mocap.whole || !HAND_AIMED.has(o.bone.name)) && !(mocap.ownLegs && LEG_BONES.has(o.bone.name)) ? mocap.joints[o.bone.name] : null;
-      if (joint && o.parent) {
-        q2u.copy(o.parent.world).multiply(joint.quaternion);
+      if (joint && (o.parent || mocap.over)) {
+        q2u.copy(o.parent ? o.parent.world : above).multiply(joint.quaternion);
         if (o.bone === bones.pelvis) q2u.premultiply(FACE_Q);
         if (mocap.upright && STRAIGHT[o.bone.name]) q2u.slerp(o.world, mocap.upright * STRAIGHT[o.bone.name]);   // (sat up: back towards how he holds himself by hand)
         o.world.slerp(q2u, played);

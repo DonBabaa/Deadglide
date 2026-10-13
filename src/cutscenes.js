@@ -6,14 +6,14 @@
 // Each is a function of time: `step(t, dt)` places the camera and moves the
 // few things that are allowed to move, and `done` runs when it's over.
 import * as THREE from 'three';
-import { heightAt } from './world/terrain.js';
+import { heightAt, normalAt } from './world/terrain.js';
 import { HOUSE, WALL_TOP } from './world/house.js';
 import { hud } from './ui/hud.js';
 import { ENEMY_TYPES } from './enemies/types.js';
 import { FLIGHT } from './systems/descent.js';
 import { SkaterModel, SNAPPED_END } from './player/skaterModel.js';
 import { realGuns } from './player/gunModels.js';
-import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playMoonLand, playSnap, playFlick, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
+import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playMoonLand, playSnap, playFlick, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh, playDeath } from './fx/audio.js';
 import { playBones, playDread, playThunder, playHeadshot, playPowerup, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop, playRumble, playWhoosh, playLighter, playCoin } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
 import { holdMusic, sceneBoost } from './fx/audio.js';
@@ -869,6 +869,112 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (t >= END) { hud.hideBossIntro(); goHome(); }
       }, () => { hud.hideBossIntro(); done?.(); });
       scene.skippable = true;
+    },
+
+    // "Dead": the hit that kills him, and him going down. Four shots: from low on the ground beyond him, him between
+    // you and what did it, as it lands and he reels; a snap zoom on his face; from the side, low, as his knees go and
+    // he comes down on them; and from high behind him, slumped there, whatever is left of them closing in round him.
+    // (An ordinary death. The House and the hill have their own: houseWins and buried.)
+    // by: what did it ({ x, z }: a monster; null: nothing is near him, and he goes down the way he was facing).
+    // It ends on its last shot, with him where he fell: the card that follows comes up over that.
+    death(by, done) {
+      const p = skater.pos, floor = heightAt(p.x, p.z), from = Math.max(p.y, floor), CUTS = [0, 0.9, 1.6, 2.5], KNEES = 2.3, END = 3.7;
+      const to = new THREE.Vector3(), across = new THREE.Vector3(), at = new THREE.Vector3(), head = new THREE.Vector3(), lie = new THREE.Quaternion();
+      if (by) to.set(by.x - p.x, 0, by.z - p.z); else facing(to);
+      if (to.lengthSq() < 1e-4) to.set(0, 0, 1);
+      to.normalize();
+      across.set(to.z, 0, -to.x);
+      const yaw = Math.atan2(to.x, to.z);
+      // (he is down as the ground lies, where it is not too steep to be down on)
+      normalAt(p.x, p.z, 0, 0, at);
+      lie.setFromUnitVectors(UP, at.y > 0.8 ? at : UP);
+      // (whatever is on top of him stands back a step: there is a camera to get in between them)
+      for (const e of horde.enemies) {
+        const dx = e.x - p.x, dz = e.z - p.z, far = Math.hypot(dx, dz) || 1, room = 1.7 + e.T.radius * e.scale;
+        if (!e.T.boss && far < room) { e.x = p.x + (dx / far) * room; e.z = p.z + (dz / far) * room; }
+      }
+      const crowd = horde.enemies.filter((e) => !e.T.boss && !e.T.flying && e.s === undefined && e.rise >= 1 && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 < 16 * 16);
+      // How far into the clip of it he is, `t` seconds after the hit: he reels, slowly while the camera is on his
+      // face, and his knees go (at about two seconds of it) in the shot from the side. After that he does not move.
+      const BEATS = [[0, 0.5], [CUTS[1], 1.4], [CUTS[2], 1.9], [CUTS[3], 2.75], [CUTS[3] + 4, 4.4]];
+      const gone = (t) => {
+        let i = 1;
+        while (i < BEATS.length - 1 && t > BEATS[i][0]) i++;
+        const [t0, c0] = BEATS[i - 1], [t1, c1] = BEATS[i];
+        return c0 + (c1 - c0) * Math.max(0, Math.min(1, (t - t0) / (t1 - t0)));
+      };
+      // Nothing stands between the camera (at `eye`) and him: whatever would, steps to the side of the shot. (He dies
+      // in the thick of them more often than not. Each cut is a flash: nobody sees them go.)
+      const clear = () => {
+        const ax = p.x - eye.x, az = p.z - eye.z, long = Math.hypot(ax, az) || 1, ux = ax / long, uz = az / long;
+        for (const e of horde.enemies) {
+          if (e.T.boss) continue;
+          const dx = e.x - eye.x, dz = e.z - eye.z, along = dx * ux + dz * uz, off = dx * uz - dz * ux, room = 0.85 + e.T.radius * e.scale;
+          if (along < -room || along > long - 0.6 || Math.abs(off) >= room) continue;
+          const aside = (off < 0 ? -1 : 1) * (room - Math.abs(off));
+          e.x += uz * aside; e.z -= ux * aside;
+        }
+      };
+      // The last shot: from high behind him. (k: 0..1 through it: it draws back.)
+      const high = (k) => {
+        eye.set(p.x, floor + 4.3 + 2.3 * k, p.z).addScaledVector(to, -2.7 - 1.2 * k).addScaledVector(across, 0.7);
+        target.set(p.x, floor + 0.45, p.z).addScaledVector(to, 0.9);
+      };
+      playDeath(CUTS.slice(1), KNEES);
+      begin(END + 0.2, (t, dt) => {
+        const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : 3;
+        // (caught in the air, he comes down first)
+        afoot(at.set(p.x, Math.max(floor, from - 14 * t * t) + 0.1, p.z), yaw, 'die', gone(t), false);
+        model.root.quaternion.premultiply(lie);
+        for (const e of crowd) {
+          const dx = p.x - e.x, dz = p.z - e.z, far = Math.hypot(dx, dz);
+          if (far < 1.75 + e.T.radius * e.scale) continue;
+          const step = (Math.min(e.speed, 3.2) * 0.55 * dt) / far;
+          e.x += dx * step; e.z += dz * step; e.y = heightAt(e.x, e.z); e.yaw = Math.atan2(dx, dz);
+        }
+        const thud = t >= KNEES ? Math.exp(-(t - KNEES) * 9) : 0;
+        if (shot === 0) {             // 1: low on the ground beyond him, looking back past him at what did it
+          eye.set(p.x, floor + 0.38, p.z).addScaledVector(to, -3.5 + 0.6 * k(0, CUTS[1])).addScaledVector(across, 1.9);
+          target.set(p.x, floor + 1.1, p.z).addScaledVector(to, 0.7);
+          clear();
+          view(60, 0.07 * Math.exp(-t * 5));
+        } else if (shot === 1) {      // 2: his face
+          if (model.faceAt) model.faceAt(head); else head.set(p.x, at.y + 1.5, p.z);
+          eye.copy(head).addScaledVector(to, 1.0).addScaledVector(across, 0.7).y -= 0.24;   // (from under the brim of his hat: his head is going down)
+          target.copy(head);
+          clear();
+          view(36 - 12 * k(CUTS[1], 0.12), 0.03);
+        } else if (shot === 2) {      // 3: from the side, low: his knees go
+          eye.set(p.x, floor + 0.3, p.z).addScaledVector(across, 3.1).addScaledVector(to, 0.5);
+          target.set(p.x, floor + 0.95 - 0.3 * k(CUTS[2] + 0.2, 0.6), p.z).addScaledVector(to, 0.2);
+          clear();
+          view(52 - 4 * k(CUTS[2], 0.14), 0.02 + 0.09 * thud);
+        } else {                      // 4: from high behind him
+          high(k(CUTS[3], END - CUTS[3]));
+          view(50, 0.015);
+        }
+        horde.draw(dt);   // (once the shot has made its room: see clear)
+        hud.dread(0.3 + 0.5 * k(0.2, 2.8));
+        hud.lines(shot === 0 ? Math.max(0.3, Math.exp(-t * 2.4)) : shot === 1 ? 0.8 : shot === 2 ? 0.45 : 0);
+        let pop = 0;
+        for (const c of CUTS) if (c > 0 && t >= c) pop = Math.max(pop, Math.exp(-(t - c) * 8));
+        if (shot === 0) hud.flash('#c0141a', 0.7 * Math.exp(-t * 6));   // (the hit itself: red)
+        else hud.flash('#ffffff', pop * 0.85);
+        once('hit', t, 0, () => model.express?.('surprise', 1));
+        once('going', t, CUTS[1], () => model.express?.('sad', 6));
+      }, done);
+      scene.skippable = true;
+      scene.keep = true;   // (it is not story: it plays whether or not the story's scenes are switched off)
+      // (however it ends, cut short or not: him down, under the last shot)
+      scene.cleanup = () => {
+        model.root.visible = true;
+        model.root.position.set(p.x, floor + 0.1, p.z);
+        model.root.rotation.set(0, yaw, 0);
+        model.root.quaternion.premultiply(lie);
+        model.play?.('die', 1, 1, 9, true);
+        high(1);
+        view(50);
+      };
     },
 
     // "Launch": off the lip of the last ramp. In slow motion from the side as he leaves it; from out in front of it,

@@ -5,7 +5,7 @@ downloaded from there. tools/build_kirky.py stands him as he was made, sizes him
 pieces for the game and takes his cigar out; nothing else of him is changed. His hats (the shop's fedoras) are his
 own hat's picture recoloured by the game (src/player/kirkyBody.js).
 
-kirky_skater.glb — a second Kirky, kept as a spare skin (not loaded by the game)
+kirky_skater.glb — a second Kirky, kept as a spare skin (not loaded by the game, and not shipped with it: it is in spare/)
 
 Built by tools/build_kirky_skater.py from a skater model downloaded from Sketchfab by the project's owner (a
 MakeHuman character with a skateboard). WHO MADE IT AND UNDER WHICH LICENCE STILL HAS TO BE WRITTEN HERE before
@@ -72,3 +72,9 @@ Modelled by tools/build_astronaut.py and tools/build_props.py: nothing downloade
 guns.glb — the guns and the boof
 
 Modelled by tools/build_guns.py: nothing downloaded.
+
+How the files here are kept small
+
+tools/slim_models.py takes out of a model what the game never reads (run it after a build_*.py script has written
+one); and a build (npm run build) packs every model with tools/pack_models.mjs, which the game undoes as it loads
+them. Neither changes anything that is drawn or played: what the game reads is the same, number for number.

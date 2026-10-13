@@ -1,7 +1,8 @@
-# Builds a skater skin for Kirky: public/models/kirky_skater.glb (not the one the game loads: that is the man in the
-# fedora, tools/build_kirky.py. This one is kept as a second skin, on the same skeleton names).
+# Builds a skater skin for Kirky: spare/kirky_skater.glb (not the one the game loads: that is the man in the
+# fedora, tools/build_kirky.py. This one is kept as a second skin, on the same skeleton names; it is out of
+# public/models so that nobody downloads a megabyte and a half of a man they never see. To use him, put him back there.)
 #
-#   blender --background --python tools/build_kirky_skater.py -- public/models/kirky_skater.glb [preview.png] [dl/skater.glb]
+#   blender --background --python tools/build_kirky_skater.py -- spare/kirky_skater.glb [preview.png] [dl/skater.glb]
 #
 # He is made from a skater somebody else modelled (dl/skater.glb, not in the repository: a MakeHuman man on
 # MakeHuman's game skeleton, in a T-shirt, tight trousers, skate shoes and a knitted hat; see public/models/CREDITS.txt),

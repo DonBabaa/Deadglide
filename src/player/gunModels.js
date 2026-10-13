@@ -10,7 +10,7 @@
 // `metal` is the main finish, shared by every gun, so the "gold gun" cosmetic
 // can repaint it. Wood, polymer and bone keep their own colours.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel } from '../models.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const HALF = Math.PI / 2;
@@ -213,6 +213,6 @@ export function buildGuns(metal) {
 
 let loading = null;
 export function realGuns() {
-  loading ||= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/guns.glb`).then((gltf) => gltf.scene, () => null);
+  loading ||= loadModel('guns.glb').then((gltf) => gltf.scene, () => null);
   return loading;
 }

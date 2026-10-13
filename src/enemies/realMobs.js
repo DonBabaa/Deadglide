@@ -6,7 +6,7 @@
 // loadRealMobs() is awaited once, before anything is built from ENEMY_PARTS (see main.js). If the file is not there,
 // nothing changes: the built ones stay.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel } from '../models.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
 
@@ -50,11 +50,11 @@ ENEMY_PARTS.ultimus = () => ENEMY_PARTS.boss2();   // (until his own model has a
 
 export async function loadRealMobs() {
   let gltf;
-  try { gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/mobs.glb`); } catch (error) { console.warn('Monsters: no models to load, so they stay as they were.', error); return; }
+  try { gltf = await loadModel('mobs.glb'); } catch (error) { console.warn('Monsters: no models to load, so they stay as they were.', error); return; }
   // (the other zombies are in a file of their own: if it is not there, they are the first one over again)
-  try { gltf.scene.add((await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/zombies.glb`)).scene); } catch (error) { console.warn('Monsters: no other zombies to load.', error); }
+  try { gltf.scene.add((await loadModel('zombies.glb')).scene); } catch (error) { console.warn('Monsters: no other zombies to load.', error); }
   // (and the rat: tools/build_rat.py. Its parts are numbered as the first modelled rat's were, and take their place.)
-  try { gltf.scene.add((await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/rat.glb`)).scene); } catch (error) { console.warn('Monsters: no rat to load.', error); }
+  try { gltf.scene.add((await loadModel('rat.glb')).scene); } catch (error) { console.warn('Monsters: no rat to load.', error); }
   const found = {};   // name -> { fine: { part: mesh }, lite: { part: mesh } }
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
