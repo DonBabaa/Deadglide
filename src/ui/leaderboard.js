@@ -3,8 +3,14 @@
 // site that hosts the game (functions/api/leaderboard.js), so the board
 // only works on the deployed site, not under `npm run dev`.
 import { getName, setName } from './playerName.js';
+import { multiplayer } from '../../mastre.json';
 
-const API = '/api/leaderboard';
+// Where that function is. On the game's own site it answers beside the game, at api/leaderboard. Served out of a
+// folder of somebody else's site (the Mastre Gaming hub, which serves files and runs nothing) there is no function
+// beside it: the game asks its own site instead, if mastre.json gives its address (multiplayer.server), and with
+// none given there are no boards there.
+const HOME = new URL('.', document.baseURI).pathname === '/';
+const API = HOME ? 'api/leaderboard' : multiplayer.server ? `${multiplayer.server.replace(/\/+$/, '')}/api/leaderboard` : '';
 const $ = (id) => document.getElementById(id);
 const box = $('run-over'), nameInput = $('post-name'), sendButton = $('post-send'), status = $('post-status');
 const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -12,6 +18,7 @@ const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seco
 let run = null;   // the finished run waiting to be posted: { score, wave, time, won }
 
 async function call(body, board = '') {
+  if (!API) throw new Error('No leaderboard on this site');
   const res = await fetch(board ? `${API}?board=${board}` : API, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await res.json().catch(() => null);   // (under `npm run dev` there is no function: this isn't JSON)
   if (!data) throw new Error('The leaderboard only works on the published site');

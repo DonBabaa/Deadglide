@@ -5,6 +5,9 @@
 //     public/models, and unpacks in the browser into exactly the same bytes (the build checks that it does);
 //   - the code is cut into what the game needs to start and what it only needs later (the casino, with the library
 //     that lets friends play in it; three itself in a piece of its own, which a new build of the game does not change).
+//
+// Every address in what is built is relative (`base`), so the game runs from whatever folder it is put in: at the
+// top of its own site, or under /games/deadslide/ on the Mastre Gaming hub (mastre.json).
 import { defineConfig } from 'vite';
 import path from 'node:path';
 import { packFolder } from './tools/pack_models.mjs';
@@ -19,6 +22,7 @@ const packModels = () => ({
 });
 
 export default defineConfig({
+  base: './',
   plugins: [packModels()],
   build: {
     chunkSizeWarningLimit: 900,

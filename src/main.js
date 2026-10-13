@@ -50,6 +50,7 @@ import { getName } from './ui/playerName.js';
 import { goldTally } from './ui/goldTally.js';
 import { DESCENT, descentHeight } from './world/descent.js';
 import { load, store } from './systems/storage.js';
+import { framed, hubReady, hubExit } from './systems/hub.js';
 import { createCutscenes } from './cutscenes.js';
 import { createDescent } from './systems/descent.js';
 import { runTime as hillTime } from './ui/leaderboard.js';
@@ -1773,6 +1774,10 @@ hud.weapons(weapon, WEAPONS);
 hud.score(score);
 showMenu();
 requestAnimationFrame(frame);
+// In the Mastre Gaming hub's frame (systems/hub.js): the menu has a way back out to the hub, and the hub is told the game is up.
+document.getElementById('menu-quit').classList.toggle('hidden', !framed);
+document.getElementById('menu-quit').addEventListener('click', hubExit);
+hubReady();
 
 // Handy in the browser console: game.skater, game.config, game.horde
 window.game = { renderer, scene, hurt, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

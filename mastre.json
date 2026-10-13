@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "deadslide",
+  "title": "DeadSlide",
+  "description": "Skate the cemetery with a gun in your hand: grind, trick and shoot through waves of the dead, down into the Catacombs and on to the House. Spend the gold on your character and go again.",
+  "authors": ["DonBabaa"],
+  "version": "0.1.0",
+  "cover": "mastre/cover.jpg",
+  "tags": ["action", "shooter", "skateboarding", "singleplayer"],
+  "controls": ["keyboard", "mouse"],
+  "build": {
+    "install": "npm ci",
+    "command": "npm run build",
+    "output": "dist"
+  },
+  "entry": "index.html",
+  "multiplayer": { "server": null }
+}

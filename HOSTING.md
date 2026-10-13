@@ -35,3 +35,18 @@ Open `https://<your-site>.pages.dev/api/leaderboard` in a browser.
 - **A new score can take up to a minute to appear** for everyone: that is how this storage works.
 - **`netlify.toml` and `netlify/`** are no longer used. They are harmless here and can be deleted once the move is
   confirmed (and `@netlify/blobs` removed from `package.json`).
+
+# On the Mastre Gaming hub
+
+The hub clones this repository, builds it and serves the result from a folder of its own site
+(`/games/deadslide/`), in a frame on its page. What it reads about the game is in `mastre.json`.
+
+- **The build is the same one** (`npm ci`, `npm run build`, `dist`). Every address in it is relative, so it runs from
+  any folder.
+- **Saves** are kept under `mastre:deadslide:<name>` in the browser, apart from the other games on the hub. Saves
+  made under the old names are moved across the first time the game opens.
+- **The leaderboards are not there yet.** The hub serves files and runs nothing, so there is no `/api/leaderboard`
+  beside the game. To have the boards on the hub, put the address of the game's own site in `mastre.json`
+  (`"multiplayer": { "server": "https://..." }`) and let `functions/api/leaderboard.js` answer other sites
+  (an `access-control-allow-origin` header, and a reply to `OPTIONS`).
+- **In the hub's frame** the main menu has a Quit button, which hands the player back to the hub.
