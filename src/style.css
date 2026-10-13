@@ -526,6 +526,7 @@ body.cutscene #bars i { transform: none; }
 #menu .menu-row { display: flex; gap: 14px; margin-top: 18px; }
 #menu .menu-row #menu-shop-open { margin-top: 0; }
 #menu #menu-casino-open { padding: 10px 22px; font-size: 22px; color: var(--ink); background: #7dffb0; border-color: var(--ink); box-shadow: 6px 6px 0 var(--bone); }
+#menu #menu-quit { padding: 10px 22px; font-size: 22px; }   /* (shown only in the Mastre Gaming hub's frame: systems/hub.js) */
 #casino { position: fixed; inset: 0; pointer-events: none; font-family: var(--text); color: var(--bone); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
 #casino.hidden, #casino .hidden { display: none; }
 #casino button { pointer-events: auto; font-family: var(--display); letter-spacing: 1.5px; text-transform: uppercase; color: var(--bone); background: #1b1c20; border: 3px solid var(--bone); box-shadow: 5px 5px 0 var(--ink); transform: skewX(-9deg); cursor: pointer; text-shadow: none; }
