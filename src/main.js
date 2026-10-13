@@ -235,6 +235,7 @@ function restart(carry = false) {
   goldTally.hide();
   setMusicStyle({ 2: 'catacombs', 3: 'moon', 4: 'house', 5: 'hill' }[level] || 'dnb');   // (each level has its own: fx/music.js)
   model.root.scale.setScalar(1);
+  model.board.visible = true;   // (the scene of his death puts it out of sight)
   leaderboard.hideEnd();
   levelUp.hide();
   if (!carry) pendingLevels = 0;
@@ -354,22 +355,22 @@ function hurt(amount) {
 let losing = false, fallen = 0, deathCard = null;   // (fallen: how long he has been going down, dead; deathCard: the "You died" card, waiting for him to land)
 const DOWN = 9;   // (fallen, once he has been all the way down for a while: the scene of his death has already shown him fall)
 function die() {
-  if (LEVELS[level].descent && !losing && !preview) {   // (on the hill: knocked down, and then the hill arrives)
-    losing = true;
-    descent.state.wall = Math.max(descent.state.wall, 48 - skater.pos.z - 34);
-    return cutscenes.buried(descent, () => { buried(); losing = false; });
-  }
-  if (LEVELS[level].finale && horde.boss && !losing && !preview) {
-    losing = true;
-    return cutscenes.houseWins(horde.boss, () => { fallen = DOWN; die(); losing = false; });   // (he is down already: see DOWN)
-  }
-  // Anywhere else: the hit, and him going down, in a scene of its own (cutscenes.death). It leaves him lying where
-  // he fell (fallen: all the way down already), and the card comes up over the end of it.
+  // On every level: the hit, and him going down, in a scene of its own (cutscenes.death). It leaves him lying where
+  // he fell (fallen: all the way down already), and the card comes up over the end of it. On the hill the collapse
+  // arrives after it and buries him where he lies; in the House, Babitus has his laugh (the house wins).
   if (!losing && !preview && !cutscenes.active) {
     losing = true;
     let by = null, near = 16 * 16;   // (what did it: as near as makes no difference, whatever is nearest him)
     for (const e of horde.enemies) { const far = (e.x - skater.pos.x) ** 2 + (e.z - skater.pos.z) ** 2; if (far < near) { near = far; by = e; } }
-    return cutscenes.death(by || horde.boss, () => { fallen = DOWN; die(); losing = false; });
+    const over = () => { fallen = DOWN; die(); losing = false; };
+    if (LEVELS[level].descent) {
+      return cutscenes.death(by || horde.boss, () => {
+        descent.state.wall = Math.max(descent.state.wall, 48 - skater.pos.z - 34);
+        cutscenes.buried(descent, () => { fallen = DOWN; buried(); losing = false; }, true);
+      }, true);
+    }
+    if (LEVELS[level].finale && horde.boss) { const b = horde.boss; return cutscenes.death(b, () => cutscenes.houseWins(b, over, true), true); }
+    return cutscenes.death(by || horde.boss, over);
   }
   dead = true;
   paused = true;
@@ -706,6 +707,18 @@ const CINEMATICS = [
     for (const [name, turn, far] of [['shambler', 0.4, 2.2], ['shambler', 2.2, 6], ['rattler', 3.9, 8], ['shambler', 5.2, 11], ['shambler', 1.2, 13]]) horde.spawnAt(name, p.x + Math.sin(turn) * far, p.z + Math.cos(turn) * far, turn + Math.PI);
     for (const e of horde.enemies) e.rise = 1;
     cutscenes.death(horde.enemies[0] || null);
+  } },
+  { name: 'Dead, in the Catacombs', where: 'Level 2', run: () => {
+    at(2);
+    const p = skater.pos;
+    for (const [name, turn, far] of [['rat', 0.5, 2.4], ['rat', 2.6, 5], ['rat', 4.4, 7], ['rattler', 1.5, 9]]) horde.spawnAt(name, p.x + Math.sin(turn) * far, p.z + Math.cos(turn) * far, turn + Math.PI);
+    for (const e of horde.enemies) e.rise = 1;
+    cutscenes.death(horde.enemies[0] || null);
+  } },
+  { name: 'Dead, in the House (and the house wins)', where: 'The House', run: () => at(4), replace: () => { const b = horde.boss; cutscenes.death(b, () => cutscenes.houseWins(b, null, true), true); } },
+  { name: 'Dead, on the hill (and buried)', where: 'The Long Way Down', run: () => {
+    at(5); onHill(700); descent.state.wall = 690;
+    cutscenes.death(horde.boss, () => cutscenes.buried(descent, null, true), true);
   } },
   { name: 'Run: the casino comes down', where: 'The Long Way Down', run: () => { at(5); cutscenes.collapse(descent, () => descent.reset()); } },
   { name: 'Buried', where: 'The Long Way Down', run: () => { at(5); onHill(700); descent.state.wall = 690; cutscenes.buried(descent); } },
@@ -1691,4 +1704,4 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { renderer, scene, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { renderer, scene, hurt, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

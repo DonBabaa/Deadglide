@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { heightAt, normalAt } from './world/terrain.js';
 import { HOUSE, WALL_TOP } from './world/house.js';
+import { world } from './world/level.js';
 import { hud } from './ui/hud.js';
 import { ENEMY_TYPES } from './enemies/types.js';
 import { FLIGHT } from './systems/descent.js';
@@ -20,6 +21,7 @@ import { holdMusic, sceneBoost } from './fx/audio.js';
 import { playCue, stopCue } from './fx/score.js';
 
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
+const GROUND = 0.1;   // how far above the ground he is put to die on it (with no board under him)
 const UP = new THREE.Vector3(0, 1, 0);
 const NEXT = 'Enter: next  ·  Tab: skip the scene';   // (under every line of story)
 const eye = new THREE.Vector3(), target = new THREE.Vector3(), dir = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3();
@@ -219,21 +221,21 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
   // Kirky off his board, in a scene: stood at `at` facing `yaw` (0: the way the world's z runs), doing clip `name` of
   // his motion capture (`time` seconds into it, if given: a climb is kept in step with how far he has climbed, a
   // fall with how long he has been falling). His gun is put away. His board is slung on his back (sling: false
-  // leaves it where it is, under him). The scene's own cleanup puts all of it back; aboard() does it sooner, for a
-  // scene that has him ride again.
+  // leaves it where it is, under him; 'away': it is nowhere to be seen). The scene's own cleanup puts all of it
+  // back; aboard() does it sooner, for a scene that has him ride again.
   function afoot(at, yaw, name, time, sling = true) {
     const S = scene;
     if (!S.afoot) {
-      const gun = model.gun?.group, shown = gun?.visible, slung = sling ? model.board.clone() : null, before = S.cleanup;
+      const gun = model.gun?.group, shown = gun?.visible, slung = sling === true ? model.board.clone() : null, before = S.cleanup;
       if (slung) {
         slung.visible = true;
         slung.position.set(0.03, -0.12, -0.17);
         slung.rotation.set(Math.PI / 2, 0, 0.32);
         model.packHolder.add(slung);
-        model.board.visible = false;
       }
+      if (sling) model.board.visible = false;
       if (gun) gun.visible = false;
-      S.afoot = () => { if (slung) { model.packHolder.remove(slung); model.board.visible = true; } if (gun) gun.visible = shown; S.afoot = null; };
+      S.afoot = () => { if (slung) model.packHolder.remove(slung); if (sling) model.board.visible = true; if (gun) gun.visible = shown; S.afoot = null; };
       S.cleanup = () => { S.afoot?.(); before?.(); };
     }
     model.root.visible = true;
@@ -286,7 +288,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     },
 
     // Stop whatever is playing without its ending (the run is being reset).
-    cancel() { if (scene) finish(false); },
+    cancel() { if (scene) finish(false); lamp.intensity = 0; },
     // The player has read the line: on to the next one. (Pressed early, it cuts straight to the end of this line.)
     next() {
       if (!scene || !scene.holds.length) return;
@@ -743,17 +745,19 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
 
     // "The house wins": Babitus has killed him. From the floor beside Kirky, up at him; his face; and from the
     // chandelier, the two of them, as the title lands. b: Babitus.
-    houseWins(b, done) {
+    // down: it follows the scene of his death (death, below), which has shown him go down: this one starts at
+    // Babitus's laugh, with him on the floor already.
+    houseWins(b, done, down = false) {
       const p = skater.pos, tall = b.T.height * b.scale, wide = b.T.radius * b.scale, CUTS = [0, 1.8, 3.2], END = 5.4;
       b.posed = true;
-      playCreak(1.6);
+      if (!down) playCreak(1.6);
       begin(END + 0.2, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), ground = heightAt(b.x, b.z), floor = heightAt(p.x, p.z);
         dir.set(p.x - b.x, 0, p.z - b.z).normalize();
         side.set(dir.z, 0, -dir.x);
         b.yaw = Math.atan2(dir.x, dir.z);
         b.roar = 0.6 * k(CUTS[1], 0.2) * (1 - k(CUTS[2] - 0.3, 0.3));
-        afoot(eye.set(p.x, floor + 0.1, p.z), Math.atan2(-dir.x, -dir.z), 'die', 0.4 + t * 1.3, false);   // (down, as he goes when he dies, facing what did it: and staying down)
+        afoot(eye.set(p.x, floor + GROUND, p.z), Math.atan2(-dir.x, -dir.z), 'die', down ? 9 : 0.4 + t * 1.3, 'away');   // (down, as he goes when he dies, facing what did it: and staying down. His board is nowhere to be seen.)
         horde.draw(dt);
         if (t < CUTS[1]) {            // 1: from the marble beside him, up at what did it
           eye.set(p.x, floor + 0.3, p.z).addScaledVector(dir, 3).addScaledVector(side, 1.6);
@@ -779,6 +783,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         once('title', t, CUTS[2], () => { playTitleSting(); hud.bossIntro('The house wins', b.T.title); });
         if (t >= END) goHome();
       }, () => { hud.hideBossIntro(); done?.(); });
+      scene.cleanup = () => { model.board.visible = false; };   // (...nor after it, while he lies there: a new run brings it back)
+      if (down) scene.time = CUTS[1];
       score('house');
       say(CUTS[2] + 0.6, END - 0.3, 'It always does. Almost always.');
     },
@@ -833,7 +839,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // "Buried": the collapse has caught him. From in front, low, the wall of dust coming over his shoulder; a snap
     // zoom on his face as its shadow reaches him; then from high above, as it goes over the top of him.
     // descent: systems/descent.js (its bury() puts the dust where each shot wants it).
-    buried(descent, done) {
+    // down: it follows the scene of his death (death, below): he is lying where that left him, and the hill arrives.
+    buried(descent, done, down = false) {
       const p = skater.pos, s = 48 - p.z, head = new THREE.Vector3(), CUTS = [0, 1.4, 2.4], END = 4.0, DUST = '#5c4d3c';
       playBuried();
       begin(END + 0.2, (t, dt) => {
@@ -841,13 +848,17 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         // The dust: well back, then on his heels (in slow motion), then over him and on down the hill.
         const wall = t < CUTS[1] ? s - 34 + 18 * k(0, 1.4) : t < CUTS[2] ? s - 16 + 6 * k(CUTS[1], 1) : s - 10 + 44 * ((t - CUTS[2]) / 1.3) ** 2;
         descent.bury(wall, t * (shot === 1 ? 0.3 : 1));
-        model.update(dt, skater, p, null, false);
-        head.set(0, 1.66, 0).applyQuaternion(model.root.quaternion).add(p);
+        if (down) model.play?.('die', 1, 1, 9, true); else model.update(dt, skater, p, null, false);
+        if (down && model.faceAt) model.faceAt(head); else head.set(0, 1.66, 0).applyQuaternion(model.root.quaternion).add(p);
         horde.draw(dt);
         if (shot === 0) {             // 1: low, ahead of him, looking back up the hill past him
           eye.set(p.x + 2.6 - 1.2 * k(0, 1.4), p.y + 0.7, p.z - 7.5);
           target.set(p.x, p.y + 7, p.z + 16);
           view(64, 0.12 + 0.2 * k(0, 1.4));
+        } else if (shot === 1 && down) {   // 2: him, from over him, the ground under him going dark: it is on him
+          eye.set(head.x + 0.8, head.y + 1.7, head.z - 2.1);
+          target.copy(head);
+          view(42 - 8 * k(CUTS[1], 0.12), 0.05);
         } else if (shot === 1) {      // 2: his face
           eye.set(head.x + 0.45, head.y + 0.05, head.z - 1.5);
           target.copy(head);
@@ -873,12 +884,16 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
 
     // "Dead": the hit that kills him, and him going down. Four shots: from low on the ground beyond him, him between
     // you and what did it, as it lands and he reels; a snap zoom on his face; from the side, low, as his knees go and
-    // he comes down on them; and from high behind him, slumped there, whatever is left of them closing in round him.
-    // (An ordinary death. The House and the hill have their own: houseWins and buried.)
+    // he comes down on them; and from high behind him, face down, whatever is left of them closing in round him.
+    // His board is nowhere to be seen, in it or after it (a new run brings it back).
     // by: what did it ({ x, z }: a monster; null: nothing is near him, and he goes down the way he was facing).
     // It ends on its last shot, with him where he fell: the card that follows comes up over that.
-    death(by, done) {
-      const p = skater.pos, floor = heightAt(p.x, p.z), from = Math.max(p.y, floor), CUTS = [0, 0.9, 1.6, 2.5], KNEES = 2.3, END = 3.7;
+    // on: another scene follows it (the House's: houseWins; the hill's: buried). It ends as he hits the ground, on
+    // the third shot, and leaves the rest to that one.
+    death(by, done, on = false) {
+      const p = skater.pos, floor = heightAt(p.x, p.z), from = Math.max(p.y, floor), CUTS = [0, 0.9, 1.6, 2.5], KNEES = 2.3, END = on ? CUTS[3] : 3.7;
+      // (a boss is not stood in front of, to look at his face: it is looked at from beside him; and looked up at)
+      const dark = world.level === 2, big = !!(by && by.T && (by.T.boss || by.T.miniboss)), looming = big ? Math.min(2.4, by.T.height * by.scale * 0.2) : 0;
       const to = new THREE.Vector3(), across = new THREE.Vector3(), at = new THREE.Vector3(), head = new THREE.Vector3(), lie = new THREE.Quaternion();
       if (by) to.set(by.x - p.x, 0, by.z - p.z); else facing(to);
       if (to.lengthSq() < 1e-4) to.set(0, 0, 1);
@@ -921,10 +936,10 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         target.set(p.x, floor + 0.45, p.z).addScaledVector(to, 0.9);
       };
       playDeath(CUTS.slice(1), KNEES);
-      begin(END + 0.2, (t, dt) => {
-        const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : 3;
+      begin(on ? END : END + 0.2, (t, dt) => {
+        const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] || on ? 2 : 3;
         // (caught in the air, he comes down first)
-        afoot(at.set(p.x, Math.max(floor, from - 14 * t * t) + 0.1, p.z), yaw, 'die', gone(t), false);
+        afoot(at.set(p.x, Math.max(floor, from - 14 * t * t) + GROUND, p.z), yaw, 'die', gone(t), 'away');
         model.root.quaternion.premultiply(lie);
         for (const e of crowd) {
           const dx = p.x - e.x, dz = p.z - e.z, far = Math.hypot(dx, dz);
@@ -934,13 +949,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         }
         const thud = t >= KNEES ? Math.exp(-(t - KNEES) * 9) : 0;
         if (shot === 0) {             // 1: low on the ground beyond him, looking back past him at what did it
-          eye.set(p.x, floor + 0.38, p.z).addScaledVector(to, -3.5 + 0.6 * k(0, CUTS[1])).addScaledVector(across, 1.9);
-          target.set(p.x, floor + 1.1, p.z).addScaledVector(to, 0.7);
+          eye.set(p.x, floor + 0.38, p.z).addScaledVector(to, -3.5 + 0.6 * k(0, CUTS[1]) - looming).addScaledVector(across, 1.9);
+          target.set(p.x, floor + 1.1 + looming, p.z).addScaledVector(to, 0.7);
           clear();
           view(60, 0.07 * Math.exp(-t * 5));
         } else if (shot === 1) {      // 2: his face
           if (model.faceAt) model.faceAt(head); else head.set(p.x, at.y + 1.5, p.z);
-          eye.copy(head).addScaledVector(to, 1.0).addScaledVector(across, 0.7).y -= 0.24;   // (from under the brim of his hat: his head is going down)
+          eye.copy(head).addScaledVector(to, big ? 0.45 : 1.0).addScaledVector(across, big ? 1.1 : 0.7).y -= 0.24;   // (from under the brim of his hat: his head is going down)
           target.copy(head);
           clear();
           view(36 - 12 * k(CUTS[1], 0.12), 0.03);
@@ -954,6 +969,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           view(50, 0.015);
         }
         horde.draw(dt);   // (once the shot has made its room: see clear)
+        // (in the Catacombs the only light is the one he carries, and it is pointing wherever he was looking)
+        lamp.position.copy(eye).y += 1.2;
+        lamp.intensity = dark ? (shot === 1 ? 14 : shot === 3 ? 90 : 40) : 0;
         hud.dread(0.3 + 0.5 * k(0.2, 2.8));
         hud.lines(shot === 0 ? Math.max(0.3, Math.exp(-t * 2.4)) : shot === 1 ? 0.8 : shot === 2 ? 0.45 : 0);
         let pop = 0;
@@ -962,16 +980,22 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         else hud.flash('#ffffff', pop * 0.85);
         once('hit', t, 0, () => model.express?.('surprise', 1));
         once('going', t, CUTS[1], () => model.express?.('sad', 6));
-      }, done);
+      }, () => {
+        // (in the dark, the last shot's light stays on him under the card: a new run puts it out)
+        if (dark && !on) { high(1); lamp.position.copy(eye).y += 1.2; lamp.intensity = 90; }
+        done?.();
+      });
       scene.skippable = true;
       scene.keep = true;   // (it is not story: it plays whether or not the story's scenes are switched off)
-      // (however it ends, cut short or not: him down, under the last shot)
+      // (however it ends, cut short or not: him down, his board gone; and, if nothing follows it, under the last shot)
       scene.cleanup = () => {
         model.root.visible = true;
-        model.root.position.set(p.x, floor + 0.1, p.z);
+        model.root.position.set(p.x, floor + GROUND, p.z);
         model.root.rotation.set(0, yaw, 0);
         model.root.quaternion.premultiply(lie);
         model.play?.('die', 1, 1, 9, true);
+        model.board.visible = false;
+        if (on) return;
         high(1);
         view(50);
       };
