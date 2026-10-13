@@ -20,6 +20,7 @@ import { world } from '../world/level.js';
 import { HOUSE, houseSpot } from '../world/house.js';
 import { laughing, reaching } from './standIn.js';
 import { stats } from '../player/stats.js';
+import { difficulty } from '../systems/difficulty.js';
 import { ENEMY_TYPES, ZOMBIES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
 import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
@@ -323,7 +324,7 @@ export class Horde {
     this.enemies.push({
       name, T, x, y, z, elite,
       scale: (elite ? 1.9 : 0.92 + Math.random() * 0.18) * config.horde.mobScale,
-      hp: T.hp * tough * (elite ? config.horde.eliteHp : 1),
+      hp: T.hp * tough * (elite ? config.horde.eliteHp : 1) * difficulty.health,
       speed: T.speed * (0.85 + Math.random() * 0.3) * (elite ? 1.25 : 1),
       yaw, rise: 0, flash: 0, kx: 0, kz: 0, ramWait: 0, phase: Math.random() * 6.28,
     });
@@ -344,7 +345,7 @@ export class Horde {
   spawnBoss(player) {
     const house = world.level === 4;
     const name = house ? 'boss3' : world.level === 2 ? 'boss2' : 'boss';   // each level has its own
-    const T = ENEMY_TYPES[name], heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.bossHp * (T.hpScale || 1);
+    const T = ENEMY_TYPES[name], heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.bossHp * (T.hpScale || 1) * difficulty.boss;
     // What he throws, in his colours.
     this.bossTint = new THREE.Color(T.blob ?? 0x5a3418);
     this.blobs.forEach((_, i) => this.blobMesh.setColorAt(i, this.bossTint));
@@ -401,8 +402,8 @@ export class Horde {
     }
 
     // Top the crowd up toward this wave's size, a few per second (a thinner crowd while the boss is up).
-    const want = Math.min(H.maxAlive, H.baseAlive + H.alivePerWave * (wave - 1)) * (this.boss ? H.bossCrowd : 1);
-    if (this.enemies.length < want) this.spawnDebt += (H.baseSpawnRate + H.spawnRatePerWave * (wave - 1)) * dt;
+    const want = Math.min(H.maxAlive, (H.baseAlive + H.alivePerWave * (wave - 1)) * difficulty.crowd) * (this.boss ? H.bossCrowd : 1);
+    if (this.enemies.length < want) this.spawnDebt += (H.baseSpawnRate + H.spawnRatePerWave * (wave - 1)) * difficulty.crowd * dt;
     else this.spawnDebt = 0;
     // Moving fast? They come up ahead of you. Standing still? From all around.
     const heading = Math.atan2(player.vel.x, player.vel.z), fast = Math.min(1, player.speed / 15);
@@ -421,7 +422,7 @@ export class Horde {
     // Swarm: a closing ring.
     if (this.time >= this.nextSwarm) {
       this.nextSwarm += H.swarmEvery;
-      const n = H.swarmSize + 4 * (wave - 1);
+      const n = Math.round((H.swarmSize + 4 * (wave - 1)) * difficulty.crowd);
       for (let i = 0; i < n; i++) this.spawn(this.pickType(), player, (i / n) * Math.PI * 2, H.spawnDistance * 0.7);
       this.events.push({ type: 'swarm' });
     }
@@ -682,7 +683,7 @@ export class Horde {
 
   // She comes in along the roof, ahead of you.
   spawnMini(player) {
-    const T = ENEMY_TYPES.queen, heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.miniHp;
+    const T = ENEMY_TYPES.queen, heading = Math.atan2(player.vel.x, player.vel.z), hp = config.horde.miniHp * difficulty.boss;
     const [, z] = placeAt(player.pos.x, player.pos.z, heading, 42), s = pipeRound(z) / 2 - 2;
     onPipe(s, z, spot);
     this.mini = {

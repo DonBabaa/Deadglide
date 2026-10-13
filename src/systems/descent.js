@@ -19,6 +19,7 @@ import { pose, aimOf, hasMobAnims } from '../enemies/mobAnims.js';
 import { glowTexture } from '../world/textures.js';
 import { buildCasinoFront } from '../world/casinoFront.js';
 import { load, store } from './storage.js';
+import { difficulty } from './difficulty.js';
 
 const X0 = 48, Z0 = 48;
 const RED = new THREE.Color(2.2, 0.35, 0.25);
@@ -299,7 +300,7 @@ export function createDescent({ scene, skater }) {
       if (s > 2) state.time += dt;   // (the clock starts when you leave the doors)
 
       // The collapse.
-      const speed = Math.min(C.wallMax, C.wallSpeed + C.wallGain * state.time);
+      const speed = Math.min(C.wallMax, C.wallSpeed + C.wallGain * state.time) * difficulty.collapse;
       state.wall = Math.max(state.wall + (s > 2 ? speed * dt : 0), s - C.wallLeash);
       out.gap = s - state.wall;
       out.caught = out.gap < C.wallKill;

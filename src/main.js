@@ -8,6 +8,7 @@ import { input } from './input.js';
 import { buildArena } from './world/arena.js';
 import { SEED, setLevel } from './world/terrain.js';
 import { LEVELS } from './world/level.js';
+import { difficulty, setTier, tierOf } from './systems/difficulty.js';
 import { HOUSE, houseSpot } from './world/house.js';
 import { MOON, ventAt, lavaAt, LAVA_LAKE, GEYSER, HOOPS, domeAt } from './world/moon.js';
 import { Lines } from './systems/lines.js';
@@ -334,7 +335,7 @@ function hurt(amount) {
     playShieldHit();
     return;
   }
-  hp = Math.max(0, hp - amount);
+  hp = Math.max(0, hp - amount * difficulty.damage);
   invulnerable = config.player.invulnerableTime + stats.invulnerable;
   chase.onSloppy();
   hud.flashHurt();
@@ -376,7 +377,7 @@ function die() {
   paused = true;
   document.exitPointerLock?.();
   const record = !creative && score.finish();   // Creative runs don't count toward your best
-  const standing = creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`;
+  const standing = (creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`) + (difficulty.tier === 'normal' ? '' : `  ·  ${difficulty.name}`);
   // (the card comes up once he has hit the ground: until then there is nothing between you and him going down)
   const lost = gold.carried >= 1 ? `${Math.floor(gold.carried).toLocaleString()} gold lost  ·  ` : '', lasted = hud.clock(horde.time);
   const card = `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
@@ -959,6 +960,7 @@ document.getElementById('menu-casino-open').addEventListener('click', (e) => {
 function startRun(loadout, chosen = 1, session = null) {
   creative = loadout;
   demo = null;
+  setTier(LEVELS[chosen].freeRide ? 'normal' : tierOf(chosen));   // (how hard: as picked for this level on the menu, and for the rest of the run from here)
   const direct = !!session?.direct, story = LEVELS[chosen].finale && !loadout && !direct;   // (the House opens with how you got there)
   if (!story) setWorld(chosen);
   ride.leave();

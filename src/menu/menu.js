@@ -8,6 +8,8 @@ import { getName, setName, cleanName } from '../ui/playerName.js';
 import { LEVELS } from '../world/level.js';
 import { profile } from '../systems/profile.js';
 import { leaderboard } from '../ui/leaderboard.js';
+import { config } from '../config.js';
+import { TIERS, tierOf, chooseTier, describeTier } from '../systems/difficulty.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch'), levels = $('menu-levels');
@@ -66,6 +68,22 @@ function buildLoadout() {
 }
 buildLoadout();
 
+// How hard: three tiers, picked for each level and remembered for it (systems/difficulty.js).
+const tierChips = TIERS.map((id) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chip';
+  b.textContent = config.difficulty[id].name;
+  b.addEventListener('click', () => { chooseTier(level, id); showTier(); });
+  $('tiers').append(b);
+  return b;
+});
+function showTier() {
+  const now = tierOf(level);
+  tierChips.forEach((b, i) => b.classList.toggle('on', TIERS[i] === now));
+  $('tier-note').textContent = describeTier(now, LEVELS[level]);
+}
+
 function setCreative(on) {
   creative = on;
   toggle.textContent = `Creative mode: ${on ? 'on' : 'off'}`;
@@ -103,6 +121,8 @@ $('cinema-back').addEventListener('click', () => { $('menu-cinema').classList.ad
 
 for (const n of [1, 2, 3, 4, 5]) $(`level-${n}`).addEventListener('click', () => {
   level = n;
+  $('tier-box').classList.toggle('hidden', !!LEVELS[n].freeRide);   // (nothing can hurt you in Free Ride: there is nothing to make harder)
+  showTier();
   toggle.classList.toggle('hidden', !!LEVELS[n].freeRide);   // (Free Ride has no loadout to choose)
   if (LEVELS[n].freeRide) setCreative(false);
   $('ride-box').classList.toggle('hidden', !LEVELS[n].freeRide);

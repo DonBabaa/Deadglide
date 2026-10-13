@@ -293,6 +293,9 @@ body { font-family: var(--text); font-size: 16px; letter-spacing: 0.3px; color: 
 .stepper span { font-family: var(--display); font-size: 18px; width: 16px; }
 #loadout-upgrades { gap: 9px 22px; padding: 2px 8px 8px 2px; }
 #loadout { padding: 0 14px 10px 6px; }
+#tier-box { margin: 0 0 22px; }
+#tier-box .chip { min-width: 110px; }
+#menu #tier-note { margin: 12px 0 0; opacity: 0.8; }
 
 /* Upgrade cards. */
 .card { width: 230px; min-height: 180px; padding: 24px 20px 18px; background: #17181c; border-color: var(--bone); }

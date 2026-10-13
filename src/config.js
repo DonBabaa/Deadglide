@@ -321,6 +321,20 @@ export const config = {
     recoil: 0.05,         // camera kick per shot
   },
 
+  // The three tiers of difficulty (systems/difficulty.js). Each is a set of multipliers on the game as it is on
+  // Normal: 0.6 is 40% less, 1.3 is 30% more.
+  //   damage    what a hit takes off you (a claw, a thrown bone, a card, what is thrown at you on the hill)
+  //   health    monsters' health
+  //   boss      a boss's health (and the Spider Queen's)
+  //   crowd     how many monsters are kept round you, how fast they are topped up, and how big a swarm is
+  //   collapse  how fast the hill comes down behind you (the Long Way Down)
+  //   score     what your points are worth
+  difficulty: {
+    mastre: { name: 'Mastre', damage: 0.6, health: 0.75, boss: 0.7, crowd: 0.8, collapse: 0.9, score: 0.75 },
+    normal: { name: 'Normal', damage: 1, health: 1, boss: 1, crowd: 1, collapse: 1, score: 1 },
+    chad: { name: 'Chad', damage: 1.4, health: 1.3, boss: 1.4, crowd: 1.25, collapse: 1.08, score: 1.5 },
+  },
+
   score: {
     levelBonus: 5000,     // points for leaving through the exit portal (before the multiplier)
     maxMultiplier: 8,

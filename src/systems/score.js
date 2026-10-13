@@ -7,6 +7,7 @@
 // and you drop a multiplier. Getting hit resets it to x1.
 import { config } from '../config.js';
 import { load, store } from './storage.js';
+import { difficulty } from './difficulty.js';
 
 const KEY = 'best';
 
@@ -32,7 +33,7 @@ export class Score {
   // Earn `points` (before the multiplier) and warm the meter by `heat`.
   add(points, heat = 0) {
     const S = config.score;
-    this.points += points * this.multiplier;
+    this.points += points * this.multiplier * difficulty.score;
     this.heat += heat;
     while (this.heat >= 1 && this.multiplier < S.maxMultiplier) {
       this.heat -= 1;
@@ -59,7 +60,7 @@ export class Score {
   update(dt, speed) {
     if (this.streak > 0 && (this.streakTime -= dt) <= 0) this.streak = 0;   // too slow: the streak is over
     const S = config.score, fast = Math.max(0, speed - S.speedThreshold);
-    if (fast > 0) this.points += fast * S.speedPoints * this.multiplier * dt;
+    if (fast > 0) this.points += fast * S.speedPoints * this.multiplier * difficulty.score * dt;
     const pace = Math.min(1, speed / config.skate.pushMaxSpeed);                    // going fast keeps it warm
     this.heat -= S.cooling * (1 + 0.2 * (this.multiplier - 1)) * (1 - 0.7 * pace) * dt;
     if (this.heat < 0) {

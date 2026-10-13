@@ -24,6 +24,7 @@ function playSample(name, volume = 1) {
   gain.gain.value = volume * mix.level;
   src.connect(gain).connect(out());
   ends.push(audio.ctx.currentTime, audio.ctx.currentTime + Math.min(1.5, src.buffer.duration));
+  ending(src, gain);
   src.start();
   return true;
 }
@@ -207,6 +208,15 @@ const full = () => voices() >= MAX_VOICES;
 const busy = () => voices() >= BUSY;
 // Everything that is sounding or due to: kept so that it can all be cut off at once (stopAllSounds).
 const sources = new Set();
+// `source` has been started: when it ends, `last` (the end of its chain, the node that is plugged into the mixer) is
+// unplugged. Left plugged in, a chain that has ended is only taken away when the browser next clears out its
+// memory, which can be a long time coming; and until then anything in it that never falls quite silent (see
+// clipper) goes on being worked out, sixty-odd of them more for every second of gunfire, until the sound breaks up
+// and stops.
+function ending(source, last) {
+  sources.add(source);
+  source.onended = () => { sources.delete(source); try { last.disconnect(); } catch {} };
+}
 export function stopAllSounds() {
   if (!audio.ctx) return;
   for (const source of sources) { try { source.stop(); } catch {} }
@@ -262,8 +272,7 @@ function tone(type, from, to, time, volume, at = 0) {
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   osc.connect(gain).connect(out(Math.max(from, to) < 260));
   ends.push(t, t + time);
-  sources.add(osc);
-  osc.onended = () => sources.delete(osc);
+  ending(osc, gain);
   osc.start(t);
   osc.stop(t + time + 0.02);
 }
@@ -284,8 +293,7 @@ function hiss(filterType, from, to, time, volume, at = 0) {
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   src.connect(filter).connect(gain).connect(out(filterType === 'lowpass' && Math.max(from, to) < 400));
   ends.push(t, t + time);
-  sources.add(src);
-  src.onended = () => sources.delete(src);
+  ending(src, gain);
   src.start(t, Math.random() * 0.5);
   src.stop(t + time + 0.02);
 }
@@ -311,8 +319,7 @@ function voiced(from, to, time, volume, at = 0, vowel = [700, 1150]) {
   });
   gain.connect(out());
   ends.push(t, t + time);
-  sources.add(osc);
-  osc.onended = () => sources.delete(osc);
+  ending(osc, gain);
   osc.start(t);
   osc.stop(t + time + 0.02);
 }
@@ -320,11 +327,14 @@ function voiced(from, to, time, volume, at = 0, vowel = [700, 1150]) {
 // ---- Sounds ------------------------------------------------------------------
 
 // A muzzle blast: noise pushed hard into a clipper, so it hits like a slap rather than a hiss.
+// (The clipper's curve has an odd number of points, so that the one in the middle is nothing in, nothing out. With
+// an even number there is no point in the middle, and nothing in comes out as a little something: a clipper like
+// that is never silent, so the browser never lets it rest, even after the shot it was made for is long over.)
 let overdrive = null;
 function clipper() {
   if (!overdrive) {
-    overdrive = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) overdrive[i] = Math.tanh(((i / 512) - 1) * 6);
+    overdrive = new Float32Array(1025);
+    for (let i = 0; i < 1025; i++) overdrive[i] = Math.tanh(((i / 512) - 1) * 6);
   }
   return overdrive;
 }
@@ -344,8 +354,7 @@ function blast(from, to, time, volume, at = 0) {
   gain.gain.exponentialRampToValueAtTime(0.001, t + time);
   src.connect(filter).connect(drive).connect(gain).connect(out());
   ends.push(t, t + time);
-  sources.add(src);
-  src.onended = () => sources.delete(src);
+  ending(src, gain);
   src.start(t, Math.random() * 0.5);
   src.stop(t + time + 0.03);
 }
@@ -423,7 +432,8 @@ const SHOTS = {
 // room for one.
 const SHOT_GAP = 1 / 18;
 export function playShot(id, rate = 0) {
-  if (!ready() || !spaced('shot', Math.min(SHOT_GAP, rate > 0 ? 1 / rate : SHOT_GAP) * 0.98) || voices() > MAX_VOICES - 8) return;
+  // (a gun slower than that is heard every time it fires: its shots are never closer than half their own spacing)
+  if (!ready() || !spaced('shot', (rate > 18 ? SHOT_GAP : 0.5 / Math.max(1, rate)) * 0.98) || voices() > MAX_VOICES - 8) return;
   if (playSample(id)) return;
   const heard = Math.min(rate, 18), dense = heard > 10;
   placed({ reach: 'near', pan: (Math.random() - 0.5) * 0.3, level: dense ? Math.sqrt(10 / heard) : 1, thin: dense && !spaced('shotTail', 0.16) }, () => {
@@ -553,6 +563,7 @@ export function playSniper() {
   mix.reach = 'far';
   src.connect(filter).connect(drive).connect(gain).connect(out());
   ends.push(t, t + 0.42);
+  ending(src, gain);
   src.start(t);
   src.stop(t + 0.45);
 

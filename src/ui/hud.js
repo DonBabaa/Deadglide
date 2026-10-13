@@ -1,5 +1,6 @@
 // Sandbox HUD (HTML overlay): speed bar, ollie charge, state, trick popups.
 import { config } from '../config.js';
+import { difficulty } from '../systems/difficulty.js';
 
 const $ = (id) => document.getElementById(id);
 const speedFill = $('speed-fill'), speedText = $('speed-text'), chargeFill = $('charge-fill');
@@ -21,7 +22,7 @@ export const hud = {
     hpFill.style.width = `${Math.max(0, (hp / maxHp) * 100)}%`;
     hpFill.classList.toggle('low', hp / maxHp < 0.3);
     hpText.textContent = `${Math.ceil(hp)} / ${maxHp}`;
-    statsEl.textContent = `${this.clock(horde.time)}   Wave ${horde.wave}   ${horde.kills} kills`;
+    statsEl.textContent = `${this.clock(horde.time)}   Wave ${horde.wave}   ${horde.kills} kills${difficulty.tier === 'normal' ? '' : `   ${difficulty.name}`}`;
     const speed = skater.speed;
     speedFill.style.width = `${Math.min(100, (speed / config.skate.maxSpeed) * 100)}%`;
     speedFill.classList.toggle('hot', speed > config.skate.pushMaxSpeed);

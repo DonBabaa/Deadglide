@@ -381,8 +381,8 @@ function guitar(t, note, time, muted) {
     // The amp: everything is driven hard into a clipper together, then through a speaker's worth of filtering.
     amp = ctx.createGain();
     const drive = ctx.createWaveShaper(), top = ctx.createBiquadFilter(), bottom = ctx.createBiquadFilter(), out = ctx.createGain();
-    const curve = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) curve[i] = Math.tanh(((i / 512) - 1) * 9);
+    const curve = new Float32Array(1025);   // (an odd number of points: nothing in, nothing out. See clipper in audio.js)
+    for (let i = 0; i < 1025; i++) curve[i] = Math.tanh(((i / 512) - 1) * 9);
     drive.curve = curve;
     amp.gain.value = 2.5;
     top.type = 'lowpass';
