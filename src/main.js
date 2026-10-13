@@ -26,7 +26,7 @@ import { WEAPONS } from './player/weapons.js';
 import { Score } from './systems/score.js';
 import { Horde } from './enemies/horde.js';
 import { unlockAudio, toggleMusic, playShot, playHit, playKill, playKillNote, playAir, setRide, playHurt, playTrickLand, playPickup, playLevelUp, playChest, playHeadshot, playSwitch, playHeal, playSniper, playPowerup, playShieldHit, playBossThrow, playBones, playClang, setFlame, setSpace, holdMusic, playGhostTell, playGhostThrow, playZone, playVent, playRadio, playAlien, playGolden, playSplat, playBossDeath, playPortal, playDrag } from './fx/audio.js';
-import { stats, resetStats } from './player/stats.js';
+import { stats, resetStats, POWER_IDS } from './player/stats.js';
 import { Xp } from './systems/xp.js';
 import { Loot } from './systems/loot.js';
 import { HotBox } from './systems/hotbox.js';
@@ -202,6 +202,51 @@ function weaponChanged() {
 }
 let freeUpgrades = 0;   // upgrade picks that didn't come from levelling up
 let drinkWait = 0;      // the House: seconds until the barman puts another drink out (0: there is one waiting)
+
+// ---- The run so far, kept ------------------------------------------------------------------------
+// Finish a level and everything you are carrying into the next is written down: where you are going, how hard,
+// your guns, your upgrades, your power-ups, your XP and your score. That is what you come back to:
+//   - if you die in that next level: it starts again with what you arrived with, not with nothing;
+//   - if you leave for the menu, meaning to or not: Continue takes it up from the start of that level;
+//   - if you shut the game and come back another day: it is saved in this browser, and Continue is still there.
+// It is kept until the story is finished, or another run gets as far and takes its place. (Creative runs keep nothing.)
+let kept = null;   // { level, tier, stats, xp: [level, xp], weapons, gun, score: [points, top multiplier, best streak], secondChance }
+try { const saved = JSON.parse(load('run') || 'null'); if (saved && LEVELS[saved.level] && saved.stats && Array.isArray(saved.weapons)) kept = saved; } catch {}
+function keepRun(next) {
+  kept = {
+    level: next, tier: difficulty.tier, stats: JSON.parse(JSON.stringify({ ...stats, frenzy: 0, gravity: 1 })), xp: [xp.level, xp.xp],
+    weapons: [...weapon.owned], gun: weapon.def.id, score: [score.points, score.topMultiplier, score.bestStreak], secondChance,
+  };
+  store('run', JSON.stringify(kept));
+}
+function dropRun() { kept = null; store('run', 'null'); }
+// Put back what was kept (restart(true) then starts the level with it, as it does when you arrive from the one before).
+function takeUpRun() {
+  resetStats();
+  for (const k in kept.stats) if (typeof kept.stats[k] === 'number' && k in stats) stats[k] = kept.stats[k];
+  stats.taken = { ...kept.stats.taken };
+  for (const id of POWER_IDS) if (kept.stats.power?.[id]) Object.assign(stats.power[id], kept.stats.power[id]);
+  powerups.reset();
+  powerups.refill();
+  xp.reset();
+  [xp.level, xp.xp] = kept.xp;
+  weapon.reset();
+  for (const id of kept.weapons) if (WEAPONS[id]) weapon.give(id);
+  if (WEAPONS[kept.gun]) weapon.equip(kept.gun);
+  score.reset();
+  [score.points, score.topMultiplier, score.bestStreak] = kept.score;
+  secondChance = !!kept.secondChance;
+  freeUpgrades = 0;
+  pendingLevels = 0;
+  model.setWeapon(weapon.def);
+  hud.weapons(weapon, WEAPONS);
+}
+// What is being kept, for the menu's Continue button.
+function keptRun() {
+  if (!kept) return null;
+  const powers = POWER_IDS.filter((id) => kept.stats.power?.[id]?.level > 0).length, tier = config.difficulty[kept.tier]?.name;
+  return { level: kept.level, about: [`XP level ${kept.xp[0]}`, `${kept.weapons.length} gun${kept.weapons.length > 1 ? 's' : ''}`, powers ? `${powers} power-up${powers > 1 ? 's' : ''}` : '', kept.tier !== 'normal' && tier ? tier : ''].filter(Boolean).join(' \u00b7 ') };
+}
 
 // Start the run again from scratch (keeping the same Creative loadout, if any).
 // carry: arriving from the level before: your guns, upgrades, power-ups, XP and score come with you.
@@ -379,11 +424,22 @@ function die() {
   const record = !creative && score.finish();   // Creative runs don't count toward your best
   const standing = (creative ? 'Creative mode' : record ? 'new best!' : `best ${score.best.toLocaleString()}`) + (difficulty.tier === 'normal' ? '' : `  ·  ${difficulty.name}`);
   // (the card comes up once he has hit the ground: until then there is nothing between you and him going down)
-  const lost = gold.carried >= 1 ? `${Math.floor(gold.carried).toLocaleString()} gold lost  ·  ` : '', lasted = hud.clock(horde.time);
+  const kept = consolation(), gone = Math.floor(gold.carried) - Math.min(kept, Math.floor(gold.carried)), lasted = hud.clock(horde.time);
+  const lost = `${kept > 0 ? `+${kept.toLocaleString()} gold to spend  ·  ` : ''}${gone >= 1 ? `${gone.toLocaleString()} gold lost  ·  ` : ''}`;
   const card = `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Survived ${lasted}  ·  wave ${horde.wave}  ·  level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
 ${lost}Click to try again`;
   deathCard = { wait: fallen >= DOWN ? 0.35 : 1.5, show: () => { hud.showOverlay('You died', card); offerPost(false); } };
+}
+
+// Dead, and not empty-handed: a share of the gold he was carrying, and a little for every wave he got to, goes in
+// the bank all the same (config.gold.deathKeep, deathPerWave), so that a run that ended badly still buys something
+// toward the next. Returns how much. (Nothing in Creative mode, where nothing counts.)
+function consolation() {
+  if (creative || LEVELS[level].freeRide) return 0;
+  const G = config.gold, kept = Math.floor(gold.carried * G.deathKeep + G.deathPerWave * Math.max(1, horde.wave));
+  if (kept > 0) { bank(kept); shop.refresh(); }
+  return kept;
 }
 
 // The Long Way Down: the collapse caught you. (Click, and the run starts again from the doors.)
@@ -392,8 +448,9 @@ function buried(fell = false) {
   paused = true;
   document.exitPointerLock?.();
   playHurt();
+  const kept = consolation();
   hud.showOverlay(fell ? 'Gone' : 'Buried', `${fell ? 'Off the side of the hill' : 'The hill caught you'} ${Math.round(fell ? 48 - skater.pos.z : descent.state.wall)} m down, after ${hillTime(descent.state.time)}
-Click to run again`);
+${kept > 0 ? `+${kept.toLocaleString()} gold to spend  ·  ` : ''}Click to run again`);
 }
 
 // What Kirky left on the Moon: once you have finished the game, the stub of the last cigarette is still lying where
@@ -823,6 +880,7 @@ function levelComplete() {
   const next = creative ? 0 : LEVELS[level].next;   // (Creative runs are one level at a time)
   if (next && LEVELS[next].locked) reach(next);
   if (!creative) clear(level);   // (it can be started from the menu from now on)
+  if (!creative) { if (next) keepRun(next); else if (kept && kept.level === level) dropRun(); }   // (see keepRun)
   offer(next);
   hud.showOverlay(`${LEVELS[level].name} complete`, `Score ${Math.floor(score.points).toLocaleString()}  ·  ${standing}
 Out in ${hud.clock(runTime)}  ·  XP level ${xp.level}  ·  ${horde.kills} kills  ·  top multiplier x${score.topMultiplier}  ·  best streak ${score.bestStreak}
@@ -927,7 +985,7 @@ function showMenu() {
   gold.update(0, skater);
   hud.gold(null);
   shop.close();
-  menu.show(score.best);
+  menu.show(score.best, keptRun());
   document.getElementById('menu').classList.toggle('finished', finished());
   document.querySelector('#menu-home .tagline').textContent = finished() || moonMenu ? 'The house lost. Skate anyway.' : 'Skate the cemetery. Outlast the night.';
   leaderboard.showMenu();
@@ -958,11 +1016,13 @@ document.getElementById('menu-casino-open').addEventListener('click', (e) => {
 // Start a run. loadout: Creative mode's choices (null: a normal run). chosen: the level. session: riding with friends
 // ({ host } or { join }), or { direct: true } from the editor: straight into the level, without the story that leads to it.
 function startRun(loadout, chosen = 1, session = null) {
+  const taken = !!session?.resume && !!kept && kept.level === chosen;   // (Continue: the run that was kept, taken up again)
   creative = loadout;
   demo = null;
-  setTier(LEVELS[chosen].freeRide ? 'normal' : tierOf(chosen));   // (how hard: as picked for this level on the menu, and for the rest of the run from here)
+  setTier(taken ? kept.tier : LEVELS[chosen].freeRide ? 'normal' : tierOf(chosen));   // (how hard: as picked for this level on the menu, and for the rest of the run from here)
   const direct = !!session?.direct, story = LEVELS[chosen].finale && !loadout && !direct;   // (the House opens with how you got there)
   if (!story) setWorld(chosen);
+  if (taken) takeUpRun();
   ride.leave();
   if (session?.host) ride.host();   // (Free Ride with friends)
   else if (session?.join) ride.join(session.join);
@@ -971,8 +1031,8 @@ function startRun(loadout, chosen = 1, session = null) {
   menu.hide();
   menuScene.setVisible(false);
   model.setVisible(true);
-  if (story) enterHouse(false);
-  else restart();
+  if (story) enterHouse(taken);
+  else restart(taken);
   // The story so far, for where you are starting (not in Creative mode).
   if (direct) { if (LEVELS[chosen].descent) descent.reset(); }
   else if (!loadout && chosen === 1) cutscenes.intro();
@@ -1026,7 +1086,10 @@ function enterHouse(carry) {
 
 function resume() {
   if (won) return deeper ? undefined : showMenu();   // (with the two buttons up, a click anywhere else does nothing)
-  if (dead) restart();
+  if (dead) {   // (try again: with what you arrived with, if you arrived with anything. The House deals you a hand of its own.)
+    if (kept && kept.level === level && !creative && !LEVELS[level].finale) { takeUpRun(); restart(true); }
+    else restart();
+  }
   paused = false;
   hud.hideOverlay();
   if (unlockAudio()) startMusic();
@@ -1039,9 +1102,16 @@ function pause() {
 }
 
 document.getElementById('overlay').addEventListener('click', resume);
-document.getElementById('to-menu').addEventListener('click', (e) => {
+// The way out to the menu. With a run going it takes two clicks (the first only asks): it sits right under where
+// you click to carry on, and one slip was the end of the run.
+let leaving = 0;
+const toMenu = document.getElementById('to-menu');
+toMenu.addEventListener('click', (e) => {
   e.stopPropagation();   // not a "click to resume"
-  showMenu();
+  if (dead || won || creative || LEVELS[level].freeRide || performance.now() < leaving) { leaving = 0; toMenu.textContent = 'Main menu'; return showMenu(); }
+  leaving = performance.now() + 4000;
+  toMenu.textContent = 'Leave this run? Click again';
+  setTimeout(() => { if (performance.now() >= leaving) toMenu.textContent = 'Main menu'; }, 4100);
 });
 canvas.addEventListener('click', () => { if (spectate || (!paused && !preview)) lockPointer(); });
 canvas.addEventListener('mousedown', () => { if (!paused && cutscenes.active) cutscenes.next(); });   // (a click also moves the story on)
@@ -1280,17 +1350,16 @@ function handleEvents() {
       if (e.headshot) playHeadshot();
       if (!e.quiet) hud.hitMarker('kill');
       xp.drop(e.x, e.y, e.z, e.xp);
-      const pact = powerups.onKill();   // (Blood Pact: enough kills heal you)
+      const pact = powerups.onKill(e.x, e.y, e.z);   // (Blood Pact: enough kills heal you)
       if (pact && hp < maxHp()) { run.heal(pact); playHeal(); }
       loot.maybeDrop(e);
       if (!creative) gold.maybeDrop(e, horde.finished);
       const before = score.points;
       const milestone = score.kill(e.score, { elite: e.elite, headshot: e.headshot, airborne: airborne() });
-      if (!e.quiet) {
-        rideFx.kill(e.x, e.y, e.z, e.headshot);
-        playKillNote(score.streak);
-        floatPoints(before, spot.set(e.x, e.y, e.z), 1.6, e.headshot ? 'head' : '', e.headshot ? 'Headshot  ' : '');
-      }
+      // (what a power-up killed is seen to have died as well, and what it was worth: only the note of a streak is the gun's)
+      rideFx.kill(e.x, e.y, e.z, e.headshot);
+      if (!e.quiet) playKillNote(score.streak);
+      floatPoints(before, spot.set(e.x, e.y, e.z), 1.6, e.headshot ? 'head' : '', e.headshot ? 'Headshot  ' : '');
       if (milestone) hud.popup(`${milestone}!`, 'alert');
     } else if (e.type === 'hit') {
       e.headshot ? playHeadshot() : playHit();

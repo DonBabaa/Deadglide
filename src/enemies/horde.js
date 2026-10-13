@@ -56,6 +56,7 @@ const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(
 const limb = new THREE.Matrix4(), out = new THREE.Matrix4();
 const WHITE = new THREE.Color(1, 1, 1), HURT = new THREE.Color(3, 0.6, 0.5), ELITE = new THREE.Color(1.5, 0.75, 0.7);
 const ABLAZE = new THREE.Color(2.4, 1.0, 0.3), FROZEN = new THREE.Color(0.55, 0.95, 1.9);   // tints: on fire, chilled
+const SICK = new THREE.Color(0.75, 1.9, 0.45);   // ...and in TozToxik's gas (player/powerups.js keeps e.sick topped up while it is)
 const BLOB_GRAVITY = 20;
 const BROWN = new THREE.Color(0x5a3416), BONE = new THREE.Color(0xd8d2bf);
 const spot = { x: 0, y: 0, nx: 0, ny: 1 };   // (scratch: a place on the pipe)
@@ -488,6 +489,7 @@ export class Horde {
         continue;
       }
       e.flash = Math.max(0, e.flash - dt * 6);
+      if (e.sick > 0) e.sick -= dt;
       if (e.rise < 1) {   // still clawing out of the ground
         e.rise = Math.min(1, e.rise + dt / (H.riseTime * (e.T.boss ? 4 : 1)));
         if (e.rise >= 1) e.off = 0;   // (out: and off, from a crouch into its run)
@@ -1201,7 +1203,7 @@ export class Horde {
         v.set(e.x, e.y, e.z).addScaledVector(by, -up * e.T.height * e.scale);
         m.makeBasis(bx, by, bz).scale(sc.setScalar(e.scale)).setPosition(v);
       } else m.compose(v, q.setFromEuler(e3), sc.setScalar(e.scale));
-      const color = e.flash > 0 ? HURT : e.fire > 0 ? ABLAZE : e.chill > 0 ? FROZEN : e.elite ? ELITE : WHITE;
+      const color = e.flash > 0 ? HURT : e.fire > 0 ? ABLAZE : e.sick > 0 ? SICK : e.chill > 0 ? FROZEN : e.elite ? ELITE : WHITE;
       if (mo && mo.quad) {
         // A rat: its run, as fast as it is going (its clip is a third of a second to the stride), or stood, if it is going nowhere.
         const still = !(e.speed > 0.4);

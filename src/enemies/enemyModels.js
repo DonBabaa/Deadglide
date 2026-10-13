@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { zombie } from './zombie.js';
 import { skeleton, ghost, bigRat, fineSpider, boneThrower, hamzitus, rubistus, fineBabitus } from './detailed.js';
+import { tube, lump, dirty, noise } from './sculpt.js';
 
 const PI = Math.PI;
 
@@ -488,10 +489,46 @@ function boss2() {
 // in the same order, hinged in the same places) that the horde draws for the ones further away. A monster with no plain
 // version is always drawn in full.
 const QUEEN = { body: 0x23122c, shell: 0x140a1a, leg: 0x1c1024, mark: 0xd0201b, fang: 0xe8e0c8, eye: 0xc17bff };
+// What makes the Spider Queen the Queen (she is the spider again otherwise, four times the size, and from across a
+// tunnel that was only a big spider): a crown of bone on a band of gold, set with stones that burn red; a ridge of
+// spines down her back; fangs to match; and her eggs, carried on her back, alight. Two more parts, which ride on
+// her body: what is solid, and what glows.
+function regalia() {
+  const GOLD = 0xd9a52a, BONE = 0xe8e0c8, OLD = 0x9a8fa8, solid = [], alight = [];
+  const bright = (geo, r, g, b) => { const c = geo.attributes.color; for (let i = 0; i < c.count; i++) { const k = 0.82 + 0.3 * noise(geo.attributes.position.getX(i) * 40, geo.attributes.position.getY(i) * 40, geo.attributes.position.getZ(i) * 40); c.setXYZ(i, r * k, g * k, b * k); } return geo; };
+  // The crown: sat on her carapace, behind her eyes, its points leaning out, the tallest of them in front.
+  const band = [];
+  for (let i = 0; i <= 16; i++) { const t = (i / 16) * PI * 2; band.push([Math.sin(t) * 0.125, 0.615 + 0.012 * Math.cos(t * 4), 0.12 + Math.cos(t) * 0.125]); }
+  solid.push(tube(band, [0.022], GOLD, { sides: 6, steps: 2, caps: false }));
+  for (let i = 0; i < 7; i++) {
+    const t = (i / 7) * PI * 2, sx = Math.sin(t), cz = Math.cos(t), tall = 0.13 + 0.13 * (0.5 + 0.5 * cz);
+    solid.push(tube([[sx * 0.125, 0.62, 0.12 + cz * 0.125], [sx * 0.15, 0.62 + tall * 0.55, 0.12 + cz * 0.15], [sx * 0.19, 0.62 + tall, 0.12 + cz * 0.19]], [0.026, 0.017, 0.003], BONE, { sides: 6, steps: 3 }));
+    const stone = (i + 0.5) / 7 * PI * 2;
+    alight.push(bright(lump(0.02, 0xffffff, [Math.sin(stone) * 0.134, 0.618, 0.12 + Math.cos(stone) * 0.134], [1, 1.25, 1], 8), 2.6, 0.22, 0.3));
+  }
+  // The spines down her back, from behind the crown to her tail.
+  [[-0.15, 0.7], [-0.25, 0.77], [-0.36, 0.82], [-0.48, 0.82], [-0.6, 0.81], [-0.7, 0.76], [-0.79, 0.66]].forEach(([z, y], i) => {
+    const tall = 0.2 - 0.02 * Math.abs(i - 2);
+    solid.push(tube([[0, y - 0.03, z], [0, y + tall * 0.6, z - 0.03], [0, y + tall, z - 0.1]], [0.028, 0.018, 0.003], OLD, { sides: 6, steps: 3 }));
+  });
+  // Her fangs.
+  for (const s of [-1, 1]) solid.push(tube([[s * 0.075, 0.33, 0.48], [s * 0.1, 0.24, 0.6], [s * 0.07, 0.12, 0.66], [s * 0.03, 0.05, 0.62]], [0.034, 0.03, 0.02, 0.004], BONE, { sides: 7, steps: 3 }));
+  // Her eggs: heaped either side of the spines.
+  for (let i = 0; i < 16; i++) {
+    const side = i % 2 ? 1 : -1, out = 0.07 + 0.15 * (((i * 37) % 10) / 10), z = -0.3 - 0.44 * (((i * 53) % 16) / 15), top = 0.8 - 1.6 * out * out - 0.7 * (z + 0.5) * (z + 0.5);
+    alight.push(bright(lump(0.042 + 0.022 * (((i * 7) % 3) / 2), 0xffffff, [side * out, top + 0.025, z], [1, 1.2, 1], 9), 1.05, 1.45, 0.62));
+  }
+  return [dirty(mergeGeometries(solid), { mottle: 0.3, freq: 22, under: 0.35 }), mergeGeometries(alight)];
+}
+export const plainQueen = () => fineSpider(QUEEN);   // (her, without them: what the spider's own model is laid over, part for part, in realMobs.js)
+export function crowned(parts) {
+  const core = parts[0], [solid, alight] = regalia();
+  return [...parts, { ...core, geometry: solid, glow: false }, { ...core, geometry: alight, glow: true }];
+}
 const CRAWLER = { body: 0x2b221c, shell: 0x1b1512, leg: 0x211a15, mark: 0x8a1a16, fang: 0xd8d2bf, eye: 0xff3a2a };
 export const ENEMY_LITE = { shambler, rattler, wraith, rat, crawler, thrower };
 export const ENEMY_PARTS = {
-  shambler: zombie, rattler: skeleton, wraith: ghost, rat: bigRat, crawler: () => fineSpider(CRAWLER), thrower: boneThrower, queen: () => fineSpider(QUEEN),
+  shambler: zombie, rattler: skeleton, wraith: ghost, rat: bigRat, crawler: () => fineSpider(CRAWLER), thrower: boneThrower, queen: () => crowned(fineSpider(QUEEN)),
   boss: hamzitus, boss2: rubistus, boss3: () => fineBabitus(0), boss3b: () => fineBabitus(1), boss3c: () => fineBabitus(2), boss3d: () => fineBabitus(3),
 };
 // (the other zombies: the first one's body, until their own have arrived: see realMobs.js)

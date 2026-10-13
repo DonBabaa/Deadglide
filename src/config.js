@@ -288,6 +288,8 @@ export const config = {
     lifetime: 90,         // seconds before an uncollected coin vanishes
     scale: 0.3,           // everything picked up is worth this much of its face value
     levelBonus: { 2: 1.75 },   // ...times this, by level (1 if not listed): the Catacombs pay better than the Cemetery
+    deathKeep: 0.25,      // die, and this much of what you were carrying is still yours...
+    deathPerWave: 3,      // ...and this much more for every wave you got to: something to spend before the next try
   },
 
   // HotBox Zones: stand in one to earn a power-up (see systems/hotbox.js).
@@ -312,6 +314,8 @@ export const config = {
     weaponWeight: 1.5,    // how often each unowned gun turns up in a chest (ordinary items are 1 to 4)
     pickupRadius: 2.4,    // ride this close to open one
     chestLifetime: 100,    // seconds before an unopened chest disappears
+    chestHeartChance: 0.45, // how often a chest has hearts in it as well as what it holds...
+    chestHearts: 2,        // ...and how many (now and then one more)
   },
 
   // Settings shared by every gun. Each gun's own numbers are in player/weapons.js.

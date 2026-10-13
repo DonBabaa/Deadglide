@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { loadModel } from '../models.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ENEMY_PARTS, ENEMY_LITE } from './enemyModels.js';
+import { ENEMY_PARTS, ENEMY_LITE, crowned, plainQueen } from './enemyModels.js';
 
 const PI = Math.PI;
 // monster -> part -> [how far it swings about x / y / z (rad), where in the stride it is, does it glow]
@@ -77,8 +77,12 @@ export async function loadRealMobs() {
     if (ENEMY_PARTS[name] && numbered[name].fine.length) ENEMY_PARTS[name] = swap(ENEMY_PARTS[name], numbered[name].fine);
     if (ENEMY_LITE[name] && numbered[name].lite.length) ENEMY_LITE[name] = swap(ENEMY_LITE[name], numbered[name].lite);
   }
-  // The Spider Queen is the spider again, in her own colours: violet-black, her mark a brighter red.
-  if (numbered.crawler && ENEMY_PARTS.queen) ENEMY_PARTS.queen = swap(ENEMY_PARTS.queen, numbered.crawler.fine, (r, g, b) => (r > 2.2 * g ? [r * 1.5, g * 0.6, b] : [r * 0.85 + 0.012, g * 0.5, b * 1.9 + 0.02]));
+  // The Spider Queen is the spider again, in her own colours (violet-black, her mark a brighter red), and wearing
+  // what is hers alone: her crown, her spines, her fangs and her eggs (crowned, in enemyModels.js).
+  if (numbered.crawler && ENEMY_PARTS.queen) {
+    const spider = swap(plainQueen, numbered.crawler.fine, (r, g, b) => (r > 2.2 * g ? [r * 1.5, g * 0.6, b] : [r * 0.85 + 0.012, g * 0.5, b * 1.9 + 0.02]));
+    ENEMY_PARTS.queen = () => crowned(spider());
+  }
   for (const name in found) {
     const make = (set) => () => Object.entries(SWINGS[name]).filter(([part]) => set[part]).map(([part, [swing, phase, glow]]) => ({ geometry: plain(set[part]), pivot: set[part].position.toArray(), swing, phase, glow: !!glow }));
     if (!Object.keys(found[name].fine).length) continue;

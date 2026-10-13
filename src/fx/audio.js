@@ -1425,6 +1425,23 @@ export function setRide(speed, grounded = false, grinding = false, sliding = fal
   to(ride.rail.gain, grinding ? (0.16 + speed * 0.3) * v : 0, 0.03);
   to(ride.slide.gain, sliding ? (0.12 + speed * 0.3) * v : 0, 0.04);
 }
+// A power-up has hurt something (player/powerups.js): each has a small sound of its own, and none is heard more
+// than a few times a second however many monsters it is into.
+const POWER_HITS = {
+  fire: [0.09, () => { hiss('bandpass', 900, 260, 0.22, 0.2); tone('sine', 150, 60, 0.16, 0.3); hiss('highpass', 3200, 5200, 0.08, 0.06); }],                   // a whoomph of flame
+  seekers: [0.07, () => { tone('square', 620, 240, 0.06, 0.07); hiss('bandpass', 2400, 900, 0.07, 0.14); tone('sine', 180, 70, 0.12, 0.3); }],                    // bone on bone
+  thorns: [0.16, () => { hiss('highpass', 5200, 2600, 0.05, 0.12); tone('sawtooth', 900, 300, 0.05, 0.05); }],                                                   // a rip
+  lightning: [0.12, () => { hiss('highpass', 7000, 2400, 0.09, 0.22); tone('sawtooth', 1900, 220, 0.11, 0.09); tone('sine', 110, 46, 0.22, 0.4); }],              // a crack
+  frost: [0.3, () => { tone('sine', 2900, 3600, 0.09, 0.05); tone('triangle', 4300, 5200, 0.07, 0.03, 0.03); hiss('highpass', 6000, 9000, 0.06, 0.05); }],         // ice taking hold
+  gas: [0.4, () => { hiss('bandpass', 2600, 1500, 0.18, 0.05); }],                                                                                               // it hisses
+  rain: [0.1, () => { tone('sine', 130, 40, 0.3, 0.6); blast(1800, 160, 0.2, 0.3); hiss('bandpass', 1600, 500, 0.12, 0.16, 0.02); }],                             // a bone lands
+  pact: [0.2, () => { tone('sine', 110, 82, 0.2, 0.22); tone('sine', 220, 330, 0.18, 0.1, 0.12); }],                                                              // a heart, beating once
+};
+export function playPowerHit(kind) {
+  const hit = POWER_HITS[kind];
+  if (!ready() || !hit || busy() || !spaced(`power-${kind}`, hit[0])) return;
+  placed({ reach: 'near', pan: around() * 0.6 }, hit[1]);
+}
 // Leaving the ground with a trick wound up: the air going past the board.
 export function playAir() {
   if (!ready() || !spaced('air', 0.2)) return;

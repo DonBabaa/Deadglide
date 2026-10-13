@@ -1,7 +1,8 @@
 // Loot: chests and hearts.
 // Monsters sometimes leave a chest behind (elites always do). Ride over it to
 // open it and get one random item. They also drop small hearts now and then,
-// which heal a little when you ride through them.
+// which heal a little when you ride through them; and now and then a chest has
+// a couple of hearts in it as well.
 //
 // Add an item by adding an entry to ITEMS:
 //   weight: how often it turns up (bigger = more common)
@@ -162,6 +163,15 @@ export class Loot {
         if (near) {
           opened = rollItem(game);
           opened.use(game);
+          // (now and then there are hearts in it too: they spill out round where it was)
+          if (Math.random() < config.loot.chestHeartChance) {
+            const at = c.mesh.position, n = config.loot.chestHearts + (Math.random() < 0.3 ? 1 : 0);
+            for (let k = 0; k < n; k++) {
+              if (this.hearts.length >= MAX_HEARTS) this.hearts.shift();
+              const turn = Math.random() * 6.283, far = 0.9 + Math.random() * 0.9;
+              this.hearts.push({ x: at.x + Math.cos(turn) * far, y: at.y + 0.7, z: at.z + Math.sin(turn) * far, age: 0 });
+            }
+          }
         }
       }
     }

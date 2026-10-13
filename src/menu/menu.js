@@ -152,9 +152,17 @@ $('menu-play').addEventListener('click', () => {
   onStart?.(creative ? { weapons: [...loadout.weapons], upgrades: { ...loadout.upgrades }, powers: { ...loadout.powers }, monsters: loadout.monsters, noDamage: loadout.noDamage } : null, level);
 });
 
+// Continue: the run that was kept (main.js: keepRun), taken up at the level it had got to.
+let kept = null;
+$('menu-continue').addEventListener('click', () => { if (kept) onStart?.(null, kept.level, { resume: true }); });
+
 export const menu = {
   onStart(callback) { onStart = callback; },
-  show(best) {
+  // best: your best score. run: the run that is being kept for you, if there is one ({ level, about }).
+  show(best, run = null) {
+    kept = run;
+    $('menu-continue').classList.toggle('hidden', !run);
+    if (run) $('menu-continue-desc').textContent = `${LEVELS[run.level].name} \u00b7 ${run.about}`;
     // On the list: the first level, Free Ride, every level you have finished; and the Long Way Down as soon as the House
     // is beaten (so that falling on the hill does not mean killing Babitus all over again).
     for (const n in LEVELS) $(`level-${n}`).classList.toggle('hidden', !(ALL || +n === 1 || LEVELS[n].freeRide || profile.cleared.includes(+n) || (LEVELS[n].descent && profile.cleared.includes(4))));
