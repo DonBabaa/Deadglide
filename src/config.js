@@ -274,6 +274,7 @@ export const config = {
     minBet: 10,
     maxBet: 500,
     walkSpeed: 4.2,       // metres per second on foot
+    sprintSpeed: 8.4,     // ...and flat out, with Shift held
     turnRate: 2.4,        // radians per second with A / D
   },
 

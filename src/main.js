@@ -1598,7 +1598,7 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
     }
     // The House: every so often the barman puts a drink out. Ride past the bar to take it.
     if (LEVELS[level].finale && horde.boss) {
-      const bar = houseSpot([HOUSE.bar.x + 2, HOUSE.bar.z]);
+      const bar = houseSpot([HOUSE.bar.x + 2 * HOUSE.bar.out, HOUSE.bar.z]);
       if (drinkWait > 0 && (drinkWait -= dt) <= 0) { arena.houseDrink(true); hud.popup('A drink is on the bar', 'pending'); }
       if (drinkWait <= 0 && Math.hypot(skater.pos.x - bar.x, skater.pos.z - bar.z) < 5) {
         drinkWait = config.house.drinkEvery;

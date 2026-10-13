@@ -1158,8 +1158,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         const ground = heightAt(b.x, b.z), k = (a, len) => smooth((t - a) / len);
         let lines = 0;
         if (t < CUTS[1]) {            // 1: under the great chandelier, looking up as it swings
-          eye.set(HOUSE.x + 3 * Math.sin(t * 2), 5, HOUSE.z + 9);
-          target.set(HOUSE.x, 22, HOUSE.z);
+          eye.set(HOUSE.x + HOUSE.light.x + 3 * Math.sin(t * 2), 5, HOUSE.z + HOUSE.light.z + 9);   // (it hangs over his table)
+          target.set(HOUSE.x + HOUSE.light.x, 21, HOUSE.z + HOUSE.light.z);
           view(64 - 26 * k(0, 0.25), 0.05);
         } else if (t < CUTS[2]) {     // 2: up him, from his shoes to his face
           // (it ends level with his face, and square on to it, wherever his stance has it: b.eyesAt)
@@ -1262,10 +1262,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           eye.copy(target).addScaledVector(dir, wide * 0.7 + (2.4 - 0.4 * k(0, 1.5)) * BIG(body)).addScaledVector(side, 0.5);
           view(22, 0.006);
         } else if (t < CUTS[2]) {     // 2: the wheel, turning: zero
-          // (From over its rim, round it and in on the green pocket. Not from straight above: the great chandelier
-          // hangs there, and all that can be seen through it is its own light.)
+          // (From over its rim, round it and in on the green pocket.)
           const turn = (t - 1.5) * 0.5, zero = Math.PI * (1 / 37 - 1), out = HOUSE.pit.r * 0.62;
-          target.set(HOUSE.x + Math.cos(zero) * out, 0, HOUSE.z + Math.sin(zero) * out);
+          target.set(HOUSE.x + HOUSE.pit.x + Math.cos(zero) * out, 0, HOUSE.z + HOUSE.pit.z + Math.sin(zero) * out);
           target.y = heightAt(target.x, target.z);
           eye.set(target.x + Math.cos(zero + 0.5 + turn) * 13, target.y + 9.5, target.z + Math.sin(zero + 0.5 + turn) * 13);
           view(52 - 24 * k(1.5, 0.9), 0.01);
@@ -1277,7 +1276,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           view(54 - 8 * k(2.5, 1.4), 0.05 + 0.2 * k(2.5, 1.4));
           if (there && t >= nextPop) { nextPop = t + 0.3 - 0.2 * k(2.5, 1.4); horde.gore(body, 10, 1); playBossPop(); }
         } else {                      // 4: the doors, and the room starting to shake
-          eye.set(HOUSE.x + 4, 3.2, HOUSE.z + 26 + 3 * k(3.9, 1.6));
+          eye.set(HOUSE.x + 4, 3.2, HOUSE.z + HOUSE.doors.z - 30 + 3 * k(3.9, 1.6));
           target.set(p.x, p.y + 4, p.z);
           view(52, 0.12);
         }

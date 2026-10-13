@@ -678,8 +678,59 @@ export function attachBody(model) {
     spark.scale.setScalar(0.045 * L.struck * (0.7 + 0.3 * Math.sin(now * 90)));
   };
   const smoothstep = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
+  // ---- What he is smoking, out of his mouth ----
+  // model.pluck(taken), said every frame it is wanted: his other hand takes what he is smoking out of his mouth and
+  // holds it out of the way, stood on end in front of that shoulder (as high: where it can be seen), while something else goes there (a glass).
+  // taken: 0 in his mouth, his hand wherever it was; 0.5 his fingers on it; 1 held aside. Run back down, he puts it
+  // back. model.mouthWorld(out): where his mouth is, whether or not it is in it.
+  let plucked = null;
+  const home = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: 1, kept: false }, heldQ = new THREE.Quaternion(), heldZ = new THREE.Vector3(), heldAt = new THREE.Vector3(), heldG = new THREE.Vector3();
+  model.pluck = (taken) => { plucked = { taken, at: performance.now() }; };
+  model.mouthWorld = (out) => (home.kept ? model.cig.parent.localToWorld(out.copy(home.p)) : model.cig.getWorldPosition(out));
+  const putBack = () => { const s = model.cig; if (s && home.kept && !smokeMoved) { s.position.copy(home.p); s.quaternion.copy(home.q); s.scale.setScalar(home.s); s.updateMatrixWorld(true); } };
+  const holdSmoke = (P) => {
+    const smoke = model.cig, holder = smoke.parent, rise = smoothstep(P.taken / 0.45), away = smoothstep((P.taken - 0.5) / 0.5);
+    // (where it lives: in his mouth. A costume puts it in its own every frame; his own stays where it was put.)
+    if (home.kept && !smokeMoved) putBack(); else { home.p.copy(smoke.position); home.q.copy(smoke.quaternion); home.s = smoke.scale.x; home.kept = true; }
+    holder.updateWorldMatrix(true, false);
+    smoke.updateMatrixWorld(true);
+    root.getWorldQuaternion(q2);
+    litUp.set(0, 1, 0).applyQuaternion(q2);
+    heldZ.set(0, 0, 1).applyQuaternion(q2);   // (the way he faces)
+    bones.upperarm_r.getWorldPosition(S);
+    litOut.copy(S).sub(bones.upperarm_l.getWorldPosition(w)).normalize();   // (to the side that arm is on)
+    bones.hand_r.getWorldPosition(litH);
+    smoke.getWorldPosition(litE);     // (the end of it that is in his mouth)
+    smoke.getWorldQuaternion(q3);     // (and how it lies there)
+    // Held aside: in front of that shoulder, stood on end: its lit end up, and tipped away from him.
+    heldAt.copy(S).addScaledVector(heldZ, 0.3).addScaledVector(litUp, 0.03).addScaledVector(litOut, 0.09);
+    dir.set(0, 0, 1).applyQuaternion(q3);
+    v.copy(litUp).addScaledVector(heldZ, 0.4).addScaledVector(litOut, 0.3).normalize();
+    heldQ.setFromUnitVectors(dir, v).multiply(q3);
+    q3.slerp(heldQ, away);
+    litE.lerp(heldAt, away).addScaledVector(heldZ, 0.07 * Math.sin(Math.PI * away));   // (out forwards, clear of his face, and round)
+    if (away > 0) {
+      smoke.position.copy(holder.worldToLocal(v.copy(litE)));
+      smoke.quaternion.copy(holder.getWorldQuaternion(heldQ)).invert().multiply(q3);
+      smoke.updateMatrixWorld(true);
+    }
+    // His fingers on it: a third of the way along it, his hand under and outside that.
+    heldG.set(0, 0, 0.04).applyQuaternion(q3).add(litE);
+    litT.copy(heldG).addScaledVector(litUp, -0.03).addScaledVector(litOut, 0.05).addScaledVector(v.copy(S).sub(heldG).setY(0).normalize(), 0.03);
+    if (rise < 0.999) litT.lerpVectors(litH, litT, rise);   // (on its way up: from wherever it was)
+    const far = Math.min(S.distanceTo(litT), (L1 + L2) * 0.995), along = (L1 * L1 - L2 * L2 + far * far) / (2 * far), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+    dir.copy(litT).sub(S).normalize();
+    pole.copy(litUp).multiplyScalar(-1).addScaledVector(litOut, 0.6);
+    pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+    E.copy(S).addScaledVector(dir, along).addScaledVector(pole, off);
+    point(bones.upperarm_r, bones.lowerarm_r, E);
+    point(bones.lowerarm_r, bones.hand_r, litT);
+  };
   late.updateMatrixWorld = () => {
     if (!body.visible || !L1) return;
+    const plucking = plucked && plucked.taken > 0.01 && performance.now() - plucked.at < 300 ? plucked : null;
+    if (!plucking && home.kept) { putBack(); home.kept = false; }
+    if (plucking && model.cig) { if (lighter) lighter.visible = false; return holdSmoke(plucking); }
     const lighting = lit && lit.raised > 0.01 && performance.now() - lit.at < 300 ? lit : null;
     if (lighter) lighter.visible = false;
     if (lighting && lighter && model.ember) return holdLighter(lighting);
@@ -699,14 +750,18 @@ export function attachBody(model) {
     point(bones.lowerarm_r, bones.hand_r, T);
   };
   // ---- A drag ----
-  // model.toMouth(w): the hand his gun is in, brought to what he is smoking (w: 0..1 of the way from wherever it
-  // is). His arm is bent to reach: shoulder, elbow (down, and out to that side), and his fingers on it.
+  // model.toMouth(w, glass): the hand his gun is in, brought to what he is smoking (w: 0..1 of the way from wherever
+  // it is), or, with `glass` a place in the world, to that: his fingers round a glass, wherever it has got to. His
+  // arm is bent to reach: shoulder, elbow (down, and out to that side), and his fingers on it.
   const mouthT = new THREE.Vector3(), mouthU = new THREE.Vector3(), mouthX = new THREE.Vector3(), mouthY = new THREE.Vector3(), mouthQ = new THREE.Quaternion(), mouthM = new THREE.Matrix4();
-  model.toMouth = (amount) => {
+  model.toMouth = (amount, glass = false) => {
     if (!model.cig || amount <= 0.001) return;
     const A = model.foreArm.position.length(), B = 0.29 + 0.07, Sm = model.gunArm.position;   // (upper arm; forearm, and his hand to its fingers)
     root.updateWorldMatrix(true, false);
-    root.worldToLocal(model.cig.localToWorld(mouthT.set(0, -0.012, 0.035)));   // (a third of the way along it, and just under)
+    // (what he is smoking: a third of the way along it, and just under. A glass: his hand is round it, out in
+    // front of his chin, its rim at his lips.)
+    if (glass && glass.isVector3) root.worldToLocal(mouthT.copy(glass));
+    else root.worldToLocal(model.cig.localToWorld(glass ? mouthT.set(0.03, -0.05, 0.095) : mouthT.set(0, -0.012, 0.035)));
     const far = Math.min(mouthT.distanceTo(Sm), (A + B) * 0.995), tilt = Math.acos(Math.max(-1, Math.min(1, (A * A + far * far - B * B) / (2 * A * far)))), bend = Math.PI - Math.acos(Math.max(-1, Math.min(1, (A * A + B * B - far * far) / (2 * A * B))));
     dir.copy(mouthT).sub(Sm).normalize();
     // (his elbow: down, and out to the side that arm hangs on; his forearm bends away from that)

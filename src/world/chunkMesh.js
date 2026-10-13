@@ -476,6 +476,7 @@ export function createChunkBuilder() {
       else if (p.type === 'chapel') group.add(buildChapel(p, mat));
       else if (p.type === 'lamp') group.add(buildLamp(p, mat));
       else if (p.type === 'brazier') group.add(buildBrazier(p, mat));
+      else if (p.type === 'pillar') continue;   // (the House draws its own columns: world/houseScene.js)
       else {
         group.add(buildProp(p, c.level === 4 ? casino : c.level === 2 ? under : c.level === 3 ? (p.kind === 'slab' ? { ...lunar, ramp: lunar.slab, tomb: lunar.slab } : lunar) : mat, c));
         const extras = p.kind && lunarExtras(p);

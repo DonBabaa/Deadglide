@@ -16,8 +16,8 @@ kirky_anims.glb, kirky_anims.json — how Kirky moves
 mob_anims.json — how the monsters move
 
 Motion capture from Mixamo (https://www.mixamo.com, Adobe): riding, pushing, walking, running, sitting, aiming,
-falling, dying, sitting down, dancing, waving, cheering (stood, getting up, and sat) and being drunk (stood, walking,
-backing up, turning) for Kirky; the zombies' sprint, attack, scream, climb and death, the mutant's walk, roar,
+falling, dying, sitting down, dancing, waving, cheering (stood, getting up, and sat), being drunk (stood, walking,
+backing up, turning), sprinting and jumping (from a standstill, and on the run) for Kirky; the zombies' sprint, attack, scream, climb and death, the mutant's walk, roar,
 swipe, turns, jump and jump attack for the bosses, a throw, a card deal, a man going through something with both
 hands (Goyitus Ultimus, reaching), and the one clip each that Hamzitus's and Rubistus's own characters came with.
 Refitted to the game's own skeletons and parts by tools/build_anims.py and tools/build_mob_anims.py. One clip of Kirky's (the ollie) is from the skater model
@@ -38,6 +38,13 @@ lighter.glb — Kirky's lighter
 (http://creativecommons.org/licenses/by/4.0/). Source: https://sketchfab.com/3d-models/lighter-62160b39425049e48efc57e13efd004d
 Changed for the game by tools/build_lighter.py: made the size of a lighter, its faces cut finer, and the colours of
 its picture put on its points (its pictures themselves are not used).
+
+barman.glb — who tends the bar in the players' casino
+
+A Mixamo character (a woman in a dark suit: "Ch07") and Mixamo's "Bartending" animation, downloaded together from
+https://www.mixamo.com (Adobe) by the project's owner: free to use in a game under Mixamo's terms, not to be
+redistributed as raw assets on their own. Changed for the game by tools/build_staff.py: her pictures cut down, only
+her colours and her bumps kept.
 
 rat.glb — the rat
 

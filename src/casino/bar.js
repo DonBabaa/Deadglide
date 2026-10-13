@@ -1,8 +1,9 @@
-// The bar: a skeleton barman in a waistcoat, and the drinks he makes.
+// The bar: who tends it (a woman in a dark suit, a towel over her arm: `barman` throughout, as the job is called
+// in the code), and the drinks she makes.
 //
-// Sit on a stool and order, and he puts on a show: glides over, bows, shakes
-// or spins the bottle, tosses it in the air and catches it, sets a glass down,
-// pours, drops in a garnish, slides the glass across the marble and bows again.
+// Sit on a stool and order, and she puts on a show: comes down the bar, goes under it for what she needs and comes up
+// in your face with it, shakes it or spins the bottle, tosses it in the air and catches it, sets a glass down, pours,
+// drops in a garnish, slides the glass across the marble and bows.
 // Then the drink is yours to drink (room.js lifts it to Kirky's mouth).
 //
 // It is filmed like a cooking cut-in from an arcade game: hard cuts between
@@ -11,7 +12,7 @@
 //
 // room.js owns the room; this file owns everything behind the counter.
 import * as THREE from 'three';
-import { ENEMY_PARTS } from '../enemies/enemyModels.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { playShake, playPour, playClink, playCork, playGlassDown } from '../fx/audio.js';
 
 export const DRINKS = [
@@ -20,12 +21,34 @@ export const DRINKS = [
   { id: 'champagne', name: 'Champagne', price: 40, liquid: 0xf2d27a, tool: 'bottle', bottle: 0x1f4a2a, cork: true },
 ];
 
+// She moves by one long clip of a barman at work (`bartend`, in public/models/barman.glb: tools/build_staff.py), and
+// whatever she is doing is a stretch of it. The show, cut to cut with the camera: [from, to (seconds of the show), the
+// frame of the clip it starts on, the frame it ends on]. (The clip, for whoever changes these: 1-25 stood, his hands
+// on the bar. 37-61 down under it. 61-97 up, and something set down in front of him. 109-133 a bottle fetched from
+// his right. 133-163 poured. 169-205 put back, and down on his left. 217-250 both hands up by his shoulder. 253-277
+// poured again. 283-295 his hands together in front of him. 337-361 pushed across the bar. 361-408 stood again.)
+const SHOW = [
+  [0.0, 0.5, 4, 25],        // coming down the bar
+  [0.5, 0.95, 25, 58],      // down under it for what he needs
+  [0.95, 1.4, 58, 80],      // and up with it, into your face
+  [1.4, 2.35, 0, 0],        // at work (see WORK: it depends what with)
+  [2.35, 3.0, 133, 146],    // the toss
+  [3.0, 3.4, 343, 356],     // a glass, set down
+  [3.4, 4.95, 139, 162],    // the pour
+  [4.95, 5.35, 281, 293],   // the garnish
+  [5.35, 6.05, 337, 361],   // slid across to you
+  [6.05, 6.9, 361, 394],    // and back, with a bow
+];
+const WORK = { shaker: [224, 236], bottle: [212, 232] };   // (the shaker: up by her shoulder, going like the clappers; the bottle: brought up there, spinning by its neck)
+const TALL = 1.18;       // how much bigger than life she is: her hands come to the top of this bar, and she can be seen over it
+const REACH = 0.7;       // how far in front of him the middle of the clip is: where his glass goes
 const MAKE_TIME = 6.9;   // seconds for the whole performance (on its own clock: the toss runs in slow motion)
+export const SERVED = -0.14;     // a served drink: this far along the bar from in front of whoever it is for (by their left hand: the one they drink with)
 export const GLASS_SIZE = 1.6;   // glasses are drawn larger than life so you can see what you're getting
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const span = (t, from, to) => smooth((t - from) / (to - from));   // 0 before `from`, easing to 1 at `to`
 const lerp = (a, b, t) => a + (b - a) * t;
-const v = new THREE.Vector3();
+const v = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), v5 = new THREE.Vector3(), q = new THREE.Quaternion(), q2 = new THREE.Quaternion();
 
 export class Bar {
   // counterY: height of the bar top. serveX: where a served drink sits (in front of the customer). backX: where the barman stands.
@@ -41,32 +64,41 @@ export class Bar {
     const add = (geometry, material, x, y, z, parent) => { const m = new THREE.Mesh(geometry, material); m.position.set(x, y, z); parent.add(m); return m; };
     this.add = add;
 
-    // ---- The barman: a skeleton in a black waistcoat and bow tie, a towel over one arm ----
+    // ---- The barman ----
+    // The clip she moves by was made stood at a bar: the middle of it is where her glass goes, and its top is as high
+    // as this one's. So `barman` (what she is in) is put where the glass goes, turned to face the room, and she stands
+    // behind that. Her head, her back, and the towel over her arm are turned on top of the clip: see pose().
     const b = (this.barman = new THREE.Group());
-    b.rotation.order = 'YXZ';       // (turn to face the room first, then bow)
     b.rotation.y = -Math.PI / 2;
-    b.position.set(backX, 0, homeZ);
-    b.scale.setScalar(1.12);   // (a tall fellow: he has to be seen over the bar)
-    const bone = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide });
-    const eyes = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    this.arms = [];
-    for (const part of ENEMY_PARTS.rattler()) {
-      const m = new THREE.Mesh(part.geometry, part.glow ? eyes : bone);
-      m.position.set(...part.pivot);
-      b.add(m);
-      if (part.pivot[1] > 1.4 && part.pivot[0] !== 0) this.arms.push(m);   // (they hinge at the shoulder; the hand is at 0, -0.42, 0.3)
-    }
-    this.arms.sort((p, q) => p.position.x - q.position.x);   // [his right, his left]
-    const black = std(0x111114, 0.5, { side: THREE.DoubleSide }), white = std(0xf3f0e8, 0.7), red = std(0xa3101a, 0.4);
-    add(new THREE.CylinderGeometry(0.17, 0.15, 0.36, 14, 1, true, 0.45, Math.PI * 2 - 0.9).scale(1, 1, 0.8), black, 0, 1.28, 0.01, b);   // waistcoat, open down the front
-    add(new THREE.BoxGeometry(0.1, 0.34, 0.02), white, 0, 1.29, 0.125, b);                                                             // shirt front
-    for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.045, 0.07, 4).rotateZ(s * Math.PI / 2), red, s * 0.04, 1.49, 0.13, b);        // bow tie
-    for (const y of [1.2, 1.28, 1.36]) add(new THREE.SphereGeometry(0.011, 6, 5), this.mats.gold, 0.04, y, 0.137, b);                   // waistcoat buttons
-    add(new THREE.BoxGeometry(0.11, 0.012, 0.012), black, 0, 1.6, 0.15, b);                                                             // a thin moustache...
-    for (const s of [-1, 1]) add(new THREE.TorusGeometry(0.02, 0.006, 4, 8, Math.PI).rotateZ(s > 0 ? 0 : Math.PI), black, s * 0.07, 1.607, 0.15, b);   // ...curled at the ends
-    add(new THREE.BoxGeometry(0.06, 0.22, 0.012), white, 0, -0.3, 0.3, this.arms[1]);                                                   // the towel over his left forearm
+    b.position.set(backX - REACH, 0, homeZ);
+    b.scale.setScalar(TALL);
+    this.bones = null;
+    this.headAt = new THREE.Vector3(backX, 1.6, homeZ);   // where her face is (for whoever points a camera at it)
+    this.frame = 1;
+    this.fading = 0;
+    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/barman.glb`).then((gltf) => {
+      const body = gltf.scene;
+      body.traverse((o) => {
+        if (!o.isMesh) return;
+        o.frustumCulled = false;   // (her box is where she stood to be made, not where the clip has her)
+        if (o.material.transparent) Object.assign(o.material, { transparent: false, alphaTest: 0.45, depthWrite: true, side: THREE.DoubleSide });   // (her hair and lashes: cut out, not blended: they sort themselves that way)
+      });
+      b.add(body);
+      this.mixer = new THREE.AnimationMixer(body);
+      // (two of the one clip: what she is doing, and what she was doing a moment ago, fading out under it)
+      this.decks = [gltf.animations[0], gltf.animations[0].clone()].map((clip) => { const action = this.mixer.clipAction(clip); action.play(); action.paused = true; return action; });
+      const bone = (name) => { let found = null; body.traverse((o) => { if (!found && o.isBone && o.name.endsWith(name) && /^mixamorig\d*$/.test(o.name.slice(0, -name.length))) found = o; }); return found; };   // (Mixamo's bones: `mixamorig`, or that and a number, then what it is)
+      this.bones = { head: bone('Head'), neck: bone('Neck'), spine: bone('Spine'), chest: bone('Spine2'), right: bone('RightHand'), foreR: bone('RightForeArm'), armR: bone('RightArm'), armL: bone('LeftArm'), foreL: bone('LeftForeArm') };
+    }).catch((error) => console.warn('The bar: nobody to tend it.', error));
+    const white = std(0xf3f0e8, 0.7, { side: THREE.DoubleSide });
+    // A towel over her left forearm. (It goes where that bone has got to, every frame: see dress().)
+    this.towel = new THREE.Group();
+    add(new THREE.BoxGeometry(0.095, 0.012, 0.1), white, 0, 0.045, 0, this.towel);                 // (over the top of her arm...)
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.095, 0.19, 0.012), white, 0, -0.05, side * 0.05, this.towel);   // (...and hanging either side of it)
+    this.towel.visible = false;
+    scene.add(this.towel);
 
-    // What he works with: a shaker and a bottle (one shown at a time, in his right hand), and the stream as he pours.
+    // What she works with: a shaker and a bottle (one shown at a time, in his right hand), and the stream as he pours.
     this.shaker = new THREE.Group();
     add(new THREE.CylinderGeometry(0.036, 0.03, 0.15, 12), this.mats.steel, 0, 0, 0, this.shaker);
     add(new THREE.CylinderGeometry(0.02, 0.036, 0.05, 12), this.mats.steel, 0, 0.1, 0, this.shaker);
@@ -77,11 +109,13 @@ export class Bar {
     add(new THREE.CylinderGeometry(0.012, 0.03, 0.07, 12), this.bottleGlass, 0, 0.125, 0, this.bottle);
     add(new THREE.CylinderGeometry(0.013, 0.013, 0.05, 8), this.bottleGlass, 0, 0.18, 0, this.bottle);
     add(new THREE.CylinderGeometry(0.036, 0.036, 0.07, 12), white, 0, -0.01, 0, this.bottle);   // label
+    this.tools = [this.shaker, this.bottle];
     this.stream = add(new THREE.CylinderGeometry(0.006, 0.006, 1, 6).translate(0, -0.5, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), 0, 0, 0, scene);
     this.cork = add(new THREE.CylinderGeometry(0.012, 0.014, 0.03, 8), std(0xc9a26a, 0.9), 0, 0, 0, scene);
     this.sparkle = add(new THREE.RingGeometry(0.05, 0.07, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true, toneMapped: false }), 0, 0, 0, scene);
     for (const thing of [this.shaker, this.bottle]) scene.add(thing);
     scene.add(b);
+    this.grip = new THREE.Vector3(backX - 0.4, counterY + 0.25, homeZ);   // where his right hand has got to (what he is working with is in it)
 
     this.toolAt = new THREE.Vector3();   // where the shaker or bottle is (for the camera)
     this.time = 0;
@@ -112,19 +146,19 @@ export class Bar {
     const show = this.show;
     if (!show) return null;
     const t = show.t, z = show.z, { counterY, serveX, backX } = this.at, g = show.glass.position, tool = this.toolAt;
-    const head = 1.86, at = (x, y, dz) => new THREE.Vector3(x, y, z + dz);
+    const head = this.headAt.y + 0.04, at = (x, y, dz) => new THREE.Vector3(x, y, z + dz), face = this.headAt;
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     const flash = Math.max(pop(2.98), pop(4.95), pop(6.05) * 0.8);
     let s;
     if (t < 0.95) s = { pos: at(backX - 4.0, 2.2, 2.9), look: at(backX - 0.7, 1.45, -0.6), fov: 56 - 8 * span(t, 0, 0.95) };                    // wide: he comes down the bar
-    else if (t < 1.4) s = { pos: at(backX - 1.9, 1.72, 0.4), look: at(backX, head - 0.06, 0), fov: 46 - 24 * span(t, 0.95, 1.12), lines: 1 };       // snap zoom: his face
-    else if (t < 2.35) s = { pos: at(backX - 0.75, head - 0.05, -0.85), look: tool, fov: 34, shake: 0.012, lines: 0.6 };                      // tight on his hands at work
-    else if (t < 3.0) s = { pos: at(backX - 0.95, counterY - 0.05, 0.55), look: tool.clone().lerp(at(backX, head, 0), 0.25), fov: 44 };         // from below: the toss, in slow motion
+    else if (t < 1.4) s = { pos: at(backX - 2.25, 1.62, 0.42), look: face.clone().setY(face.y * 0.6 + 0.66), fov: 46 - 22 * span(t, 0.95, 1.12), lines: 1 };       // snap zoom: up he comes, into your face
+    else if (t < 2.35) s = { pos: at(backX - 1.35, head - 0.1, 1.0), look: tool.clone().lerp(face, 0.5), fov: 38, shake: 0.012, lines: 0.6 };                      // tight on his hands at work
+    else if (t < 3.0) s = { pos: at(backX - 1.5, counterY + 0.12, 0.6), look: tool.clone().lerp(face, 0.3), fov: 46 };         // from below: the toss, in slow motion
     else if (t < 3.4) s = { pos: at(g.x - 0.3, counterY + 0.55, 0.42), look: g.clone().setY(counterY + 0.08), fov: 30 };                       // the glass goes down
     else if (t < 4.95) s = { pos: at(g.x - 0.8 + 0.12 * span(t, 3.4, 4.9), counterY + show.glass.lip * 0.9, 0.62), look: g.clone().setY(counterY + show.glass.lip * 0.62), fov: 30 - 6 * span(t, 3.6, 4.8) };   // counter level: the pour
     else if (t < 5.35) s = { pos: at(g.x - 0.55, counterY + show.glass.lip + 0.3, 0.5), look: g.clone().setY(counterY + show.glass.lip * 0.8), fov: 26, lines: 0.5 };   // the garnish
     else if (t < 6.05) s = { pos: new THREE.Vector3(g.x - 0.12, counterY + 0.1, g.z + 0.62), look: g.clone().setY(counterY + 0.12), fov: 34 };    // travelling with the glass down the marble
-    else s = { pos: at(serveX - 0.6, counterY + 0.24, 0.5), look: at(backX - 0.5, counterY + 0.32, -0.3), fov: 42 - 6 * span(t, 6.05, 6.9), title: show.drink.name };   // your drink, and his bow behind it
+    else s = { pos: at(serveX - 0.6, counterY + 0.24, 0.38 + SERVED), look: at(backX - 0.5, counterY + 0.32, -0.42 + SERVED), fov: 42 - 6 * span(t, 6.05, 6.9), title: show.drink.name };   // your drink, and his bow behind it
     return { shake: 0, lines: 0, title: '', ...s, flash };
   }
 
@@ -139,7 +173,7 @@ export class Bar {
       g.liquid = fill(new THREE.CylinderGeometry(0.045, 0.041, 0.06, 14).translate(0, 0.03, 0), 0.012);
       g.garnish = add(new THREE.BoxGeometry(0.035, 0.035, 0.035), new THREE.MeshStandardMaterial({ color: 0xeaf6ff, roughness: 0.05, transparent: true, opacity: 0.7 }), 0.005, 0.055, 0, g);   // an ice cube
       g.garnish.rotation.set(0.4, 0.5, 0.2);
-      g.lip = 0.11;
+      g.lip = 0.11; g.rim = 0.05; g.grip = [0.06, 0.047];
     } else if (drink.id === 'martini') {
       add(new THREE.CylinderGeometry(0.045, 0.045, 0.006, 14), mats.glass, 0, 0.003, 0, g);
       add(new THREE.CylinderGeometry(0.005, 0.005, 0.1, 6), mats.glass, 0, 0.055, 0, g);
@@ -151,19 +185,21 @@ export class Bar {
       olive.position.set(0.012, 0.15, 0);
       g.add(olive);
       g.garnish = olive;
-      g.lip = 0.175;
+      g.lip = 0.175; g.rim = 0.072; g.grip = [0.062, 0.006];
     } else {
       add(new THREE.CylinderGeometry(0.04, 0.04, 0.006, 14), mats.glass, 0, 0.003, 0, g);
       add(new THREE.CylinderGeometry(0.005, 0.005, 0.09, 6), mats.glass, 0, 0.05, 0, g);
       add(new THREE.CylinderGeometry(0.03, 0.016, 0.15, 14, 1, true), mats.glass, 0, 0.17, 0, g);
       g.liquid = fill(new THREE.CylinderGeometry(0.027, 0.015, 0.125, 14).translate(0, 0.0625, 0), 0.097);
       g.garnish = add(new THREE.SphereGeometry(0.017, 8, 6).scale(1, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0xc8201b, roughness: 0.5 }), 0.03, 0.245, 0, g);   // a strawberry on the rim
-      g.lip = 0.245;
+      g.lip = 0.245; g.rim = 0.03; g.grip = [0.055, 0.006];
     }
     g.garnish.visible = false;
     g.drink = drink;
     g.level = 0;
-    g.lip *= GLASS_SIZE;
+    g.lip *= GLASS_SIZE;   // (lip: how high its rim is. rim: how wide, from its middle. grip: how high a hand takes hold of it, and how far from its middle)
+    g.rim *= GLASS_SIZE;
+    g.grip = g.grip.map((n) => n * GLASS_SIZE);
     g.scale.setScalar(GLASS_SIZE);
     return g;
   }
@@ -180,77 +216,77 @@ export class Bar {
 
   update(dt) {
     this.time += dt;
-    const b = this.barman, [right, left] = this.arms, { counterY, serveX, backX, homeZ } = this.at;
+    const b = this.barman, { counterY, serveX, backX, homeZ } = this.at;
     const show = this.show;
+    this.fading = Math.max(0, this.fading - dt);
 
-    // At rest: at his post, swaying a little, polishing the air with his towel arm.
-    let rightArm = 0.12, leftArm = -0.75 + Math.sin(this.time * 3) * 0.12, bow = 0, turn = Math.sin(this.time * 0.5) * 0.25;
+    // At rest: at his post, his hands on the bar, looking up and down it; and every so often a wipe of it.
+    let frame = 9 + 7 * Math.sin(this.time * 0.8), fade = 0.3, bow = 0, turn = Math.sin(this.time * 0.5) * 0.3, tilt = 0;
+    { const wipe = (this.time + 6) % 13; if (wipe < 1.7 && !show) frame = 337 + wipe * 30; }
     if (!show) {
       b.position.y = 0;
       if (this.alarmed > 0) {
-        // Someone is about to be sick on his bar. He recoils, shoves a bucket at them, then can't watch.
+        // Someone is about to be sick on his bar. He is down behind it in a flash; up again to shove a bucket at them;
+        // and then he can't watch.
         const e = this.alarmLength - (this.alarmed -= dt);
         b.position.z = lerp(b.position.z, this.alarmZ, 1 - Math.exp(-12 * dt));
-        if (e < 1.0) { rightArm = leftArm = -2.3 + Math.sin(this.time * 30) * 0.12; bow = -0.25; b.position.y = Math.abs(Math.sin(this.time * 18)) * 0.03; }
-        else if (e < 2.8) { rightArm = leftArm = -1.15; bow = 0.3 * (1 - span(e, 1.2, 1.7)); }
-        else { turn = 1.5 * span(e, 2.8, 3.0); rightArm = -2.5; leftArm = -0.4; }   // turned away, an arm over his eye sockets
+        turn = 0;
+        if (e < 1.0) { frame = lerp(40, 56, span(e, 0, 0.3)) + Math.sin(this.time * 30) * 1.2; fade = 0.12; }
+        else if (e < 2.8) { frame = lerp(337, 359, span(e, 1.0, 1.45)); fade = 0.15; }
+        else { frame = 229; turn = 1.5 * span(e, 2.8, 3.0); tilt = 0.25; }   // turned away, a claw up between him and it
       } else if (this.scolding > 0) {
-        // A customer has had enough: he comes over, shakes his skull and wags a finger.
+        // A customer has had enough: he comes over, shakes his head and wags a claw.
         this.scolding -= dt;
         b.position.z = lerp(b.position.z, this.scoldZ, 1 - Math.exp(-9 * dt));
-        turn = Math.sin(this.time * 13) * 0.35;
-        leftArm = -1.9 + Math.sin(this.time * 16) * 0.22;
-        rightArm = 0.3;
+        turn = Math.sin(this.time * 13) * 0.4;
+        frame = 131 + Math.sin(this.time * 16) * 3;
+        fade = 0.2;
       } else b.position.z = lerp(b.position.z, homeZ, 1 - Math.exp(-2 * dt));
+      this.pose(frame, fade, bow, turn, tilt);
     } else {
       const t = (show.t += dt * (show.t > 2.35 && show.t < 2.95 ? 0.35 : 1)), { drink, glass } = show,   // (the toss hangs in the air)
       tool = drink.tool === 'shaker' ? this.shaker : this.bottle;
       const once = (name, at, run) => { if (t >= at && !show.marks[name]) { show.marks[name] = true; run(); } };
-      turn = 0;
 
-      // 0.0 - 1.0  He glides down the bar to you and bows.
+      // He comes down the bar to you; every cut after that is a stretch of his clip (SHOW), and the cut hides the join.
       b.position.z = lerp(b.position.z, show.z, 1 - Math.exp(-5 * dt));
-      b.position.y = Math.abs(Math.sin(this.time * 9)) * 0.02 * (1 - span(t, 0.6, 1.0));
-      bow = Math.sin(span(t, 0.5, 1.2) * Math.PI) * 0.35;
+      b.position.y = Math.abs(Math.sin(this.time * 9)) * 0.02 * (1 - span(t, 0.3, 0.6));
+      const cut = SHOW.find((c) => t < c[1]) || SHOW[SHOW.length - 1], shaking = t > 1.4 && t < 2.3 ? 1 : 0, wobble = Math.sin(this.time * 34) * shaking;
+      const [from, to] = cut[2] ? [cut[2], cut[3]] : WORK[drink.tool] || WORK.bottle;
+      frame = lerp(from, to, drink.tool === 'shaker' && !cut[2] ? 0.5 + 0.5 * wobble : span(t, cut[0], cut[1]));
+      bow = Math.sin(span(t, 6.0, 6.75) * Math.PI) * 0.5;
+      // 3.4 - 4.8  She tips it over the glass and pours: from her side of it, and from as high over its rim as it takes
+      // (her hand is put there: the clip pours into a glass the size glasses are, and these are bigger).
+      const pouring = span(t, 3.3, 3.6) * (1 - span(t, 4.7, 4.95));
+      const glassAt = v3.set(backX - REACH, counterY, show.z);
+      // (and she stands up to it, her eyes on the glass, not bent under her own arm)
+      this.pose(frame, cut === SHOW[0] ? 0.25 : 0, bow - 0.32 * pouring, 0, -0.22 * pouring, pouring > 0 ? v.set(glassAt.x + 0.36, counterY + glass.lip + 0.13, glassAt.z - 0.03) : null, pouring);
 
-      // 1.2 - 2.9  The shaker goes over his shoulder (or the bottle spins in his hand), then up in the air and back into his grip.
-      const working = span(t, 1.1, 1.4) * (1 - span(t, 5.3, 5.6));
+      // What he is working with is in his right hand: the shaker going over his shoulder, or the bottle spun by its
+      // neck; then up in the air and back into his grip.
+      const working = span(t, 0.95, 1.0) * (1 - span(t, 5.3, 5.6));
       tool.visible = working > 0.02;
-      const shaking = t > 1.4 && t < 2.3 ? 1 : 0, wobble = Math.sin(this.time * 34) * shaking;
-      rightArm = lerp(rightArm, -1.75 + wobble * 0.22, working);
-      if (drink.tool === 'shaker') leftArm = lerp(leftArm, -1.6 + wobble * 0.22, span(t, 1.2, 1.4) * (1 - span(t, 2.3, 2.5)));
       if (shaking && this.time - show.shaken > 0.11) { show.shaken = this.time; playShake(); }
       const toss = t > 2.3 && t < 3.0 ? (t - 2.3) / 0.7 : -1;   // 0..1 while it's in the air
-      // 3.4 - 4.8  He tips it over the glass and pours.
-      const pouring = span(t, 3.3, 3.6) * (1 - span(t, 4.7, 4.95));
-      rightArm = lerp(rightArm, -1.05, pouring);
-
-      // Where his hand is, and so where the tool is.
-      b.rotation.set(bow, -Math.PI / 2 + turn, 0);
-      right.rotation.x = rightArm;
-      b.updateMatrixWorld(true);
-      right.localToWorld(v.set(0, -0.42, 0.3));
-      tool.position.copy(v);
+      tool.position.copy(this.grip);
       tool.rotation.set(0, 0, 0);
       tool.scale.setScalar(1.35);
+      if (shaking) tool.position.y += wobble * 0.05;
       if (drink.tool === 'bottle' && t > 1.4 && t < 2.3) tool.rotation.z = (t - 1.4) * 14;   // twirling it by the neck
       if (toss >= 0) {
         tool.position.y += Math.sin(toss * Math.PI) * 0.75;
         tool.rotation.x = toss * Math.PI * 4;   // two full turns
-        rightArm = -1.75 - Math.sin(toss * Math.PI) * 0.5;
         once('caught', 2.98, playClink);
       }
 
       // 2.9 - 3.3  A glass, set down in front of him with his other hand.
-      const glassAt = v.set(backX - 0.62, counterY, show.z).clone();
       once('glass', 3.0, () => { glass.visible = true; playGlassDown(); });
-      leftArm = lerp(leftArm, -1.0, span(t, 2.8, 3.0) * (1 - span(t, 3.2, 3.4)));
       const serve = span(t, 5.3, 6.0);
-      glass.position.set(lerp(glassAt.x, serveX, serve), counterY + Math.max(0, 0.25 - (t - 3.0) * 1.6), show.z + lerp(0, 0.12, serve));
+      glass.position.set(lerp(glassAt.x, serveX, serve), counterY + Math.max(0, 0.25 - (t - 3.0) * 1.6), show.z + lerp(0, SERVED, serve));
       glass.scale.setScalar(GLASS_SIZE * Math.min(1, Math.max(0.01, (t - 3.0) * 6)));
 
       // The pour: the tool tips, a thread of drink runs down into the glass, and the glass fills.
-      tool.rotation.z += -2.0 * pouring;
+      tool.rotation.z += 1.78 * pouring;   // (over, away from her)
       const poured = span(t, 3.6, 4.7);
       glass.level = poured;
       glass.liquid.scale.y = Math.max(0.001, poured);
@@ -261,6 +297,10 @@ export class Bar {
         this.stream.scale.set(1.6, Math.max(0.02, mouth.y - (counterY + 0.03)), 1.6);
         this.stream.material.color.set(drink.liquid);
         tool.position.x += (glassAt.x + 0.02 - mouth.x) * 0.9;   // (held so it falls into the glass)
+        tool.position.y += Math.max(0, counterY + glass.lip + 0.05 - mouth.y);
+        tool.position.z += (glassAt.z - mouth.z) * 0.9;
+        this.stream.position.copy(tool.localToWorld(v.set(0, 0.2, 0)));
+        this.stream.scale.y = Math.max(0.02, this.stream.position.y - (counterY + 0.03));
       }
       once('pour', 3.6, () => { if (drink.cork) playCork(); playPour(); });
       // Champagne: the cork goes first.
@@ -278,10 +318,7 @@ export class Bar {
       }
 
       // 5.3 - 6.0  He slides it across the marble to you...   6.0 - 6.6  ...and bows.
-      leftArm = lerp(leftArm, -1.15, span(t, 5.2, 5.4) * (1 - span(t, 6.0, 6.2)));
       once('slide', 5.35, playGlassDown);
-      bow += Math.sin(span(t, 5.9, 6.6) * Math.PI) * 0.45;
-      rightArm = lerp(rightArm, -0.9, span(t, 5.9, 6.1) * (1 - span(t, 6.4, 6.6)));   // one hand across his chest
 
       this.toolAt.copy(tool.position);
       if (t >= MAKE_TIME) {
@@ -290,9 +327,57 @@ export class Bar {
         show.done();
       }
     }
+  }
 
-    b.rotation.set(bow, -Math.PI / 2 + turn, 0);
-    right.rotation.x = rightArm;
-    left.rotation.x = leftArm;
+  // Put him at `frame` of his clip (`fade`: seconds to ease into it, if it is not where he was: 0 across a cut), and on
+  // top of that: bowed (his back bent that far), his head turned (to look down the bar, to shake it) and tipped.
+  pose(frame, fade, bow, turn, tilt, reach = null, reaching = 0) {
+    if (!this.bones) return;
+    const [now, was] = this.decks, B = this.bones;
+    if (Math.abs(frame - this.frame) > 5) { was.time = now.time; this.fading = this.faded = fade; }
+    this.frame = frame;
+    now.time = Math.max(0, Math.min(now.getClip().duration - 0.01, (frame - 1) / 30));
+    const old = this.fading > 0 ? smooth(this.fading / this.faded) : 0;
+    now.setEffectiveWeight(1 - old);
+    was.setEffectiveWeight(old);
+    this.mixer.update(0);
+    B.spine.rotateX(bow * 0.55);
+    B.chest.rotateX(bow * 0.45);
+    B.neck.rotateY(turn * 0.4);
+    B.head.rotateY(turn * 0.6);
+    B.head.rotateX(tilt);
+    this.barman.updateMatrixWorld(true);
+    if (reach && reaching > 0.001) this.reach(reach, reaching);
+    this.dress();
+  }
+
+  // Her right hand (its wrist) to `to`, in the world, `w` of the way there from where the clip has it: her shoulder,
+  // her elbow (below the line between them, and out to that side), her wrist.
+  reach(to, w) {
+    const B = this.bones;
+    const point = (bone, child, at) => {   // turn `bone` (the least it takes) so that `child` lies towards `at`
+      bone.getWorldPosition(v2); child.getWorldPosition(v4);
+      q.setFromUnitVectors(v4.sub(v2).normalize(), v5.copy(at).sub(v2).normalize());
+      bone.getWorldQuaternion(q2).premultiply(q);
+      bone.quaternion.copy(bone.parent.getWorldQuaternion(q).invert().multiply(q2));
+      bone.updateMatrixWorld(true);
+    };
+    const S = B.armR.getWorldPosition(new THREE.Vector3()), E = B.foreR.getWorldPosition(new THREE.Vector3()), H = B.right.getWorldPosition(new THREE.Vector3());
+    const L1 = S.distanceTo(E), L2 = E.distanceTo(H), T = H.lerp(to, smooth(w));
+    const far = Math.min(S.distanceTo(T), (L1 + L2) * 0.995), along = (L1 * L1 - L2 * L2 + far * far) / (2 * far), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+    const dir = T.clone().sub(S).normalize(), pole = new THREE.Vector3(0, -1, 0).addScaledVector(S.clone().sub(B.armL.getWorldPosition(v2)).normalize(), 0.7);
+    pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+    point(B.armR, B.foreR, E.copy(S).addScaledVector(dir, along).addScaledVector(pole, off));
+    point(B.foreR, B.right, T);
+  }
+
+  // Her towel, and where her hand and her face are, from where her bones have got to.
+  dress() {
+    const B = this.bones, at = (bone, x, y, z, out) => out.set(x, y, z).applyQuaternion(bone.getWorldQuaternion(q)).add(bone.getWorldPosition(v2));
+    at(B.right, 0, 0.085, 0.03, this.grip);      // (in her palm: her fingers run along +y)
+    at(B.head, 0, 0.08, 0.06, this.headAt);      // (the middle of her face)
+    this.towel.visible = true;
+    at(B.foreL, 0, 0.13, 0, this.towel.position);   // (halfway down her forearm, which runs along +y)
+    this.towel.quaternion.copy(q).multiply(q2.setFromAxisAngle(v2.set(0, 0, 1), Math.PI / 2));   // (across it, not along it)
   }
 }

@@ -95,6 +95,10 @@ export const brazier = (at) => solidBox('brazier', at, 0.8, 0.8, 1.2);
 // Street lamp post.
 export const lamp = (at) => solidBox('lamp', at, 0.3, 0.3, 7);
 
+// A column, or the block a statue stands on, in the House: nothing of it is drawn here (world/houseScene.js has its
+// looks), but there is no riding through it.
+export const pillar = ({ width = 3.2, ...at }) => solidBox('pillar', at, width, width, 40);
+
 // Chapel: a landmark you can see from far away. (The tower is taller than its solid box.)
 export const chapel = (at) => solidBox('chapel', at, 13, 24, 9);
 

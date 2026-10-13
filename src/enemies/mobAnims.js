@@ -23,7 +23,8 @@ export const SLAM_LANDS = 1.6;   // (how far into Babitus's slam, in seconds, he
 // `speed`). alt: another gait some of its kind have instead (a limp). climb, fall: going up the face of something
 // after you, and dropping off an edge (see Horde.scale). run: a boss's, for his run at you. idle: what it does
 // stood still (a boss, between moves). rise: getting up, as it comes out of the ground (it is played through as it
-// comes up). start: up out of a crouch into its run, once it is out.
+// comes up). start: up out of a crouch into its run, once it is out. zero: Babitus, when the wheel comes up green:
+// reared right back and then bellowing it at you (his other calls are his arms: see `summon` and `wide` in horde.js).
 export const MOCAP = {
   shambler: { walk: 'sprint', pace: 6.2, alt: 'injured', rise: 'zstand', start: 'crouchsprint', attack: 'zattack', climb: 'wallclimb', fall: 'walldrop' },
   rattler: { walk: 'sprint', pace: 7.6, attack: 'zattack', climb: 'wallclimb', fall: 'walldrop' },
@@ -36,7 +37,7 @@ export const MOCAP = {
   boss2: { walk: 'mwalk', speed: 0.85, rise: 'zstand', roar: 'zscream', act: 'rubi', attack: 'mswipe', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
   // (Babitus moves as the zombies do: their sprint, their attack, their scream, their death. What only he does is
   // still his own: he deals, he leaps into his run, he slams.)
-  boss3: { walk: 'sprint', pace: 7.4, idle: 'zidle', stop: 'runstop', start: 'crouchsprint', act: 'cards', roar: 'zscream', attack: 'zattack', leap: 'mjump', jump: 'mslam', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
+  boss3: { walk: 'sprint', pace: 7.4, idle: 'zidle', stop: 'runstop', start: 'crouchsprint', act: 'cards', zero: 'mroar', roar: 'zscream', attack: 'zattack', leap: 'mjump', jump: 'mslam', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
 };
 for (const more of ['b', 'c', 'd']) MOCAP[`boss3${more}`] = MOCAP.boss3;
 MOCAP.zombieb = MOCAP.zombiec = MOCAP.shambler;   // (the other zombies: see ZOMBIES in types.js. start: up out of a crouch into its run, as it comes out of the ground)

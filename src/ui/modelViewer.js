@@ -132,8 +132,8 @@ export function createModelViewer({ renderer, look, horde }) {
   };
   const MOVES = [
     ['On his board', [['ride', 'Riding'], ['push', 'Pushing'], ['ollie', 'An ollie'], ['air', 'A long drop'], ['land', 'Landing hard'], ['hit', 'Hit']], true],
-    ['On foot', [['idle', 'Standing (the menu, the casino)'], ['idle2', 'Standing, shifting about (the casino)'], ['walk', 'Walking (the casino)'], ['run', 'Running (the casino)'], ['flair', 'Flair (an emote)'], ['die', 'Dying'], ['aim', 'Sat, bringing a pistol up (the title screen)']], false],
-    ['Not in the game yet', [['jump', 'Jumping'], ['stop', 'Pulling up out of a run'], ['roll', 'Falling, and rolling out of it'], ['shoot', 'Shooting (no gun in his hand yet)'], ['rifle', 'Firing a rifle (no gun in his hands yet)'], ['riflewalk', 'Walking with a rifle'], ['riflejump', 'Jumping with a rifle'], ['climb', 'Climbing a ladder'], ['sit', 'Sat back'], ['sitgun', 'Sat, a gun in his hands'], ['pistolidle', 'Stood with a pistol'], ['breathe', 'Stood, breathing']], false],
+    ['On foot', [['idle', 'Standing (the menu, the casino)'], ['idle2', 'Standing, shifting about (the casino)'], ['walk', 'Walking (the casino)'], ['run', 'Running (the casino)'], ['sprint', 'Flat out (the casino, with Shift)'], ['jump', 'Jumping, from a standstill (the casino)'], ['leap', 'Jumping, on the run (the casino)'], ['flair', 'Flair (an emote)'], ['die', 'Dying'], ['aim', 'Sat, bringing a pistol up (the title screen)']], false],
+    ['Not in the game yet', [['stop', 'Pulling up out of a run'], ['roll', 'Falling, and rolling out of it'], ['shoot', 'Shooting (no gun in his hand yet)'], ['rifle', 'Firing a rifle (no gun in his hands yet)'], ['riflewalk', 'Walking with a rifle'], ['riflejump', 'Jumping with a rifle'], ['climb', 'Climbing a ladder'], ['sit', 'Sat back'], ['sitgun', 'Sat, a gun in his hands'], ['pistolidle', 'Stood with a pistol'], ['breathe', 'Stood, breathing']], false],
   ];
   const thing = (make, tick) => { const object = make(); return { object, tick: tick ? (dt, time) => tick(object, dt, time) : null }; };
 

@@ -342,20 +342,3 @@ export function marbleTexture() {
     grain(g, s, 10);
   });
 }
-
-// The House's walls and ceiling: a cream panel in a gold frame.
-export function panelTexture() {
-  return canvas(512, (g, s) => {
-    g.fillStyle = '#e9dfc6';
-    g.fillRect(0, 0, s, s);
-    g.fillStyle = '#f3ecd9';
-    g.fillRect(48, 48, s - 96, s - 96);
-    g.strokeStyle = '#c9a44a'; g.lineWidth = 10;
-    g.strokeRect(40, 40, s - 80, s - 80);
-    g.lineWidth = 3;
-    g.strokeRect(70, 70, s - 140, s - 140);
-    g.fillStyle = '#c9a44a';
-    for (const [x, y] of [[40, 40], [s - 40, 40], [40, s - 40], [s - 40, s - 40]]) { g.beginPath(); g.arc(x, y, 14, 0, Math.PI * 2); g.fill(); }
-    grain(g, s, 8);
-  });
-}

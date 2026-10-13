@@ -61,6 +61,9 @@ CLIPS = {
     'drunkwalk': ('Drunk Walk.fbx', 1, 0, 'mixamo'),
     'drunkback': ('Drunk Walk Backwards.fbx', 1, 0, 'mixamo'),
     'drunkturn': ('Drunk Walking Turn.fbx', 1, 0, 'mixamo'),
+    # (and, in the casino too: flat out across the floor, and a jump off it)
+    'sprint': ('Sprint.fbx', 1, 0, 'mixamo'),
+    'leap': ('Action Adventure Pack/jumping up.fbx', 1, 0, 'mixamo'),
 }
 
 

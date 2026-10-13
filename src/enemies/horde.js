@@ -18,6 +18,7 @@ import { heightAt, groundAt, placeAt, confineX, airFloorAt, onPipe, pipeS, pipeR
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { world } from '../world/level.js';
 import { HOUSE, houseSpot } from '../world/house.js';
+import { laughing, reaching } from './standIn.js';
 import { stats } from '../player/stats.js';
 import { ENEMY_TYPES, ZOMBIES } from './types.js';
 import { ramSpeed } from '../systems/upgrades.js';
@@ -786,6 +787,7 @@ export class Horde {
           this.ring.userData.radius = S.slamRadius;
           this.ringLife = 1;
           this.events.push({ type: 'houseSlam', hit: dist < S.slamRadius && player.grounded ? S.slamDamage : 0 });   // (be in the air when it lands)
+          if (dist < S.slamRadius && player.grounded) e.gloat = 2.1;
           this.rainChips(player, 4);
         }
       } else if (e.rush) {
@@ -900,6 +902,7 @@ export class Horde {
       const near = Math.hypot(player.pos.x - b.pos.x, player.pos.z - b.pos.z) < (b.reach ?? H.bossSplashRadius) && Math.abs(player.pos.y - ground) < 2.5;
       if (direct) damage = Math.max(damage, b.hit ?? H.bossBlobDamage);
       else if (near) damage = Math.max(damage, b.splash ?? H.bossSplashDamage);
+      if ((direct || near) && this.boss && this.boss.T.house) this.boss.gloat = 1.5;   // (Babitus: he thinks that is very funny)
       this.events.push({ type: b.kind && b.kind !== 'web' ? 'clatter' : 'splat' });
       for (let k = 0; k < 8; k++) {
         const g = this.gibs[this.nextGib++ % this.gibs.length];
@@ -1240,11 +1243,24 @@ export class Horde {
         else if (ran < clipLength(mo.leap || '') && mo.leap) { other = mo.leap; w = Math.min(1, ran * 8, (clipLength(mo.leap) - ran) * 6); at = ran; }   // he leaps into his run
         else if (pulling >= 0 && pulling < clipLength(mo.stop) - 0.25 && !e.slam && !(e.landed > 0)) { other = mo.stop; w = Math.min(1, (clipLength(mo.stop) - 0.25 - pulling) * 5); at = pulling; }   // pulling up
         else if (roar > 0.05 && mo.roar && !e.T.house) { other = mo.roar; w = Math.min(1, roar * 1.5); at = (1.6 - Math.min(1.6, roar)) * 1.4 + 0.6; }
+        else if (e.call && e.call.colour === 'green' && mo.zero) { const k = 1 - Math.max(0, e.call.wait) / (e.call.from ??= e.call.wait); other = mo.zero; w = Math.min(1, 0.25 + k * 6); at = 0.8 + k * 1.3; }   // zero: reared back, and bellowed at you
         else if (acting > 0.02 && mo.act) { other = mo.act; w = Math.min(1, acting * 3, pulling >= 0 ? Math.max(0, (pulling - clipLength(mo.stop) + 0.25) * 4) : 1); at = e.T.house ? (t * 1.2) % clipLength(mo.act) : acting * clipLength(mo.act) * 0.62; }
         else if (e.follow > 0 && mo.act) { other = mo.act; w = Math.min(1, e.follow * 5); at = clipLength(mo.act) * (0.62 + 0.3 * (1 - e.follow / 0.5)); }   // (and through, after it has gone)
         else if (mo.attack && near > 0.5 && !e.posed) { other = mo.attack; w = Math.min(1, (near - 0.5) * 4); at = t * 1.1; loop = true; }
         else if (round > 0.02 && mo.turnL) { other = spin > 0 ? mo.turnL : mo.turnR; w = round; at = t; loop = true; }                       // you have got round him: he steps round after you
         const P = pose(gait, e.step, other, at, w * going, loop);
+        if (e.T.house && !e.posed && dying <= 0.02) {
+          // Babitus's arms are his own, whatever the rest of him is at: up to the ceiling, to call the chips down on
+          // you (black); flung wide through the Last Hand, a storm of cards off each of them; and thrown up, his head
+          // back, laughing, when he has just hurt you.
+          const ease = (now, to, rate) => now + (to - now) * Math.min(1, dt * rate);
+          e.summon = ease(e.summon || 0, e.call && e.call.colour === 'black' ? 1 : 0, e.call ? 10 : 4);
+          e.wide = ease(e.wide || 0, e.last && !e.last.done ? 1 : 0, 6);
+          e.gloat = Math.max(0, (e.gloat || 0) - dt);
+          if (e.summon > 0.01) reaching(P, e.summon, [0.33, 0.93, 0.12], [0.14 + 0.06 * Math.sin(t * 19), 0.98, 0.1], -0.2);
+          if (e.wide > 0.01) reaching(P, e.wide, [0.97, 0.16 + 0.08 * Math.sin(t * 5), 0.12], [0.93, 0.3, 0.2], -0.14);
+          if (e.gloat > 0 && !e.slam && !e.rush && !e.last) laughing(P, Math.min(1, e.gloat * 3, (1.5 - e.gloat) * 6), t);
+        }
         parts.hipY ??= (parts.find((o) => o.role === 'leg') || { pivot: { y: e.T.height * 0.5 } }).pivot.y;
         place(parts, P, parts.hipY, mo.arms !== false || w > 0.3, (part, local) => {
           limb.copy(local);

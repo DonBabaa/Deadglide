@@ -118,8 +118,8 @@ export function createCasino({ onLeave }) {
       houseTook(staked - e.payout, staked);
       const net2 = e.payout - staked;
       banner({ blackjack: 'Blackjack!', win: 'You win', push: 'Push', lose: e.split ? 'You lose' : handTotal(me.cards).total > 21 ? 'Bust' : 'Dealer wins' }[e.result], net2);
-      if (e.result === 'blackjack') { playPowerup(); playCashIn(); }
-      else if (e.result === 'win') playCashIn();
+      if (e.result === 'blackjack') { playPowerup(); playCashIn(); room.celebrate(true); }   // (up off his stool for it, with a cut-in)
+      else if (e.result === 'win') { playCashIn(); room.celebrate(false); }
       else if (e.result === 'lose') playLose();
       else playCoin(0.3);
       staked = 0;
@@ -174,7 +174,7 @@ export function createCasino({ onLeave }) {
 
   // What the others need to know to draw you: where you are, and what you're up to at the bar or a slot machine.
   const doing = () => ({
-    x: room.pos.x, z: room.pos.z, yaw: room.yaw, bar: room.bar,
+    x: room.pos.x, z: room.pos.z, y: +room.y.toFixed(2), yaw: room.yaw, bar: room.bar, lounge: room.lounge,
     glass: room.glass && room.glass.ready && room.glass.level > 0 ? DRINKS.findIndex((d) => d.id === room.glass.drinkId) : -1, sip: +room.sip.toFixed(2),
     slot: room.slot, spin: !!spinning, win: room.slot >= 0 && room.win > 0,
     smoke: room.smokeLeft > 0 ? room.puffing || 1 : 0,   // having a smoke at the table: 1 drawing on it, 2 blowing it out
@@ -249,6 +249,7 @@ export function createCasino({ onLeave }) {
     if (room.roulette) { if (!rolling) { room.stand(); sendBets(); } return; }     // away from the roulette table (your chips come with you)
     if (room.slot >= 0) { if (!spinning) { room.stand(); refresh(); } return; }   // away from a slot machine
     if (room.bar >= 0) { room.stand(); refresh(); return; }   // off a bar stool
+    if (room.lounge >= 0) { room.stand(); refresh(); return; }   // up off a sofa
     if (seat < 0 || staked > 0) return;   // not with a bet on the table
     request(myId, 'stand');
   }
@@ -471,8 +472,9 @@ export function createCasino({ onLeave }) {
     $('casino-gold').innerHTML = `${COIN}${profile.gold.toLocaleString()}`;
     $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, profile.houseTake).toLocaleString()}`;
     $('casino-table').classList.toggle('hidden', !seated);
-    $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.slot < 0 && !room.roulette);
-    $('casino-smoke').classList.toggle('hidden', !seated && room.bar < 0);
+    $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.lounge < 0 && room.slot < 0 && !room.roulette);
+    $('casino-smoke').classList.toggle('hidden', !seated && room.bar < 0 && room.lounge < 0);
+    $('casino-sip').classList.toggle('hidden', !seated && room.lounge < 0);
     $('casino-view').textContent = room.firstPerson ? 'Third person' : 'First person';
     $('casino-stand').textContent = seated ? 'Leave table' : room.slot >= 0 || room.roulette ? 'Walk away' : 'Get up';
     refreshBar();
@@ -549,6 +551,7 @@ export function createCasino({ onLeave }) {
   const toggleView = () => { room.firstPerson = !room.firstPerson; refresh(); };
   $('casino-view').addEventListener('click', toggleView);
   $('casino-smoke').addEventListener('click', () => room.smoke());
+  $('casino-sip').addEventListener('click', () => room.tableDrink());
   $('casino-leave').addEventListener('click', () => leave());
   $('casino-friends').addEventListener('click', () => $('casino-net').classList.toggle('hidden'));
   $('casino-host').addEventListener('click', () => connect(true));
@@ -596,7 +599,8 @@ export function createCasino({ onLeave }) {
   window.addEventListener('keydown', (e) => {
     if (!active) return;
     if (e.code === 'Escape') { standUp(); return; }   // (gets you up from wherever you are sat; it doesn't leave the casino: there's a button for that)
-    if (e.code === 'KeyF' && (seat >= 0 || room.bar >= 0)) { room.smoke(); return; }
+    if (e.code === 'KeyF' && (seat >= 0 || room.bar >= 0 || room.lounge >= 0)) { room.smoke(); return; }
+    if (e.code === 'KeyG' && (seat >= 0 || room.lounge >= 0)) { room.tableDrink(); return; }   // (the whisky by his cards, or on the table in front of his sofa)
     if (room.roulette && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); spinRoulette(); return; }
     if (room.slot >= 0 && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); pullLever(); return; }
     if (e.code === 'KeyV') { toggleView(); return; }
@@ -664,21 +668,25 @@ export function createCasino({ onLeave }) {
       // Walking about: offer the free stool you're standing next to, at the table or at the bar.
       runSlots(dt);
       runRoulette();
-      const walking = seat < 0 && room.bar < 0 && room.slot < 0 && !room.roulette;
+      const walking = seat < 0 && room.bar < 0 && room.lounge < 0 && room.slot < 0 && !room.roulette;
       const near = walking ? room.nearSeat(view.state.seats.map(Boolean)) : -1;
       const barTaken = [];
       for (const p of others) if (p.seat < 0 && p.bar >= 0) barTaken[p.bar] = true;
       const nearBar = walking && near < 0 ? room.nearBar(barTaken) : -1;
       const nearSlot = walking && near < 0 && nearBar < 0 ? room.nearSlot() : -1;
       const nearRoulette = walking && near < 0 && nearBar < 0 && nearSlot < 0 && room.nearRoulette();
-      $('casino-prompt').classList.toggle('hidden', near < 0 && nearBar < 0 && nearSlot < 0 && !nearRoulette);
-      $('casino-prompt-text').textContent = near >= 0 ? 'Take a seat at the table' : nearBar >= 0 ? 'Sit at the bar' : nearSlot >= 0 ? 'Play the slots' : 'Play roulette';
+      const sofaTaken = [];
+      for (const p of others) if (p.seat < 0 && p.lounge >= 0) sofaTaken[p.lounge] = true;
+      const nearSofa = walking && near < 0 && nearBar < 0 && nearSlot < 0 && !nearRoulette ? room.nearLounge(sofaTaken) : -1;
+      $('casino-prompt').classList.toggle('hidden', near < 0 && nearBar < 0 && nearSlot < 0 && !nearRoulette && nearSofa < 0);
+      $('casino-prompt-text').textContent = near >= 0 ? 'Take a seat at the table' : nearBar >= 0 ? 'Sit at the bar' : nearSlot >= 0 ? 'Play the slots' : nearSofa >= 0 ? 'Sit down' : 'Play roulette';
       if (input.trickPressed) {
         input.trickPressed = false;
         if (near >= 0) request(myId, 'sit', near);
         else if (nearBar >= 0) { room.sitBar(nearBar); refresh(); }
         else if (nearSlot >= 0) { room.playSlot(nearSlot); refresh(); }
         else if (nearRoulette) { room.playRoulette(others); sendBets(); }
+        else if (nearSofa >= 0) { room.sitLounge(nearSofa); refresh(); }
         else if (room.slot >= 0) pullLever();   // E at a machine: pull
         else if (room.canDrink) room.drink();   // E at the bar: drink up
       }
