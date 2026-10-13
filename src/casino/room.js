@@ -32,6 +32,7 @@ const ROU_DISC = 0.68, ROU_RIM = 0.74, ROU_POCKET = 0.39;        // the wheel: i
 const ROU_DROP = 4.2, ROU_CALL = 4.7, ROU_END = 6.2, ROU_CHEER = 1.7;   // a spin, in seconds: the ball is home; the number is called; it's over; (winners) celebrating
 const CROUPIER_X = -0.55;                          // where the croupier stands along the roulette table (the wheel is on his right)
 const WOOZY_TIME = 4.8;                            // seconds of the cut-in when the drink catches up with you
+const TABLE_SIP = 2.5;                             // seconds a mouthful of his drink takes, at the blackjack table
 const TIPSY_AFTER = 3;                             // drinks before it does
 const COUGH_TIME = 3.3;                            // seconds the dealer spends coughing and waving the smoke away
 const HAZE_LIMIT = 3;                              // smokes hanging over his table before he does
@@ -629,6 +630,8 @@ export class CasinoRoom {
     if (this.glass) this.scene.remove(this.glass);
     this.glass = null;         // your drink (see order / drink)
     this.sip = 0;              // 0..1: the glass raised to drink
+    this.tableSip = 0;         // seconds of a mouthful left, at the blackjack table (he has a glass by his cards there)
+    this.tableSipIn = 7;       // ...and seconds until the next one
     this.drinking = 0;         // seconds of the drinking animation left
     this.tipsy = 0;            // how many drinks are still in you (it wears off)
     this.isTipsy = false;      // past the point where it shows
@@ -739,7 +742,7 @@ export class CasinoRoom {
   sickShot() {
     if (this.sick <= 0 || this.bar < 0) return null;
     const t = this.sickClock, st = this.barStools[this.bar].stand, backX = this.barShop.at.backX, b = this.bucket.position;
-    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = at(0.14, 1.6, 0);
+    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = this.faceOf(at(0.14, 1.6, 0));
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     let s;
     if (t < 1.5) s = { pos: at(1.8 - 0.35 * smooth(t / 1.5), 1.52, 0.42), look: headAt, fov: 36 - 12 * smooth(t / 1.4), lines: 0.3 + 0.5 * smooth(t / 1.4), shake: 0.025 * this.hic, title: t > 0.9 ? 'Uh oh.' : '' };   // his face, going green
@@ -759,7 +762,7 @@ export class CasinoRoom {
   woozyShot() {
     if (this.woozy <= 0 || this.bar < 0) return null;
     const t = WOOZY_TIME - this.woozy, st = this.barStools[this.bar].stand, backX = this.barShop.at.backX;
-    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = at(0.14, 1.6, 0);
+    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = this.faceOf(at(0.14, 1.6, 0));
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     let s;
     if (t < 0.95) s = { pos: at(1.75, 1.52, 0.4), look: headAt, fov: 36 - 10 * smooth(t / 0.3), lines: 0.5, shake: 0.02 * this.hic, title: t > 0.35 ? 'Hic!' : '' };       // his face. Hic.
@@ -774,7 +777,7 @@ export class CasinoRoom {
   drinkShot() {
     if (this.drinking <= 0 || !this.glass || this.bar < 0) return null;
     const t = DRINK_TIME - this.drinking, g = this.glass.position, st = this.barStools[this.bar].stand;
-    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = at(0.12, 1.6, 0);
+    const at = (dx, y, dz) => new THREE.Vector3(st.x + dx, y, st.z + dz), headAt = this.faceOf(at(0.12, 1.6, 0));
     const gulp = Math.max(0, 1 - (t - (this.gulpAt ?? -9)) * 5);   // 1 on each swallow, fading
     const slam = this.slammed ? Math.exp(-(this.time - this.slamAt) * 7) : 0;
     let s;
@@ -797,6 +800,13 @@ export class CasinoRoom {
     return true;
   }
   // Put a lit cigarette in a model's mouth whatever it usually has there (on), or give it back its own (off).
+  // The middle of Kirky's face, for a shot that is on it (or `otherwise`, a guess at it, if his body cannot say).
+  faceOf(otherwise) {
+    const k = this.kirky;
+    if (!k.faceAt) return otherwise;
+    k.root.updateMatrixWorld(true);
+    return k.faceAt(otherwise);
+  }
   light(model, on) {
     if (!on) return model.applyLook(model.look);
     for (const kind in model.mouth) for (const piece of model.mouth[kind]) piece.visible = kind === 'cigarette';
@@ -808,13 +818,16 @@ export class CasinoRoom {
     if (this.smokeLeft <= 0 || (this.seat < 0 && this.bar < 0)) return null;
     const t = SMOKE_TIME - this.smokeLeft, k = this.kirky;
     k.root.updateMatrixWorld(true);
-    const head = k.torso.localToWorld(new THREE.Vector3(0, 0.8, 0));
+    // (the middle of his face, where it is now, and standing off by as much as his head is bigger than the one
+    // these shots were set for)
+    const head = k.faceAt ? k.faceAt(new THREE.Vector3()) : k.torso.localToWorld(new THREE.Vector3(0, 0.8, 0)), big = 1 + ((k.faceBig || 1) - 1) * 0.72;
     const ahead = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), across = new THREE.Vector3(ahead.z, 0, -ahead.x);
-    const at = (a, b, up) => head.clone().addScaledVector(ahead, a).addScaledVector(across, b).setY(head.y + up);
+    const at = (a, b, up) => head.clone().addScaledVector(ahead, a * big).addScaledVector(across, b * big).setY(head.y + up * big);
+    const tip = k.ember.getWorldPosition(new THREE.Vector3());
     const pop = (when) => (t >= when ? Math.exp(-(t - when) * 7) : 0);
     let s;
     if (t < 0.7) s = { pos: at(1.5, 0.55, 0.15), look: head, fov: 46 - 22 * smooth(t / 0.18), lines: 1 };                                                    // snap zoom: his hand comes up
-    else if (t < 1.9) s = { pos: at(0.6, 0.3, -0.02), look: at(0.14, 0.03, -0.04), fov: 24 - 5 * smooth((t - 0.7) / 1.2), lines: 0.3 + 0.6 * k.inhale, shake: 0.003 * k.inhale };   // the ember, flaring
+    else if (t < 1.9) s = { pos: at(0.6, 0.3, -0.02), look: tip.lerp(head, 0.35), fov: 26 - 5 * smooth((t - 0.7) / 1.2), lines: 0.3 + 0.6 * k.inhale, shake: 0.003 * k.inhale };   // the ember, flaring
     else if (t < 2.15) s = { pos: at(0.45, -1.4, -0.05), look: at(0.3, 0, 0.05), fov: 30, lines: 1 };                                                          // hard cut: in profile, holding it
     else s = { pos: at(1.3 + 0.3 * smooth((t - 2.15) / 2), -0.9, -0.3), look: at(0.4, 0, 0.12), fov: 42 - 6 * smooth((t - 2.15) / 2), title: t > 3.1 ? 'Smooth.' : '' };   // and out it rolls
     return { shake: 0, lines: 0, title: '', ...s, flash: Math.max(pop(0), pop(0.7) * 0.6, pop(1.9), pop(2.15) * 0.8) };
@@ -1184,7 +1197,21 @@ export class CasinoRoom {
     // (on his feet: motion capture. Standing, walking, or running if he is in a hurry. Sat down, he is posed by hand.)
     // His arms too, unless one of them is busy (a glass, a drag, a lever, a win).
     const busy = Math.max(who.sip || 0, who.drag || 0, who.reach || 0, who.cheer || 0, who.hic || 0, who.heave || 0) > 0.01 || who.glass > 0;
-    if (sat < 0.3) k.play?.(Math.abs(who.speed) > C.walkSpeed * 1.35 ? 'run' : moving > 0.12 ? 'walk' : Math.floor(this.time / 11 + who.pos.x) % 2 ? 'idle2' : 'idle', 1 - sat * 3, moving > 0.12 ? 0.6 + 0.6 * moving : 1, undefined, !busy);
+    // A few drinks in (you, not the others: nobody is told how many you have had): he stands, walks, backs up and
+    // turns as a drunk does. A big win on a machine: he cheers. Sat down, at the table or the bar: sat as a man sits
+    // (his hips stay on the stool, where he has been put), and cheering sat down. An arm that is busy is still posed
+    // by hand under all of these: see `busy`.
+    const cheering = (who.cheer || 0) > 0.3, drunk = who === this && this.drunk > 0.15;
+    const swung = Math.atan2(Math.sin(who.yaw - (who.yawWas ?? who.yaw)), Math.cos(who.yaw - (who.yawWas ?? who.yaw)));
+    who.turned = lerp(who.turned || 0, Math.abs(swung) / Math.max(dt, 1e-3), 1 - Math.exp(-6 * dt));
+    who.yawWas = who.yaw;
+    k.sitting = sat > 0.5;
+    if (sat < 0.3) {
+      const clip = cheering ? 'cheer'
+        : drunk ? (moving > 0.12 ? (who.speed < 0 ? 'drunkback' : 'drunkwalk') : who.turned > 0.7 ? 'drunkturn' : 'drunkidle')
+        : Math.abs(who.speed) > C.walkSpeed * 1.35 ? 'run' : moving > 0.12 ? 'walk' : Math.floor(this.time / 11 + who.pos.x) % 2 ? 'idle2' : 'idle';
+      k.play?.(clip, 1 - sat * 3, moving > 0.12 && !cheering ? 0.6 + 0.6 * moving : 1, undefined, !busy || cheering);
+    } else k.play?.(cheering ? 'cheersit' : 'sit', Math.min(1, (sat - 0.3) * 3), 1, undefined, !busy || cheering, { seated: true, upright: cheering ? 0.3 : 0.85 });   // (upright: the clip has his chin on his chest: his back and his head are mostly as he holds them himself, looking at the table)
     k.frontLeg.rotation.x = lerp(swing, -1.5, sat);
     k.backLeg.rotation.x = lerp(-swing, -1.5, sat);
     k.frontLeg.knee.rotation.x = lerp(Math.max(0, -swing) * 1.3, 1.4, sat);   // on foot, the trailing knee bends
@@ -1199,11 +1226,14 @@ export class CasinoRoom {
     k.torso.rotation.x = lerp(0.06 + 0.05 * moving, 0.22, sat) + Math.sin(this.time * 1.4 + who.pos.x) * 0.012 - 0.34 * sip - 0.3 * hic + 0.5 * (who.heave || 0);   // (heave: bent over the bar)
     // Arms: swinging against the legs on foot, forearms on the table sat down, straight up for a win, out to a lever.
     k.gunArm.rotation.set(lerp(lerp(1.42 - swing * 0.5, 0.95, sat), -1.25, cheer) - 1.15 * reach * (1 - cheer), lerp(0.06, -0.15, sat), 0);
-    k.foreArm.rotation.x = -lerp(lerp(0.25 + Math.max(0, -swing) * 0.7, 1.05, sat), 0.15, Math.max(cheer, reach));
+    k.foreArm.rotation.set(-lerp(lerp(0.25 + Math.max(0, -swing) * 0.7, 1.05, sat), 0.15, Math.max(cheer, reach)), 0, 0);   // (all of it, every frame: whatever kept his arm out of his belly last frame had turned it, and it was never turned back: his hand shook)
     k.leftArm.rotation.set(lerp(lerp(swing * 0.5, -0.6, sat), -2.7, cheer), 0, lerp(-0.08, 0.2, sat) * (1 - cheer));
     k.leftFore.rotation.x = -lerp(lerp(0.25 + Math.max(0, swing) * 0.7, 1.05, sat), 0.15, cheer);
     // A glass, or what he is smoking: the hand comes up to his mouth, bending at the elbow to get there.
-    if (hand > 0.001) { k.root.updateMatrixWorld(true); k.handTo(k.torso.localToWorld(this.lips.set(0.07, 0.68, 0.23)), smooth(hand)); }
+    if (hand > 0.001) {
+      k.root.updateMatrixWorld(true);
+      if (k.toMouth) k.toMouth(smooth(hand)); else k.handTo(k.torso.localToWorld(this.lips.set(0.07, 0.68, 0.23)), smooth(hand));
+    }
     if (cheer) k.root.position.y += Math.abs(Math.sin(this.time * 11)) * 0.12 * cheer;   // (and he's jumping)
     k.updateSmoke(dt);
   }
@@ -1297,6 +1327,7 @@ export class CasinoRoom {
       const t = SMOKE_TIME - (this.smokeLeft -= dt);
       this.drag = smooth(t / 0.5) * (1 - smooth((t - 1.9) / 0.3));
       k.inhale = smooth((t - 0.7) / 0.4) * (1 - smooth((t - 1.85) / 0.1));
+      k.light?.(smooth(t / 0.3) * (1 - smooth((t - 0.85) / 0.25)), smooth((t - 0.3) / 0.08) * (1 - smooth((t - 0.72) / 0.1)), t > 0.24 && t < 0.36 ? 1 : 0);   // (his lighter to it first)
       const was = this.puffing;
       this.puffing = t > 2.15 && t < 3.6 ? 2 : t < 2.15 ? 1 : 0;
       if (this.puffing === 2 && was !== 2 && this.seat >= 0) this.haze++;
@@ -1344,6 +1375,32 @@ export class CasinoRoom {
         }
       }
     }
+    // At the blackjack table: a whisky by his cards, and a mouthful of it every so often (not with a smoke on the go).
+    // It is by his left hand, the one that lifts it; raised, it goes where that hand goes.
+    if (!this.tableGlass) {
+      this.tableGlass = this.barShop.makeGlass(DRINKS[0]);
+      this.tableGlass.liquid.scale.y = 0.75;
+      this.tableGlass.garnish.visible = true;
+      this.tableGlass.visible = false;
+      this.scene.add(this.tableGlass);
+    }
+    if (this.seat >= 0 && this.smokeLeft <= 0 && this.drinking <= 0) {
+      if (this.tableSip > 0) {
+        const t = TABLE_SIP - (this.tableSip -= dt);
+        this.sip = smooth((t - 0.15) / 0.55) * (1 - smooth((t - 1.75) / 0.45));
+        if (t > 0.95 && !this.tableGulped) { this.tableGulped = true; playGulp(); }
+        if (this.tableSip <= 0) { this.tableSip = this.sip = 0; this.tableGulped = false; this.tableSipIn = 10 + Math.random() * 9; }
+      } else if ((this.tableSipIn -= dt) <= 0) this.tableSip = TABLE_SIP;
+    } else if (this.tableSip > 0) { this.tableSip = this.sip = 0; this.tableGulped = false; }
+    this.tableGlass.visible = this.seat >= 0 && this.tableBlend > 0.5;
+    if (this.tableGlass.visible) {
+      const st = this.seats[this.seat].stand, fx = TABLE.x - st.x, fz = TABLE.z - st.z, far = Math.hypot(fx, fz) || 1, g = this.tableGlass;
+      v.set(st.x + (fx / far) * 0.62 + (fz / far) * 0.36, FELT_Y + 0.005, st.z + (fz / far) * 0.62 - (fx / far) * 0.36);   // (on the felt in front of him, to his left)
+      if (this.sip > 0.01) { k.handWorld(v2); v.set(lerp(v.x, v2.x, this.sip), lerp(v.y, v2.y - g.lip * 0.5, this.sip), lerp(v.z, v2.z, this.sip)); }
+      g.position.copy(v);
+      g.rotation.x = 0;
+    }
+
     this.tipsy = Math.max(0, this.tipsy - dt / 45);   // it wears off
     if (this.isTipsy && this.tipsy < 1.2) this.isTipsy = false;
 

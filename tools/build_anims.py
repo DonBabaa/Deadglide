@@ -49,6 +49,18 @@ CLIPS = {
     'sitgun': ('Sitting Gun Motion.fbx', 1, 0, 'mixamo', True),
     'pistolidle': ('Pistol Idle.fbx', 1, 0, 'mixamo', True),
     'breathe': ('Breathing Idle.fbx', 1, 0, 'mixamo'),
+    # The casino: sitting down; what the emote wheel does (a dance, a wave, a cheer: stood, getting up to, and sat);
+    # and one drink too many (stood swaying, walking, walking backwards, turning).
+    'sitdown': ('Stand To Sit.fbx', 1, 0, 'mixamo'),
+    'dance': ('Hip Hop Dancing.fbx', 1, 0, 'mixamo'),
+    'wave': ('Waving.fbx', 1, 0, 'mixamo'),
+    'cheer': ('Cheering.fbx', 1, 0, 'mixamo'),
+    'cheerup': ('cheer standing up.fbx', 1, 0, 'mixamo'),
+    'cheersit': ('Cheering While Sitting.fbx', 1, 0, 'mixamo'),
+    'drunkidle': ('Drunk Idle Variation.fbx', 1, 0, 'mixamo'),
+    'drunkwalk': ('Drunk Walk.fbx', 1, 0, 'mixamo'),
+    'drunkback': ('Drunk Walk Backwards.fbx', 1, 0, 'mixamo'),
+    'drunkturn': ('Drunk Walking Turn.fbx', 1, 0, 'mixamo'),
 }
 
 

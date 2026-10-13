@@ -34,6 +34,7 @@ CLIPS = {
     'sturn': 'Sprint Turn.fbx', 'veer': 'Change Direction.fbx', 'arc': 'Run Forward Arc Right.fbx',
     'wallclimb': 'Sprint To Wall Climb.fbx', 'walldrop': 'Jump From Wall.fbx', 'crouchsprint': 'Crouched To Sprinting.fbx', 'zstand': 'Zombie Stand Up.fbx',
     'hamz': 'hamzitus goyitus.fbx', 'rubi': 'rubistus goyitus.fbx',   # (the clip each of the two brothers came with)
+    'runstop': 'Action Adventure Pack/run to stop.fbx',   # (pulling up out of a run: Babitus, before he does anything else)
     'rummage': 'rummaging.fbx',   # (both hands going through something in front of him: Goyitus Ultimus, reaching for Kirky off the last ramp)
 }
 # Turning on the spot: the game turns him (he always faces you), so what is kept of these is the stepping round, and

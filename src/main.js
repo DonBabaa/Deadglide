@@ -520,7 +520,7 @@ const viewer = createModelViewer({ renderer, look: currentLook, horde });
     'Story: cemetery and Catacombs': ['playWind', 'playBell', 'playCrow', 'playInhale', 'playExhale', 'playChipFlip', 'playChipLand', 'playDrips', 'playCaveAir', 'playHatch', 'playLadder'],
     'Story: the city and the House': ['playManhole', 'playCity', 'playReveal', 'playPushOff', 'playDoorsBurst', 'playChandelier', 'playShuffle', 'playReelsStop', 'playCoinsPour', 'playFloorCrack'],
     'Story: the hill': ['playCreak', 'playGlass', 'playRumble', 'playDustWave', 'playGhosts', 'playGhostTell', 'playGhostThrow', 'playBuried', 'playWhoosh', 'playHush'],
-    'Story: the Moon': ['playVoid', 'playMoonLand', 'playSnap', 'playLighter', 'playEndChord', 'playCredit', 'playSaucer', 'playRadio', 'playAlien', 'playGolden'],
+    'Story: the Moon': ['playVoid', 'playMoonLand', 'playSnap', 'playFlick', 'playLighter', 'playEndChord', 'playCredit', 'playSaucer', 'playRadio', 'playAlien', 'playGolden'],
     'Casino': ['playCard', 'playChip', 'playLose', 'playLever', 'playReel', 'playReelStop', 'playJackpot', 'playWheel', 'playShake', 'playPour', 'playClink', 'playCork', 'playGlassDown', 'playGulp', 'playHic', 'playWoozy', 'playGurgle', 'playRetch', 'playCough', 'playSplash', 'playDrag'],
   };
   heading('Guns');
@@ -1280,6 +1280,8 @@ function updateDrag(dt) {
   const t = (drag.time += dt);
   // Kirky keeps breathing (nothing else moves): ember flaring on the way in, smoke on the way out.
   model.inhale = t < DRAG.inhaleEnd ? smooth((t - DRAG.moveIn * 0.6) / 0.4) : 0;
+  // (his lighter to it first: up, a flame, and away as the drag begins)
+  { const lt = t / (DRAG.moveIn * 0.6 + 0.3); model.light?.(smooth(lt / 0.3) * (1 - smooth((lt - 0.8) / 0.25)), smooth((lt - 0.35) / 0.08) * (1 - smooth((lt - 0.78) / 0.1)), lt > 0.3 && lt < 0.42 ? 1 : 0); }
   if (t >= DRAG.inhaleEnd && t < DRAG.exhaleEnd) model.exhale(dt);
   model.update(dt, skater, renderPos, null, false);
 

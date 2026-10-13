@@ -13,7 +13,7 @@ import { ENEMY_TYPES } from './enemies/types.js';
 import { FLIGHT } from './systems/descent.js';
 import { SkaterModel, SNAPPED_END } from './player/skaterModel.js';
 import { realGuns } from './player/gunModels.js';
-import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playMoonLand, playSnap, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
+import { playNext, playWind, playBell, playCrow, playInhale, playExhale, playChipFlip, playChipLand, playDrips, playCaveAir, playHatch, playLadder, playManhole, playCity, playReveal, playPushOff, playDoorsBurst, playChandelier, playShuffle, playReelsStop, playCoinsPour, playFloorCrack, playCreak, playGlass, playDustWave, playGhosts, playBuried, playHush, playMoonLand, playSnap, playFlick, playEndChord, playCredit, playFanfare, playTitleSting, playLaugh } from './fx/audio.js';
 import { playBones, playDread, playThunder, playHeadshot, playPowerup, playBossIntro, playPortalOpen, playExit, playBossBurst, playBossPop, playRumble, playWhoosh, playLighter, playCoin } from './fx/audio.js';
 import { setMusicStyle } from './fx/music.js';
 import { holdMusic, sceneBoost } from './fx/audio.js';
@@ -243,6 +243,17 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     model.play?.(name, 1, 1, time, true);
   }
   const aboard = () => scene.afoot?.();
+  // How much bigger a boss is than the size his close-ups were set for (Babitus's: 3.2): they stand off by as much.
+  const BIG = (b) => Math.max(1, b.scale / 3.2);
+  // He gets his lighter out to what he is smoking before he draws on it: up under the end of it, a strike, the
+  // flame held there, and away again (a second and a bit, from `into` = 0). who: whose (see light() in
+  // player/kirkyBody.js). Returns how much flame there is (0..1), for a scene that is lit by it.
+  function relight(who, into) {
+    const burning = smooth((into - 0.38) / 0.08) * (1 - smooth((into - 0.92) / 0.12));
+    who.light?.(smooth(into / 0.32) * (1 - smooth((into - 1.0) / 0.3)), burning, into > 0.32 && into < 0.44 ? 1 : 0);
+    if (into >= 0.36 && into < 1.4) once(`relit${Math.floor(scene.time - into + 0.5)}`, into, 0.36, () => playLighter());
+    return burning;
+  }
   // A blink to black around a hard cut at `at` (0..1).
   const blink = (t, at) => 1 - smooth(Math.abs(t - at) / 0.16);
 
@@ -305,10 +316,11 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (!scene.marks[`shot${i}`]) { scene.marks[`shot${i}`] = true; sh.at?.(); }
         model.update(dt, skater, skater.pos, null, false);
         model.inhale = v.drag || 0;
+        const flame = v.light !== undefined ? relight(model, v.light) : 0;   // (a shot that has him smoke has him light it first)
         horde.draw(dt);
         view(v.fov ?? 50, v.shake ?? 0);
         lamp.position.copy(eye).y += 1.3;
-        lamp.intensity = glow * (1 + 1.2 * Math.exp(-into * 5));
+        lamp.intensity = glow * (1 + 1.2 * Math.exp(-into * 5)) + 10 * flame;
         hud.lines(v.lines || 0);
         hud.caption(t < total ? sh.line : null, NEXT);
         const dark = blink(t, total);
@@ -345,7 +357,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         { for: 2.2, line: 'He brought a board, a gun and a boof. Something keeps the cemetery.', at: () => playInhale(1.4), cam: (k, t) => {   // his face: one long drag
           eye.set(p.x + 0.5, y + 1.72, p.z - 1.5 + 0.2 * k);
           target.set(p.x, y + 1.66, p.z);
-          return { fov: 30 - 6 * smooth(t / 0.15), drag: smooth((t - 0.4) / 0.5) * (1 - smooth((t - 1.7) / 0.3)), lines: 0.4 };
+          return { fov: 30 - 6 * smooth(t / 0.15), drag: smooth((t - 0.9) / 0.4) * (1 - smooth((t - 1.9) / 0.25)), light: t, lines: 0.4 };
         } },
       ], done, 0, 'grave');
     },
@@ -462,7 +474,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           descent.stage(-12, t + 9, 1);
           eye.set(p.x + 0.45, y + 1.72, p.z - 1.5);
           target.set(p.x, y + 1.66, p.z);
-          return { fov: 34 - 10 * smooth(t / 0.12), shake: 0.03, drag: smooth((t - 0.2) / 0.4) * (1 - smooth((t - 1.1) / 0.3)) };
+          return { fov: 34 - 10 * smooth(t / 0.12), shake: 0.03, drag: smooth((t - 0.75) / 0.3) * (1 - smooth((t - 1.25) / 0.2)), light: t * 1.25 };
         } },
         { for: 2.2, line: 'Three kilometres to the bottom.', at: () => { playTitleSting(); hud.bossIntro('Run', 'The Long Way Down'); }, cam: (k, t) => {   // over his shoulder, down the hill, pushing in
           descent.stage(-44, t + 11, 1);   // (behind the camera now: it is all over this shot otherwise)
@@ -508,7 +520,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       });
       model.setVisible(false);
       //            Earth  fall  behind  face  broken  lights  round  last
-      const CUTS = [0,     4.0,  8.0,    11.5, 14.5,   17.5,   23.5,  30.0], END = 50, FALL = CUTS[1] + 1.1, HIT = FALL + 1.3, LIGHT = CUTS[5] + 1.0;
+      // (LIGHT: when it catches. His lighter is up to it from the start of that shot, and does not take the first two
+      // times he strikes it: STRIKES.)
+      const CUTS = [0,     4.0,  8.0,    11.5, 14.5,   17.5,   24.9,  31.4], END = 51.4, FALL = CUTS[1] + 1.1, HIT = FALL + 1.3, STRIKES = [CUTS[5] + 0.95, CUTS[5] + 1.65], LIGHT = CUTS[5] + 2.4;
       const LINES = ['The Moon.', 'No tables. No dealers. No brothers.', 'He never did get his money back.', 'One boof left.', 'Broken in the fall.', 'It still smokes.', 'Down there, a hill is missing.'];
       const LAST = [[1.5, 'The house always wins.'], [4.5, 'Not tonight.'], [10, `Down the hill in ${time}.`], [13, 'A game by Babitus & Clauditus.'], [16, 'Thanks for playing.']];
       lamp.color.set(0xfff2dc);
@@ -523,7 +537,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         kirky.root.visible = t >= FALL;
         once('land', t, HIT, () => playMoonLand());
         once('snapped', t, CUTS[4], () => { dress('broken'); kirky.smoking = kirky.ember.visible = false; playSnap(); });   // (not lit yet)
-        once('lit', t, LIGHT, () => { kirky.smoking = kirky.ember.visible = true; playLighter(); });
+        STRIKES.forEach((at, i) => once(`strike${i}`, t, at, () => playFlick()));
+        once('caught', t, LIGHT, () => playLighter());
+        once('lit', t, LIGHT + 0.3, () => { kirky.smoking = kirky.ember.visible = true; });
+        // (his lighter: up under it as the shot begins; a spark and nothing, twice; then a flame, held to it; and away)
+        const spark = Math.max(...STRIKES.map((at) => (t >= at ? Math.exp(-(t - at) * 14) : 0)), t >= LIGHT ? Math.exp(-(t - LIGHT) * 14) : 0);
+        const burning = k(LIGHT, 0.08) * (1 - k(LIGHT + 0.85, 0.15));
+        if (shot === 5) kirky.light?.(k(CUTS[5] + 0.15, 0.55) * (1 - k(LIGHT + 1.0, 0.45)), burning, spark);
         once('drag', t, LIGHT + 0.5, () => playInhale(2.2));
         once('breath', t, LIGHT + 3.1, () => playExhale(2.4));
         LAST.forEach(([at], i) => once(`credit${i}`, t, CUTS[7] + at, () => playCredit()));
@@ -579,7 +599,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         }
         view(fov, shake);
         lamp.position.copy(eye).y += 1;
-        lamp.intensity = (shot >= 3 && shot <= 6 ? 6 : 0) + 60 * lit;
+        lamp.intensity = (shot >= 3 && shot <= 6 ? 6 : 0) + 60 * lit + (shot === 5 ? 14 * spark + 16 * burning : 0);
         lamp.color.set(lit > 0.05 ? 0xff9a3a : 0xfff2dc);
         hud.lines(lines);
         let line = shot < 7 && into > 0.5 ? LINES[shot] : null;
@@ -741,7 +761,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           view(62, 0.02);
         } else if (t < CUTS[2]) {     // 2: his face
           if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.86, b.z).addScaledVector(dir, wide * 0.3);
-          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2).addScaledVector(side, 0.4);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2 * BIG(b)).addScaledVector(side, 0.4);
           view(40 - 14 * k(CUTS[1], 0.14), 0.04);
         } else {                      // 3: from the chandelier
           eye.set(p.x + 1.5, floor + 13 - 3 * k(CUTS[2], 2), p.z + 1.5);   // (straight down on him)
@@ -883,7 +903,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         moon.copy(at).addScaledVector(FLIGHT, 900);
         model.update(dt, skater, at, null, false);
         if (shot !== 3) model.root.quaternion.multiply(spin.setFromAxisAngle(UP, t * 1.4));
-        model.inhale = shot === 3 ? k(CUTS[3] + 0.3, 0.5) * (1 - k(CUTS[4] - 0.5, 0.3)) : 0;
+        model.inhale = shot === 3 ? k(CUTS[3] + 0.9, 0.4) * (1 - k(CUTS[4] - 0.5, 0.3)) : 0;
+        if (shot === 3) relight(model, t - CUTS[3]);
         head.set(0, 1.66, 0).applyQuaternion(model.root.quaternion).add(at);
         horde.draw(dt);
         if (shot === 0) {             // 1: side on, very slowly, as the board leaves the lip
@@ -922,7 +943,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         hud.flash('#ffffff', Math.max(pop * 0.85, k(END - 0.7, 0.7)));
         once('reach', t, CUTS[1], () => { playDustWave?.(); playGhosts?.(); });
         once('title', t, CUTS[2], () => { playTitleSting(); hud.bossIntro('Launch', 'The Long Way Down'); });
-        once('drag', t, CUTS[3] + 0.3, () => playInhale(1.3));
+        once('drag', t, CUTS[3] + 0.9, () => playInhale(1.0));
         once('untitle', t, CUTS[3], () => hud.hideBossIntro());
         if (t >= END) { model.inhale = 0; hud.hideBossIntro(); goHome(); }
       }, () => { model.inhale = 0; hud.hideBossIntro(); done?.(); });
@@ -1048,7 +1069,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       begin(END + 0.3, (t, dt) => {
         const k = (a, len) => smooth((t - a) / len), shot = t < CUTS[1] ? 0 : t < CUTS[2] ? 1 : t < CUTS[3] ? 2 : t < CUTS[4] ? 3 : 4;
         once('seen', t, CUTS[1] + 0.3, () => playReveal());
-        once('drag', t, CUTS[2] + 0.2, () => playInhale(1.1));
+        once('drag', t, CUTS[2] + 0.95, () => playInhale(1.0));
+        if (shot === 2) relight(model, t - CUTS[2]);
         once('push', t, CUTS[3], () => playPushOff(2.6));
         descent.stage(-95, t, 0, 0);
         const burst = k(BURST, 0.22);
@@ -1142,13 +1164,13 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         } else if (t < CUTS[2]) {     // 2: up him, from his shoes to his face
           // (it ends level with his face, and square on to it, wherever his stance has it: b.eyesAt)
           const up = k(1.0, 1.1), face = b.eyesAt, top = face ? face.y - ground - 0.5 : tall * 0.84, fx = face ? (face.x - b.x) * up : 0, fz = face ? (face.z - b.z) * up : 0;
-          eye.set(b.x + fx, ground + 0.4 + top * up, b.z + fz).addScaledVector(dir, wide + 3.6).addScaledVector(side, 0.8 - 0.8 * up);
+          eye.set(b.x + fx, ground + 0.4 + top * up, b.z + fz).addScaledVector(dir, wide + 3.6 * BIG(b)).addScaledVector(side, 0.8 - 0.8 * up);
           target.set(b.x + fx, ground + 0.5 + top * up, b.z + fz);
           view(34, 0.01);
           lines = 0.9;
         } else if (t < CUTS[3]) {     // 3: his eyes
           if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide * 0.3);
-          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.6 - 0.5 * k(2.3, 1.0)).addScaledVector(side, 0.2);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + (2.6 - 0.5 * k(2.3, 1.0)) * BIG(b)).addScaledVector(side, 0.2);
           view(22, 0.008);
         } else {                      // 4: over Kirky's shoulder, the whole room between you
           eye.copy(skater.pos).addScaledVector(dir, 3.4 + 0.8 * k(3.3, 1.8)).addScaledVector(side, 1.3);
@@ -1190,11 +1212,11 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         if (t < CUTS[1]) {            // 1: the cards in his hand, a snap zoom
           const cards = b.handsAt && b.handsAt[CARDS];
           if (cards) target.copy(cards); else target.set(b.x, ground + tall * 0.36, b.z).addScaledVector(side, -1.2).addScaledVector(dir, wide * 0.6);
-          eye.copy(target).addScaledVector(dir, 3.3).addScaledVector(side, -0.7);
+          eye.copy(target).addScaledVector(dir, 3.3 * BIG(b)).addScaledVector(side, -0.7 * BIG(b));
           view(46 - 22 * k(0, 0.2), 0.01);
         } else if (t < CUTS[2]) {     // 2: his eyes: 7, 7, 7
           if (b.eyesAt) target.copy(b.eyesAt); else target.set(b.x, ground + tall * 0.89, b.z).addScaledVector(dir, wide * 0.3);
-          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2).addScaledVector(side, -0.15);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.2 * BIG(b)).addScaledVector(side, -0.15);
           view(18, 0.012);
         } else {                      // 3: from the floor in front of him, arms up
           eye.set(b.x, ground + tall * 0.1, b.z).addScaledVector(dir, wide + 5.4 - 1.2 * k(2.2, 1.2)).addScaledVector(side, 1.5);
@@ -1237,7 +1259,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         }
         if (t < CUTS[1]) {            // 1: his face, very slowly, as he sees the card
           if (there && body.eyesAt) target.copy(body.eyesAt); else target.set(body.x, ground + tall * 0.86, body.z).addScaledVector(dir, wide * 0.3);
-          eye.copy(target).addScaledVector(dir, wide * 0.7 + 2.4 - 0.4 * k(0, 1.5)).addScaledVector(side, 0.5);
+          eye.copy(target).addScaledVector(dir, wide * 0.7 + (2.4 - 0.4 * k(0, 1.5)) * BIG(body)).addScaledVector(side, 0.5);
           view(22, 0.006);
         } else if (t < CUTS[2]) {     // 2: the wheel, turning: zero
           // (From over its rim, round it and in on the green pocket. Not from straight above: the great chandelier

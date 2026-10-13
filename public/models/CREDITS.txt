@@ -16,7 +16,8 @@ kirky_anims.glb, kirky_anims.json — how Kirky moves
 mob_anims.json — how the monsters move
 
 Motion capture from Mixamo (https://www.mixamo.com, Adobe): riding, pushing, walking, running, sitting, aiming,
-falling, dying and the rest for Kirky; the zombies' sprint, attack, scream, climb and death, the mutant's walk, roar,
+falling, dying, sitting down, dancing, waving, cheering (stood, getting up, and sat) and being drunk (stood, walking,
+backing up, turning) for Kirky; the zombies' sprint, attack, scream, climb and death, the mutant's walk, roar,
 swipe, turns, jump and jump attack for the bosses, a throw, a card deal, a man going through something with both
 hands (Goyitus Ultimus, reaching), and the one clip each that Hamzitus's and Rubistus's own characters came with.
 Refitted to the game's own skeletons and parts by tools/build_anims.py and tools/build_mob_anims.py. One clip of Kirky's (the ollie) is from the skater model
@@ -30,6 +31,13 @@ zombies.glb — two more zombies, and two of the bosses
 Mixamo characters (https://www.mixamo.com, Adobe): a soldier in what is left of his uniform ("WorldWar zombie"), a
 gaunt one bare to the waist ("Ch10"), Hamzitus Goyitus (the "parasite zombie") and Rubistus Goyitus (the "skeleton
 zombie"). tools/build_zombies.py cuts each into the game's parts and puts the colours of its picture on its points.
+
+lighter.glb — Kirky's lighter
+
+"Lighter" by Johnathon Goswick (https://sketchfab.com/goswick3), licensed under CC-BY-4.0
+(http://creativecommons.org/licenses/by/4.0/). Source: https://sketchfab.com/3d-models/lighter-62160b39425049e48efc57e13efd004d
+Changed for the game by tools/build_lighter.py: made the size of a lighter, its faces cut finer, and the colours of
+its picture put on its points (its pictures themselves are not used).
 
 rat.glb — the rat
 

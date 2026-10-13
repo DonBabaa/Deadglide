@@ -46,7 +46,8 @@ export const ENEMY_TYPES = {
   },
   // The last boss, in the House (level 4). He doesn't throw filth: the roulette wheel decides what he does (see horde.js).
   boss3: {
-    title: 'Babitus Goyitus', boss: true, house: true, scale: 3.2, speed: 10.5, hp: 1, hpScale: 2.6, radius: 0.55, height: 2.0, damage: 30, score: 3000, xp: 0, sway: 0.02, stride: 0.36,
+    // (twice the size he was; and a fifth easier to beat than he was at that size: a fifth less of him to get through, and a fifth off what he does to you)
+    title: 'Babitus Goyitus', boss: true, house: true, scale: 6.4, speed: 10.5, hp: 1, hpScale: 2.08, radius: 0.55, height: 2.0, damage: 24, score: 3000, xp: 0, sway: 0.02, stride: 0.36,
     blob: 0xf3efe4, splat: 0x1a1a1a, cutIn: 'house',
   },
   boss: { title: 'Hamzitus Goyitus', boss: true, scale: 5.5, speed: 4.5, hp: 1, radius: 0.72, height: 1.95, damage: 30, score: 1000, xp: 60, sway: 0.1, stride: 0.5 },

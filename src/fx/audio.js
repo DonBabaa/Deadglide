@@ -658,6 +658,14 @@ export function playLighter() {
     hiss('bandpass', 800, 400, 0.5, 0.12, 0.06);
   });
 }
+// The wheel of his lighter going round and nothing catching: the scrape and the click, and no flame after it.
+export function playFlick() {
+  if (!ready()) return;
+  loud(3, () => {
+    hiss('highpass', 5200, 3200, 0.03, 0.32);
+    tone('square', 820, 560, 0.02, 0.07);
+  });
+}
 export function playThunder() {
   if (!ready()) return;
   far(() => {

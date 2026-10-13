@@ -3,7 +3,9 @@
 // Everyone who can see you sees them: only the emote's number is sent, and each
 // machine plays it on its own copy of your model.
 //
-// To add one: an entry here, with a pose(k, t, w, P) that moves the model.
+// To add one: an entry here, with a pose(k, t, w, P) that moves the model. An entry with a `clip` (a name) is motion
+// capture on his feet, in the casino: the clip plays, all of him, and pose() is only for when he is on his board,
+// where there is no room for it (`sat`: the clip for when he is sat down; without one he is posed by hand there too).
 //   k   the SkaterModel        t   seconds since it began
 //   w   0..1: how much of the emote to show (it eases in and out by itself)
 //   P   helpers: P.left(x, y, z) and P.right(x, y, z) aim the two arms (radians),
@@ -13,20 +15,21 @@ const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 *
 const lerp = (a, b, t) => a + (b - a) * t;
 
 export const EMOTES = [
-  { id: 'wave', name: 'Wave', icon: '\u{1F44B}', time: 2.4, pose: (k, t, w, P) => P.left(-2.6, 0, Math.sin(t * 11) * 0.45) },
-  { id: 'cheer', name: 'Cheer', icon: '\u{1F64C}', time: 2.4, pose: (k, t, w, P) => {
+  { id: 'wave', name: 'Wave', icon: '\u{1F44B}', time: 3.0, clip: 'wave', pose: (k, t, w, P) => P.left(-2.6, 0, Math.sin(t * 11) * 0.45) },
+  { id: 'cheer', name: 'Cheer', icon: '\u{1F64C}', time: 2.8, clip: 'cheer', sat: 'cheersit', pose: (k, t, w, P) => {
     const pump = Math.sin(t * 13) * 0.14;
     P.left(-2.7 + pump, 0, 0.15);
     P.right(-1.35 + pump, 0, 0);
     P.lean(-0.18);
   } },
   { id: 'smoke', name: 'Smoke', icon: '\u{1F6AC}', time: 3.4, pose: (k, t, w, P, dt) => {
-    P.right(-0.95, -0.5, 0, smooth(t / 0.4) * (1 - smooth((t - 1.7) / 0.3)));   // hand to his mouth for the drag
+    const up = smooth(t / 0.4) * (1 - smooth((t - 1.7) / 0.3));
+    if (k.toMouth) k.toMouth(P.w * up); else P.right(-0.95, -0.5, 0, up);   // his hand to his mouth for the drag (his own body works out how to get it there)
     k.inhale = smooth((t - 0.45) / 0.4) * (1 - smooth((t - 1.6) / 0.12));
     if (t > 1.9 && t < 3.0) k.exhale(dt);
     P.lean(-0.2 * smooth((t - 1.8) / 0.3));   // head back as it rolls out
   } },
-  { id: 'dance', name: 'Dance', icon: '\u{1F57A}', time: 3.6, pose: (k, t, w, P) => {
+  { id: 'dance', name: 'Dance', icon: '\u{1F57A}', time: 6.0, clip: 'dance', pose: (k, t, w, P) => {
     const beat = Math.sin(t * 9);
     P.left(-1.5 + beat * 0.9, 0, 0.3);
     P.right(-0.5 - beat * 0.7, 0.2, 0);
@@ -71,12 +74,14 @@ export function createEmoter(model, driven = false) {
     twist(y) { k.torso.rotation.y = y * P.w; },
   };
   // Both his own arms, whatever he is carrying; and a lit cigarette for a smoke, whatever is usually in his mouth.
+  let stowed = false;
   const dress = (on) => {
     if (k.twoHanded) {
       for (const piece of k.offArm) piece.visible = on;
       k.supportArm.visible = k.supportHand.visible = !on;
     }
     if (EMOTES[index]?.id !== 'smoke') return;
+    if (k.gun?.group && (on ? k.gun.group.visible : stowed)) { stowed = on; k.gun.group.visible = !on; }   // (his gun is put away for it: it is the hand it was in that he smokes with)
     if (!on) { k.inhale = 0; k.applyLook(k.look); return; }
     for (const kind in k.mouth) for (const piece of k.mouth[kind]) piece.visible = kind === 'cigarette';
     k.ember.visible = k.smoking = true;
@@ -109,8 +114,10 @@ export function createEmoter(model, driven = false) {
       const E = EMOTES[index];
       if ((t += dt) >= E.time) return emoter.stop();
       P.w = smooth(t / 0.2) * smooth((E.time - t) / 0.25);
-      k.emoting = E.clip ? 0 : P.w;   // (posed by hand: whatever clip he is standing or walking by gives way to it, see kirkyBody.js)
-      E.pose(k, t, P.w, P, dt);
+      const clip = k.onBoard === false && k.play ? (k.sitting ? E.sat : typeof E.clip === 'string' ? E.clip : null) : null;
+      k.emoting = E.clip === true || clip ? 0 : P.w;   // (posed by hand: whatever clip he is standing or walking by gives way to it, see kirkyBody.js)
+      if (clip) k.play(clip, P.w, 1, undefined, true, k.sitting ? { seated: true } : null);
+      else E.pose(k, t, P.w, P, dt);
     },
   };
   return emoter;

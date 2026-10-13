@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { COSTUMES } from './costumes.js';
+import { glowTexture } from '../world/textures.js';
 
 const FILE = `${import.meta.env.BASE_URL}models/kirky.glb`;
 // A vertex that was bound to no bone when the file was made is bound, in the file, to one of its own that nothing
@@ -46,6 +47,15 @@ new GLTFLoader().load(FILE, (gltf) => {
   template.updateMatrixWorld(true);
   for (const go of waiting.splice(0)) go();
 }, undefined, (error) => { failed = true; console.warn('Kirky: no body to load, so he stays as he was.', error); });
+
+// His lighter (public/models/lighter.glb: tools/build_lighter.py; "Lighter" by Johnathon Goswick, CC-BY-4.0). Fetched
+// the first time anybody strikes one.
+let lighterFile = null;
+const lighterMade = () => (lighterFile ||= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/lighter.glb`).then((gltf) => {
+  let found = null;
+  gltf.scene.traverse((o) => { if (o.isMesh && !found) found = o; });
+  return found;
+}).catch((error) => { console.warn('Kirky: no lighter to load.', error); return null; }));
 
 // The body he wears as an alien (public/models/alien.glb: see tools/build_alien.py). It is on the same skeleton as his
 // own, so it is posed bone for bone from his. It may arrive after he does: whoever is waiting for it is told.
@@ -608,8 +618,72 @@ export function attachBody(model) {
     bone.quaternion.copy(bone.parent.getWorldQuaternion(q2).invert().multiply(q3));
     bone.updateMatrixWorld(true);
   };
+  // ---- His lighter ----
+  // model.light(raised, flame, spark), said every frame it is wanted: his other hand brings his lighter up under what
+  // he is smoking (raised: 0 at his side, 1 there), with its flame that big (0..1) and that much of a spark off its
+  // wheel (0..1: a strike that does not take). It is in his hand all the way up and down, and put away at the bottom.
+  const LIGHTER = 1.35;   // (bigger than a real one, as his hands and his head are)
+  let lit = null, lighter = null, flame = null, spark = null;
+  const litE = new THREE.Vector3(), litB = new THREE.Vector3(), litT = new THREE.Vector3(), litUp = new THREE.Vector3(), litOut = new THREE.Vector3(), litH = new THREE.Vector3();
+  model.light = (raised, burning = 0, struck = 0) => {
+    lit = { raised, burning, struck, at: performance.now() };
+    if (lighter) return;
+    lighter = new THREE.Group();
+    lighter.visible = false;
+    root.add(lighter);
+    const glowing = (color, size) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })); s.scale.setScalar(size); s.visible = false; lighter.add(s); return s; };
+    // (its flame: a tongue of it, white at the heart and orange round that, and the glow it throws; drawn solid, so
+    // that it shows against whatever is behind it)
+    const tongue = (color, wide, tall) => new THREE.Mesh(new THREE.LatheGeometry([[0, 0], [0.55, 0.12], [0.95, 0.3], [0.8, 0.52], [0.42, 0.78], [0, 1]].map(([r, y]) => new THREE.Vector2(r * wide, y * tall)), 12), new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+    flame = new THREE.Group();
+    flame.add(tongue(0xff8a1e, 0.011, 0.058), tongue(0xfff0b0, 0.006, 0.036), glowing(0xffa040, 0.11));
+    flame.children[1].position.y = 0.004;
+    flame.children[2].position.y = 0.03;
+    flame.children[2].visible = true;
+    flame.children[2].material.opacity = 0.5;
+    flame.visible = false;
+    lighter.add(flame);
+    spark = glowing(0xfff3c8, 0.035);
+    lighter.scale.setScalar(LIGHTER);
+    lighterMade().then((made) => { if (made) lighter.add(new THREE.Mesh(made.geometry, made.material)); });
+  };
+  const holdLighter = (L) => {
+    const up = smoothstep(L.raised), holder = model.ember;
+    litUp.set(0, 1, 0).applyQuaternion(root.getWorldQuaternion(q2));
+    // Where it goes: its chimney a finger under the end of what he is smoking, stood upright. His wrist beside it.
+    holder.getWorldPosition(litE);
+    bones.hand_r.getWorldPosition(litH);
+    bones.upperarm_r.getWorldPosition(S);
+    litOut.copy(S).sub(bones.upperarm_l.getWorldPosition(w)).normalize();   // (to the side that arm is on)
+    litB.copy(litE).addScaledVector(litUp, -(0.082 * LIGHTER + 0.05));   // (its flame is that tall: the top of it is at the end of what he is smoking)
+    litT.copy(litB).addScaledVector(litUp, 0.025).addScaledVector(litOut, 0.062).addScaledVector(v.copy(S).sub(litE).setY(0).normalize(), 0.045);
+    if (L.raised < 0.999) { v.copy(litB).sub(litT); litT.lerpVectors(litH, litT, up); litB.copy(litT).add(v); }   // (on its way: in his hand, wherever that has got to)
+    const far = Math.min(S.distanceTo(litT), (L1 + L2) * 0.995), along = (L1 * L1 - L2 * L2 + far * far) / (2 * far), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+    dir.copy(litT).sub(S).normalize();
+    pole.copy(litUp).multiplyScalar(-1).addScaledVector(litOut, 0.6);
+    pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+    E.copy(S).addScaledVector(dir, along).addScaledVector(pole, off);
+    point(bones.upperarm_r, bones.lowerarm_r, E);
+    point(bones.lowerarm_r, bones.hand_r, litT);
+    lighter.visible = true;
+    lighter.position.copy(root.worldToLocal(litB));
+    lighter.quaternion.copy(root.getWorldQuaternion(q2)).invert().multiply(q3.setFromUnitVectors(v.set(0, 1, 0), litUp)).multiply(q2.setFromAxisAngle(v.set(0, 1, 0), performance.now() * 0 + 1.2));
+    const now = performance.now() / 1000;
+    flame.visible = L.burning > 0.02;
+    flame.position.set(0, 0.08, 0);
+    flame.scale.set(L.burning * (0.85 + 0.15 * Math.sin(now * 31)), L.burning * (0.86 + 0.14 * Math.sin(now * 23 + 1)), L.burning);
+    flame.rotation.z = 0.12 * Math.sin(now * 17);
+    spark.visible = L.struck > 0.02;
+    spark.position.set(0.004, 0.074, 0.006);
+    spark.scale.setScalar(0.045 * L.struck * (0.7 + 0.3 * Math.sin(now * 90)));
+  };
+  const smoothstep = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
   late.updateMatrixWorld = () => {
-    if (!body.visible || !model.twoHanded || !model.gun || !L1 || (mocap && mocap.away)) return;
+    if (!body.visible || !L1) return;
+    const lighting = lit && lit.raised > 0.01 && performance.now() - lit.at < 300 ? lit : null;
+    if (lighter) lighter.visible = false;
+    if (lighting && lighter && model.ember) return holdLighter(lighting);
+    if (!model.twoHanded || !model.gun || (mocap && mocap.away)) return;
     model.foreArm.updateWorldMatrix(true, false);
     T.copy(model.gun.support);
     T.z = Math.min(T.z, 0.27);   // (as far along it as he can reach with the gun held in)
@@ -623,6 +697,27 @@ export function attachBody(model) {
     if (BULK.length) { root.worldToLocal(E); clearOf(E); root.localToWorld(E); }   // (round his belly, not through it)
     point(bones.upperarm_r, bones.lowerarm_r, E);
     point(bones.lowerarm_r, bones.hand_r, T);
+  };
+  // ---- A drag ----
+  // model.toMouth(w): the hand his gun is in, brought to what he is smoking (w: 0..1 of the way from wherever it
+  // is). His arm is bent to reach: shoulder, elbow (down, and out to that side), and his fingers on it.
+  const mouthT = new THREE.Vector3(), mouthU = new THREE.Vector3(), mouthX = new THREE.Vector3(), mouthY = new THREE.Vector3(), mouthQ = new THREE.Quaternion(), mouthM = new THREE.Matrix4();
+  model.toMouth = (amount) => {
+    if (!model.cig || amount <= 0.001) return;
+    const A = model.foreArm.position.length(), B = 0.29 + 0.07, Sm = model.gunArm.position;   // (upper arm; forearm, and his hand to its fingers)
+    root.updateWorldMatrix(true, false);
+    root.worldToLocal(model.cig.localToWorld(mouthT.set(0, -0.012, 0.035)));   // (a third of the way along it, and just under)
+    const far = Math.min(mouthT.distanceTo(Sm), (A + B) * 0.995), tilt = Math.acos(Math.max(-1, Math.min(1, (A * A + far * far - B * B) / (2 * A * far)))), bend = Math.PI - Math.acos(Math.max(-1, Math.min(1, (A * A + B * B - far * far) / (2 * A * B))));
+    dir.copy(mouthT).sub(Sm).normalize();
+    // (his elbow: down, and out to the side that arm hangs on; his forearm bends away from that)
+    pole.set(Math.sign(Sm.x) || 1, -1.6, -0.2).normalize();
+    mouthY.copy(pole).addScaledVector(dir, -pole.dot(dir)).normalize().multiplyScalar(-1);
+    mouthX.crossVectors(mouthY, dir);
+    mouthU.copy(dir).multiplyScalar(Math.cos(tilt)).addScaledVector(mouthY, -Math.sin(tilt));
+    mouthY.crossVectors(mouthU, mouthX);
+    mouthQ.setFromRotationMatrix(mouthM.makeBasis(mouthX, mouthY, mouthU));
+    model.gunArm.quaternion.slerp(mouthQ, amount);
+    model.foreArm.rotation.set(model.foreArm.rotation.x + (-bend - model.foreArm.rotation.x) * amount, 0, 0);
   };
   // ---- His feet ----
   // They go where a skater's feet go, whatever the rest of him is doing: on the board, over the bolts (the front one

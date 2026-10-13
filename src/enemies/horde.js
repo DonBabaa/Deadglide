@@ -1219,6 +1219,13 @@ export class Horde {
         const gait = mo.idle && (e.posed || !(e.speed > 0.3)) && !e.rush ? mo.idle : e.rush && mo.run ? mo.run : mo.alt && (e.phase * 97.13) % 1 < 0.3 ? mo.alt : mo.walk;
         e.step = (e.step ?? t) + dt * going * (mo.pace ? Math.max(0.6, Math.min(1.7, e.speed / mo.pace)) : mo.speed * (e.rush ? (mo.run ? 1.5 : 2.3) : 1));
         const S = config.house.stages, ran = e.rush ? 1.4 - e.rush : 9;
+        // (out of a run he pulls up, over the length of that clip, and only then does whatever he stopped to do:
+        // `halt` is how long ago he stopped, while that is still going on)
+        if (mo.stop) {
+          if (gait !== mo.idle) { e.ranLast = true; e.halt = 0; }
+          else if (e.ranLast) { e.halt += dt; if (e.halt > clipLength(mo.stop)) e.ranLast = false; }
+        }
+        const pulling = mo.stop && e.ranLast && gait === mo.idle && !e.posed ? e.halt : -1;
         let other = null, at = 0, w = 0, loop = false;
         if (dying > 0.02 && mo.die) { other = mo.die; w = Math.min(1, dying * 6); at = dying * clipLength(mo.die) * 0.95; }                 // going down
         else if (up > 0 && mo.rise) { other = mo.rise; w = 1 / going; at = e.rise * clipLength(mo.rise) * 0.97; }                              // getting up, out of the ground
@@ -1231,8 +1238,9 @@ export class Horde {
         else if (e.guard > 0 && mo.roar && e.T.house) { other = mo.roar; w = 1; at = (1 - e.guard / S.guard) * clipLength(mo.roar) * 0.98; }   // between hands: he screams
         else if (e.spent > 0 && mo.jump) { other = mo.jump; w = Math.min(1, e.spent * 2, (S.spentTime - e.spent) * 3 + 0.2); at = SLAM_LANDS + 0.15 + 0.06 * Math.sin(t * 2.4); }   // spent: down where he landed, heaving
         else if (ran < clipLength(mo.leap || '') && mo.leap) { other = mo.leap; w = Math.min(1, ran * 8, (clipLength(mo.leap) - ran) * 6); at = ran; }   // he leaps into his run
+        else if (pulling >= 0 && pulling < clipLength(mo.stop) - 0.25 && !e.slam && !(e.landed > 0)) { other = mo.stop; w = Math.min(1, (clipLength(mo.stop) - 0.25 - pulling) * 5); at = pulling; }   // pulling up
         else if (roar > 0.05 && mo.roar && !e.T.house) { other = mo.roar; w = Math.min(1, roar * 1.5); at = (1.6 - Math.min(1.6, roar)) * 1.4 + 0.6; }
-        else if (acting > 0.02 && mo.act) { other = mo.act; w = Math.min(1, acting * 3); at = e.T.house ? (t * 1.2) % clipLength(mo.act) : acting * clipLength(mo.act) * 0.62; }
+        else if (acting > 0.02 && mo.act) { other = mo.act; w = Math.min(1, acting * 3, pulling >= 0 ? Math.max(0, (pulling - clipLength(mo.stop) + 0.25) * 4) : 1); at = e.T.house ? (t * 1.2) % clipLength(mo.act) : acting * clipLength(mo.act) * 0.62; }
         else if (e.follow > 0 && mo.act) { other = mo.act; w = Math.min(1, e.follow * 5); at = clipLength(mo.act) * (0.62 + 0.3 * (1 - e.follow / 0.5)); }   // (and through, after it has gone)
         else if (mo.attack && near > 0.5 && !e.posed) { other = mo.attack; w = Math.min(1, (near - 0.5) * 4); at = t * 1.1; loop = true; }
         else if (round > 0.02 && mo.turnL) { other = spin > 0 ? mo.turnL : mo.turnR; w = round; at = t; loop = true; }                       // you have got round him: he steps round after you

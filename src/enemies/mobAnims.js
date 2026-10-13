@@ -36,7 +36,7 @@ export const MOCAP = {
   boss2: { walk: 'mwalk', speed: 0.85, rise: 'zstand', roar: 'zscream', act: 'rubi', attack: 'mswipe', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
   // (Babitus moves as the zombies do: their sprint, their attack, their scream, their death. What only he does is
   // still his own: he deals, he leaps into his run, he slams.)
-  boss3: { walk: 'sprint', pace: 7.4, idle: 'zidle', start: 'crouchsprint', act: 'cards', roar: 'zscream', attack: 'zattack', leap: 'mjump', jump: 'mslam', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
+  boss3: { walk: 'sprint', pace: 7.4, idle: 'zidle', stop: 'runstop', start: 'crouchsprint', act: 'cards', roar: 'zscream', attack: 'zattack', leap: 'mjump', jump: 'mslam', turnL: 'mturnl', turnR: 'mturnr', die: 'zdeath' },
 };
 for (const more of ['b', 'c', 'd']) MOCAP[`boss3${more}`] = MOCAP.boss3;
 MOCAP.zombieb = MOCAP.zombiec = MOCAP.shambler;   // (the other zombies: see ZOMBIES in types.js. start: up out of a crouch into its run, as it comes out of the ground)
