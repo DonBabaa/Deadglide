@@ -377,7 +377,7 @@ export class Skater {
     } else if (h - newPos.y > s.stepHeight) {
       // Hit the side of something: keep falling straight down, and land if we reach the ground.
       this.hitWall(newPos);
-      const ground = heightAt(pos.x, pos.z), y = pos.y + vel.y * dt;
+      const ground = airFloorAt(pos.x, pos.z), y = pos.y + vel.y * dt;
       if (y <= ground) {
         pos.y = ground;
         this.land();

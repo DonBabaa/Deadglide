@@ -44,8 +44,14 @@ export const confineX = (x, z) => (world.level === 2 ? cataConfine(x, z, SEED) :
 // The tunnel's pipe at this z ({ x: its middle, w: half the floor's width, floor }), or null where there isn't one.
 // (The same object every call: read it before asking again.)
 export const pipeAt = (z) => (world.level === 2 ? route(z, SEED) : null);
-// What is under something that's in the air (in the Catacombs, the pipe's wall counts right up to where it's upright).
-export const airFloorAt = (x, z) => (world.level === 2 ? cataAirFloor(x, z, SEED) : heightAt(x, z));
+// What is under something that's in the air. In the Catacombs the pipe's wall counts right up to where it's upright:
+// inside the lip that is the ground as it is for anything on it, with whatever stands on the floor or is sunk into
+// it (the ramps, the tombs, the bowls); from the lip out, where the ground is called solid rock, the wall's curve.
+export function airFloorAt(x, z) {
+  if (world.level !== 2) return heightAt(x, z);
+  const r = route(z, SEED);
+  return Math.abs(x - r.x) - r.w < EDGE ? heightAt(x, z) : cataAirFloor(x, z, SEED);
+}
 // Is this point inside something solid? (What stops bullets, and where the crosshair's line of sight ends.)
 // In the Catacombs the pipe's walls and roof are solid, but the space inside them is not: heightAt alone
 // would call everything out past the lip rock, right where you are when you ride a wall.
