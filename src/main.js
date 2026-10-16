@@ -304,7 +304,7 @@ function restart(carry = false) {
   if (drag) endDrag(false);
   cutscenes.cancel();
   goldTally.hide();
-  setMusicStyle({ 2: 'catacombs', 3: 'moon', 4: 'house', 5: 'hill' }[level] || 'dnb');   // (each level has its own: fx/music.js)
+  setMusicStyle({ 2: 'catacombs', 3: 'quiet', 4: 'house', 5: 'hill' }[level] || 'dnb');   // (each level has its own: fx/music.js; the Moon none, his call)
   model.root.scale.setScalar(1);
   model.board.visible = true;   // (the scene of his death puts it out of sight)
   leaderboard.hideEnd();
@@ -1149,6 +1149,8 @@ function startRun(loadout, chosen = 1, session = null) {
 menu.onStart(startRun);
 // Any click on the menu is enough for the browser to let the music start.
 document.getElementById('menu').addEventListener('click', () => { if (unlockAudio()) startMusic(); });
+// (the sound settings on the title screen stop their clicks there: touching them starts the music too, so it is heard as it is set)
+document.getElementById('menu-sound').addEventListener('pointerdown', () => { if (unlockAudio()) startMusic(); });
 
 // ---- Pause -------------------------------------------------------------------
 // On through the portal to the next level, as you are.

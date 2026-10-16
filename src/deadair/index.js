@@ -642,13 +642,16 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   // ---- THE GLANCE: a scare does not take the camera. It pulls your view toward the thing for about a second, hard at
   // first and easing off (you can fight it), with speed lines; Kirky's word for it goes on the subtitle line. The camera
   // is yours the whole time, so nothing gets to you while you cannot see.
+  // (off, his call 2026-10-17: a scare no longer turns your view, cuts away or runs its speed lines; its sound, Kirky's word
+  // and its banner stay. That goes for the doorstep's little scene and the duct's two shots too. true brings it all back.)
+  const SCARE_CAMERA = false;
   let glance = null, lastGlance = -99;
   const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   function glanceAt(at, { for: dur = 1.1, k = 1, lines = 0.55, say = null, title = null, colour = 0xff5040, gap = 5 } = {}) {
     if (!at || me.safe || game.over || intro >= 0 || grab || cutIn) return false;
     if (time - lastGlance < gap) return false;   // (not two on top of each other)
     lastGlance = time;
-    glance = { at, t: 0, for: dur, k, lines };
+    if (SCARE_CAMERA) glance = { at, t: 0, for: dur, k, lines };
     if (say) story.line(say[0], say[1]);
     if (title) hud.banner(title, colour);
     return true;
@@ -673,22 +676,24 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const z = e.z;
     const head = () => (z?.head && Number.isFinite(z.head.x) ? z.head.clone() : (z ? z.pos.clone().setY((z.y || 0) + 1.5) : null));
     const K = e.kind;
-    if (K === 'lampOut') { glanceAt(null); hud.glance(0.4); setTimeout(() => hud.glance(0), 500); story.line('Kirky', 'Not now. Not the lamp.'); }
+    if (K === 'lampOut') { glanceAt(null); if (SCARE_CAMERA) { hud.glance(0.4); setTimeout(() => hud.glance(0), 500); } story.line('Kirky', 'Not now. Not the lamp.'); }
     else if (K === 'lamp' && z) glanceAt(head, { say: ['Kirky', '...There you are.'] });
     else if (K === 'vent') glanceAt(V3(7 * CELL, HEIGHT - 0.2, 2 * CELL), { for: 1.3, k: 1.2 });
     else if (K === 'ventDrop' && z) glanceAt(head, { k: 1.4, lines: 0.7 });
-    else if (K === 'breath') { hud.glance(0.35); setTimeout(() => hud.glance(0), 700); }
+    else if (K === 'breath') { if (SCARE_CAMERA) { hud.glance(0.35); setTimeout(() => hud.glance(0), 700); } }
     else if (K === 'sleeper' && z) glanceAt(head, { k: 1.3, say: ['Kirky', 'It was dead. It was dead!'] });
     else if (K === 'doorstep' && z) {
       // (his ask: a short cutscene, the one on the doorstep waving at you: hello. Then it screams, and comes)
       z.state = 'skit'; z.t = 0; z.vel.set(0, 0, 0); z.skit = { clip: 'cheer', loop: true, rate: 0.8, wgt: 1, face: me.pos.clone(), t: 0 };
       const here = me.pos.clone().setY(1.4), to = z.pos.clone().sub(me.pos).setY(0).normalize(), sd = sideOf(to);
+      const comes = () => { if (z.hp > 0 && z.state === 'skit') { z.state = 'scream'; z.t = 0; z.skit = null; } };
+      if (!SCARE_CAMERA) { setTimeout(() => { if (active) story.line('Kirky', '...Hi.'); }, 900); setTimeout(() => { if (active) comes(); }, 2800); return; }
       playCut([
         // over his shoulder as he comes out: it, right there, arms up, waving
         { for: 1.3, cam: (s) => ({ cam: here.clone().addScaledVector(to, -1.1 + 0.2 * s).addScaledVector(sd, 0.45).setY(1.6), at: z.pos.clone().setY(1.45), from: here, fov: 46 - 4 * s, lines: s < 0.15 ? 1 : 0, flash: s < 0.05 ? 0.5 : 0 }) },
         // its face, close, still waving; his line
         { for: 1.5, cam: (s) => ({ cam: z.pos.clone().addScaledVector(to, -1.25).addScaledVector(sd, -0.35).setY(1.55), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : z.pos.clone().setY(1.6)), from: z.pos.clone().addScaledVector(to, -0.6).setY(1.5), fov: 38, lines: 0, say: s > 0.2 ? ['Kirky', '...Hi.'] : null }) },
-      ], () => { if (z.hp > 0 && z.state === 'skit') { z.state = 'scream'; z.t = 0; z.skit = null; } });
+      ], comes);
     }
     else if (K === 'watcher' && z) glanceAt(head, { for: 1.4, say: ['Kirky', "...Don't look away."] });
     else if (K === 'steam' && e.p) glanceAt(e.p.clone(), { for: 0.9, k: 0.8 });
@@ -711,7 +716,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     else if (K === 'wheel') glanceAt(V3(CRANK.x, 1.05, CRANK.z), { for: 1.4, say: ['Kirky', '...Nobody is on that.'] });
     else if (K === 'gone' && e.p) glanceAt(e.p.clone().setY(0.25), { for: 1.4, say: ['Kirky', '...It was right there.'] });
     else if (K === 'recorder' && e.p) glanceAt(e.p.clone().setY(0.4), { for: 1.3, k: 0.9, say: ['Kirky', "...Who's playing that?"] });
-    else if (K === 'blackout') { hud.glance(0.3); setTimeout(() => hud.glance(0), 600); }
+    else if (K === 'blackout') { if (SCARE_CAMERA) { hud.glance(0.3); setTimeout(() => hud.glance(0), 600); } }
   }
   // Each frame while it has you: its face, and nothing else; F shoves.
   function runGrab(dt, meleeDown) {
@@ -2022,7 +2027,8 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       c.z = z; game.left += 1;
       sound.sting(0.9); sound.clatter?.('mag', c.to.clone().setY(0.5), 0.8);
       const eye = walker.camera.position.clone(), ahead = c.axis.clone();
-      playCut([{ for: 1.4, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, 0.2), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : z.pos.clone().setY(0.45)), from: eye, free: true, fill: 1.4, fillAt: z.pos.clone().addScaledVector(ahead, -1.2).setY(0.8), fov: 46 - 12 * s, lines: s > 0.3 ? 1 : 0, flash: s < 0.05 ? 0.3 : 0, say: ['Kirky', 'Something is in here with me.'] }) }]);
+      if (!SCARE_CAMERA) story.line('Kirky', 'Something is in here with me.');
+      else playCut([{ for: 1.4, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, 0.2), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : z.pos.clone().setY(0.45)), from: eye, free: true, fill: 1.4, fillAt: z.pos.clone().addScaledVector(ahead, -1.2).setY(0.8), fov: 46 - 12 * s, lines: s > 0.3 ? 1 : 0, flash: s < 0.05 ? 0.3 : 0, say: ['Kirky', 'Something is in here with me.'] }) }]);
     }
     const z = c.z;
     if (z && z.state === 'duct' && !c.bitten) {
@@ -2031,7 +2037,8 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
         c.bitten = true;
         clawed(25, z);
         const eye = walker.camera.position.clone(), ahead = c.axis.clone();
-        playCut([{ for: 0.9, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, -0.15), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : eye.clone().addScaledVector(ahead, 0.5).setY(0.4)), from: eye, free: true, fill: 0.9, fillAt: eye.clone().addScaledVector(ahead, -0.35).setY(0.8), fov: 40, lines: 1, flash: s < 0.1 ? 0.9 : 0, say: ['Kirky', 'OFF— it is going over— it is going over me—'] }) }]);
+        if (!SCARE_CAMERA) story.line('Kirky', 'OFF— it is going over— it is going over me—');
+        else playCut([{ for: 0.9, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, -0.15), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : eye.clone().addScaledVector(ahead, 0.5).setY(0.4)), from: eye, free: true, fill: 0.9, fillAt: eye.clone().addScaledVector(ahead, -0.35).setY(0.8), fov: 40, lines: 1, flash: s < 0.1 ? 0.9 : 0, say: ['Kirky', 'OFF— it is going over— it is going over me—'] }) }]);
         sound.meat(z.head, true);
       }
     }

@@ -66,7 +66,8 @@ const LICKS = [[76, 79, 81, 79], [84, 81, 79, 76], [72, 74, 76, 79, 81], [81, 79
 
 let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = null, lick = null;
 
-// 'dnb' (the cemetery, and the menu), 'catacombs', 'house', 'hill', 'moon', 'casino', or 'rock' (a boss fight).
+// 'dnb' (the cemetery, and the menu), 'catacombs', 'house', 'hill', 'moon', 'casino', or 'rock' (a boss fight); or 'quiet',
+// none at all (the Moon's, his call 2026-10-17: Free Ride plays no music. 'moon' is still here, for the editor's button).
 // The new groove starts from bar one, at once.
 export const MUSIC_STYLES = ['title', 'dnb', 'catacombs', 'rock', 'house', 'hill', 'moon', 'casino'];
 export const musicStyle = () => style;
@@ -155,6 +156,7 @@ export function startMusic() {
 }
 
 function schedule(index, t) {
+  if (style === 'quiet') return;
   if (track && track.style === style) return;   // (its recording is playing)
   if (style === 'rock') return rock(index, t);
   if (style === 'casino') return lounge(index, t);

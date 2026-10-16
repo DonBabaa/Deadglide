@@ -23,7 +23,8 @@ friends, with no damage and no clock. Everything is made in code: there are no a
   `tools/master_loops.py`: each keeps its intro, then loops between a start and an end found by matching rhythm and tone either
   side of the join, phase-aligned, the join crossfaded; all brought to one loudness; AAC in public/sounds/music): the title
   screen, DEADSLIDE (haunted drum and bass with the words); the Cemetery, high-BPM horror rock; the Catacombs, dark industrial
-  techno; Free Ride on the Moon, a steady dark electro breakbeat; the House, dark electro-swing; the Long Way Down, epic hard
+  techno; Free Ride on the Moon, none (his call, 2026-10-17: its track, a steady dark electro breakbeat, is still there for the
+  editor's button; the level plays style 'quiet'); the House, dark electro-swing; the Long Way Down, epic hard
   rock; a boss fight, symphonic horror metal (cutting in over the Cemetery's or the Catacombs'). `src/fx/music.js` TRACKS plays
   them (the buffer's own loopStart / loopEnd) on the music's bus (its volume, the scenes holding it down); the generated
   music is still there for the casino's lounge trio, and plays any style until its recording has loaded. The menu plays the

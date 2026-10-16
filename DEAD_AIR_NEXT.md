@@ -235,6 +235,10 @@ repo; `dl/` is git-ignored; `REUSABLE_SYSTEMS.md` and this file stay untracked u
 - **Scares no longer take the camera**: the glance (`glanceAt`, `runGlance`): the view is pulled toward the thing for a
   second, hard at first and easing off, speed lines, his line on the subtitle; the camera stays yours. The director waits
   24 s then 32–55 s between scares (was 14 / 20–34); the wheel/missing body/recorder chances halved.
+- **Scares leave the view alone (his call, 2026-10-17)**: `SCARE_CAMERA = false` in `index.js`. No glance (the pull and its
+  speed lines), and no cut-ins on the doorstep (it still waves, he still says "...Hi.", then it screams and comes) or in the
+  crawlspace (his two lines on the subtitle instead). The sounds, his lines and the banners stay; the grab's cut-ins are
+  untouched. da/scarecam.mjs: nine scares, no cut-in, no speed lines, the view still. `true` brings it all back.
 - **A cut-in can never kill you**: `me.shield` while any cut-in, the skit, the dud, the conga, the trophy's fall or the
   Golden BOOF has you: no claw lands, no grab starts, the dead stop targeting you.
 - **The first room is safe**: no openings in the Arrival Bay (all spawns moved to the Spine and beyond); nothing wakes until

@@ -535,6 +535,15 @@ body.cutscene #bars i { transform: none; }
 /* ---- Casino ---- */
 #menu .menu-row { display: flex; gap: 14px; margin-top: 18px; }
 #menu .menu-row #menu-shop-open { margin-top: 0; }
+/* the sound settings on the title screen (the pause menu's own panel, borrowed: menu.js) */
+#menu #menu-sound-open { margin-top: 0; }
+#menu #menu-sound-open small { font-size: 0.6em; opacity: 0.6; margin-left: 4px; letter-spacing: 1px; }
+#menu #menu-sound-open.on { color: var(--ink); background: var(--bone); }
+#menu #menu-sound #audio-controls { margin: 18px 0 4px; }
+#menu-home.sound-open #menu-board, #menu-home.sound-open #menu-board-label, #menu.sound-open #menu-foot { display: none; }
+#menu #menu-sound #audio-controls { grid-template-columns: max-content 1fr; font-size: 14px; }
+#menu #menu-sound #audio-controls button { white-space: nowrap; }
+#menu { justify-content: safe center; overflow-y: auto; }   /* (taller than the window: it scrolls, it is not cut off at both ends) */
 #menu #menu-casino-open { padding: 10px 22px; font-size: 22px; color: var(--ink); background: #7dffb0; border-color: var(--ink); box-shadow: 6px 6px 0 var(--bone); }
 /* DEAD AIR: only once the hatch on the Moon has been found */
 #casino { position: fixed; inset: 0; pointer-events: none; font-family: var(--text); color: var(--bone); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }

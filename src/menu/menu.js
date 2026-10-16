@@ -10,6 +10,7 @@ import { profile } from '../systems/profile.js';
 import { leaderboard } from '../ui/leaderboard.js';
 import { config } from '../config.js';
 import { TIERS, tierOf, chooseTier, describeTier } from '../systems/difficulty.js';
+import { syncAudioControls } from '../ui/audioControls.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('menu'), home = $('menu-home'), launch = $('menu-launch'), levels = $('menu-levels');
@@ -156,6 +157,40 @@ $('menu-play').addEventListener('click', () => {
 let kept = null;
 $('menu-continue').addEventListener('click', () => { if (kept) onStart?.(null, kept.level, { resume: true }); });
 
+// ---- Sound on the title screen (his ask): the game's own settings panel (#audio-controls: music and sound effects, on
+// and off and how loud, the mouse, the story scenes), borrowed from the pause menu while the title screen is up and given
+// back when a run starts, so that it is the one set of settings either way. The Sound button, or Esc, opens and shuts it.
+const soundBox = $('menu-sound'), soundButton = $('menu-sound-open');
+let settingsHome = null;
+function borrowSettings() {
+  const el = $('audio-controls');
+  if (!el || settingsHome) return;
+  settingsHome = { el, parent: el.parentNode, next: el.nextSibling };
+  soundBox.append(el);
+}
+function giveSettingsBack() {
+  if (!settingsHome) return;
+  settingsHome.parent.insertBefore(settingsHome.el, settingsHome.next);
+  settingsHome = null;
+}
+function showSound(open) {
+  soundBox.classList.toggle('hidden', !open);
+  soundButton.classList.toggle('on', open);
+  home.classList.toggle('sound-open', open);   // (the leaderboard steps aside for it)
+  root.classList.toggle('sound-open', open);   // (and the hint along the bottom)
+  if (open) { borrowSettings(); syncAudioControls(); }
+}
+soundButton.addEventListener('click', () => showSound(soundBox.classList.contains('hidden')));
+// Esc on the menu: from a page over the title screen (the levels, the difficulty, the shop, the editor), back the way you
+// came; on the title screen itself, the sound settings open (and shut again).
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || root.classList.contains('hidden')) return;
+  if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+  const back = [['menu-launch', 'menu-back'], ['menu-levels', 'levels-back'], ['menu-shop', 'shop-back'], ['menu-cinema', 'cinema-back']].find(([page]) => !$(page).classList.contains('hidden'));
+  if (back) { $(back[1]).click(); return; }
+  if (!home.classList.contains('hidden')) showSound(soundBox.classList.contains('hidden'));
+});
+
 export const menu = {
   onStart(callback) { onStart = callback; },
   // best: your best score. run: the run that is being kept for you, if there is one ({ level, about }).
@@ -178,11 +213,15 @@ export const menu = {
     home.classList.remove('hidden');
     root.classList.remove('hidden');
     document.body.classList.add('in-menu');
+    showSound(false);
+    borrowSettings();
   },
   // Open on the editor's list of scenes (coming back from one).
   showCinema() { home.classList.add('hidden'); $('menu-cinema').classList.remove('hidden'); },
   hide() {
     root.classList.add('hidden');
     document.body.classList.remove('in-menu');
+    showSound(false);
+    giveSettingsBack();   // (to the pause menu, where it lives)
   },
 };
