@@ -1,0 +1,57 @@
+DEAD AIR: recorded sounds. All CC0 (public domain): no attribution is required; it is given anyway.
+
+voice1.wav .. voice24.wav
+  "Zombies Sound Pack" by artisticdude, https://opengameart.org/content/zombies-sound-pack
+  (made mono 22.05 kHz, trimmed and levelled by tools/build_deadair_audio.py)
+
+sting1.wav .. sting5.wav
+  "Dark Ambiences" by Ogrebane, https://opengameart.org/content/dark-ambiences
+  (made mono 32 kHz by tools/build_deadair_audio.py)
+
+drone_station.mp3  ("Infestation in the Control Room")
+drone_deep.mp3     ("The Depths of Hell")
+  from "Ambience Pack #1: Sci-Fi Horror" by Joth, https://opengameart.org/content/ambience-pack-1-sci-fi-horror
+
+The station itself (public/models/deadair_kit.glb) is made from Quaternius's Modular Sci-Fi MegaKit (CC0),
+https://quaternius.com (by way of https://opengameart.org/content/modular-sci-fi-megakit).
+
+Reloads (all CC0):
+pistol_out.wav, pistol_in.wav, pistol_rack.wav
+  "Handgun Reload Sound Effect" by zer0_sol, https://opengameart.org/content/handgun-reload-sound-effect (cut into its three parts)
+rifle_out.wav, rifle_in.wav, rifle_bolt.wav, pump.wav
+  "Gun reload sounds" by SpringySpringo, https://opengameart.org/content/gun-reload-sounds (made with airsoft guns; cut into parts)
+shell_first.mp3, shell.mp3, shotgun_rack.mp3, shell_chamber.mp3
+  "Shotgun Reload Sound effects" by zer0_sol, https://opengameart.org/content/shotgun-reload-sound-effects
+clip1.wav, clip2.wav, round.wav
+  "Gun reload sound effects" by Brian MacIntosh (BMacZero), https://opengameart.org/content/gun-reload-sound-effects
+
+Gunshots (CC0): shot_pistol.wav (Colt 1911), shot_machineGun.wav (AR-15), shot_shotgun.wav (Mossberg), shot_revolver.wav (Colt 1917),
+shot_sniper.wav (Tikka): "The Free Firearm Sound Library", https://opengameart.org/content/the-free-firearm-sound-library
+  (one take each, made mono 32 kHz and trimmed)
+
+Breathing (CC0): breath_run.wav, breath_scared.wav, breath_freaked.wav, gasp.wav
+  "Sound Effects Pack" by Owlish Media, https://opengameart.org/content/sound-effects-pack
+
+Hits (CC0): impact_meat01.ogg, impact_meat02.ogg, impact_metal.ogg
+  "Impact" by qubodup, https://opengameart.org/content/impact
+
+Footsteps on metal (CC-BY 3.0: credit required, given here): step0.ogg .. step7.ogg
+  "Footsteps on different surfaces" by congusbongus, https://opengameart.org/content/footsteps-on-different-surfaces
+  https://creativecommons.org/licenses/by/3.0/
+
+Drones (CC0): drone_truth.mp3 ("The Surreal Truth"), drone_log.mp3 ("Final Captain's Log"), drone_cryptid.mp3 ("Cage of the Cryptid")
+  from "Ambience Pack #1: Sci-Fi Horror" by Joth, https://opengameart.org/content/ambience-pack-1-sci-fi-horror
+
+The PA's voice (pa0.wav .. pa9.wav, pa_dark.wav, pa_copy.wav) is Windows' own "Microsoft Zira" speech, made by System.Speech.
+
+Zombie voices (CC0): zm_darsycho.ogg ("Zombie moans"), zm_ghoul.ogg ("Hungry ghoul") by Darsycho,
+  https://opengameart.org/content/zombie-moans  https://opengameart.org/content/hungry-ghoul
+  zm_ian1.ogg .. zm_ian3.ogg, zm_fast.ogg ("Zombie noises and moans") by ianzazz, https://opengameart.org/content/zombie-noises-and-moans
+  ghost1.mp3 .. ghost5.mp3 ("Ghost Monster Voice Moaning & Growling") by qubodup, https://opengameart.org/content/ghost-monster-voice-moaning-growling
+
+Beds (CC0): bed_freezer.ogg ("Abandoned passages (horror ambience loop)", freezer.ogg) by congusbongus,
+  https://opengameart.org/content/abandoned-passages-horror-ambience-loop
+  music_paranoid.mp3 ("Paranoid Truth") by Tsorthan Grove, https://opengameart.org/content/paranoid-truth
+
+The band's number, show_song.ogg ("DEAD AIR (Hit That Boof)"): the owner's own, made with Suno (lyrics his and Claude's),
+  taken out of a screen recording with Blender's aud (tools: scratchpad song_extract.py), boosted x10.7, from 7.0 s of the recording.

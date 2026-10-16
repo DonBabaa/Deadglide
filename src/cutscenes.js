@@ -23,6 +23,34 @@ import { playCue, stopCue } from './fx/score.js';
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const GROUND = 0.1;   // how far above the ground he is put to die on it (with no board under him)
 const UP = new THREE.Vector3(0, 1, 0);
+// The lift's shaft, for the scenes at the Moon's end of it: four walls round the cage, 34 m tall, a red strip every 2 m
+// (what slides past is the shaft: the cage never moves). rise(t) slides it; put it away with remove().
+// The shaft of the lift, for the way down and the way back up (the cage never moves: the world does). Its walls are tall
+// enough to stand round the cage the whole way, with red strips every 2 m; what moves is where its top is: level with the
+// ground as the cage starts down, climbing away overhead faster and faster (down(t)); or, coming up, dropping toward the
+// cage to be level with the ground again as it arrives (up(t), `arrive` seconds in). The red work light is on the cage.
+function makeShaft(stage, A, y0, turn, arrive = 6) {
+  const shaft = new THREE.Group();
+  const wall = new THREE.MeshStandardMaterial({ color: 0x24262a, metalness: 0.5, roughness: 0.75 });
+  const strip = new THREE.MeshBasicMaterial({ color: 0xff2a14, toneMapped: false });
+  const H = 120, W = 4.9, TOP = 3.1;   // (TOP: how far over the cage's floor the ground is)
+  for (const [x, z, w, d] of [[0, -W / 2, W, 0.3], [0, W / 2, W, 0.3], [-W / 2, 0, 0.3, W], [W / 2, 0, 0.3, W]]) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, H, d), wall); m.position.set(x, -H / 2, z); shaft.add(m);
+    const bars = [];
+    for (let y = -H + 1; y < 0; y += 2) { const r = new THREE.Mesh(new THREE.BoxGeometry(w > 1 ? w * 0.8 : 0.04, 0.05, d > 1 ? d * 0.8 : 0.04), strip); r.position.set(x * 0.93, y, z * 0.93); bars.push(r); }
+    shaft.add(...bars);
+  }
+  const red = new THREE.PointLight(0xff2a14, 0, 9, 1.4); red.position.set(A.x, y0 + 2.4, A.z); stage.add(red);   // (never hidden, only dark: a light coming and going recompiles every material)
+  shaft.position.set(A.x, y0 + TOP, A.z); shaft.rotation.y = turn; shaft.visible = false;   // (shaft.position.y: where its top is)
+  stage.add(shaft);
+  const glow = (t) => { red.intensity = shaft.visible ? 4 + 2 * Math.sin(t * 7) : 0; };
+  return {
+    shaft, red,
+    down(t) { shaft.position.y = y0 + TOP + 0.6 * t * t; glow(t); },
+    up(t) { const left = Math.max(0, arrive - t); shaft.position.y = y0 + TOP + 0.6 * left * left; glow(t); },
+    remove() { stage.remove(shaft); stage.remove(red); },
+  };
+}
 const NEXT = 'Enter: next  ·  Tab: skip the scene';   // (under every line of story)
 const eye = new THREE.Vector3(), target = new THREE.Vector3(), dir = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3();
 const spin = new THREE.Quaternion();
@@ -324,7 +352,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         lamp.position.copy(eye).y += 1.3;
         lamp.intensity = glow * (1 + 1.2 * Math.exp(-into * 5)) + 10 * flame;
         hud.lines(v.lines || 0);
-        hud.caption(t < total ? sh.line : null, NEXT);
+        hud.caption(t < total ? sh.line : null, scene.holds.length ? NEXT : 'Tab: skip the scene');   // (a scene that plays through has no Enter to press)
         const dark = blink(t, total);
         if (dark > 0.02) hud.flash('#000', dark);
         else hud.flash('#ffffff', 0.85 * Math.exp(-into * 8));
@@ -333,6 +361,144 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       scene.skippable = true;
       if (cue) score(cue);
       scene.holds = shots.map((sh, i) => starts[i] + sh.for - (i === shots.length - 1 ? 0.2 : 0.03));   // (at the end of every line)
+    },
+
+    // Down the lift (the Moon's way into DEAD AIR): everyone is aboard, the gate has shut. A shaft is built round the
+    // cage for the length of it (walls with red strips, sliding up past: the cage never moves, the world does), the
+    // station is named and what it wants of you is said on the way down. It plays through (Tab skips).
+    lift(airlock, done) {
+      const A = airlock.place, cage = airlock.cage, p = skater.pos, y0 = A.y;
+      cage.updateMatrixWorld(true);
+      const turn = cage.parent?.rotation.y || 0;
+      const S = makeShaft(stage, A, y0, turn);
+      stage.visible = true;
+      const inCage = (dx, dz) => new THREE.Vector3(A.x, 0, A.z).add(new THREE.Vector3(dx, 0, dz).applyAxisAngle(UP, turn));
+      const inward = inCage(0, 1).sub(inCage(0, 0)).normalize();   // (the way in through the gate)
+      const outside = inCage(0, -7.2), home = inCage(0, 0.4), ROLL = 4.5;
+      // (the post with its sign stands on the runway's line, a few metres out from the gate, with a boulder off one side of
+      // the cage: the camera that runs alongside him is high, over the sign, on the open side)
+      const across = new THREE.Vector3(inward.z, 0, -inward.x);
+      const roll = (t) => {   // (rolling in at a walking pace, and stopping in the middle of the cage)
+        const e = smooth(Math.min(1, t / ROLL));
+        p.x = outside.x + (home.x - outside.x) * e; p.z = outside.z + (home.z - outside.z) * e;
+        skater.fwd?.copy(inward); skater.vel?.copy(inward).multiplyScalar(t < ROLL ? 2.6 : 0);
+      };
+      airlock.holdGate(true);
+      this.story([
+        // The way in, in two shots: from behind him and above, the cage and its sign ahead at the end of the runway of
+        // lights, as he rolls up to it; then (a flash) from inside it, low, looking out through the open gate as he rolls
+        // in at us and stops. (One roll across both: ROLL seconds of it, from far out to the middle of the cage.)
+        { for: 2.7, line: 'Shackleton Station. Outside the dome. The last transmission was nine days ago.', cam: (k, into) => {
+          roll(into); airlock.setGate?.(0);
+          // (alongside him and above, a little ahead: him rolling past the sign toward the lit cage)
+          eye.copy(p).addScaledVector(across, 5.2).addScaledVector(inward, -1.0).setY(y0 + 3.3 - 0.6 * k);   // (a little behind him: the cage's corner post never between)
+          target.copy(p).addScaledVector(inward, 1.4).setY(y0 + 0.9);
+          return { fov: 50 - 4 * k, lines: k < 0.12 ? 0.6 : 0 };
+        } },
+        { for: 2.7, line: 'Shackleton Station. Outside the dome. The last transmission was nine days ago.', cam: (k, into) => {
+          roll(2.7 + into); airlock.setGate?.(0);
+          // (behind him, low, the sign behind us: through the open gate with him, into the lamp's light, and he stops)
+          eye.copy(p).addScaledVector(inward, -2.6 + 0.3 * k).addScaledVector(across, 0.5).setY(y0 + 1.75);   // (over the cage's rails, not through them)
+          target.copy(p).addScaledVector(inward, 2.2).setY(y0 + 0.95);
+          return { fov: 48, lines: k < 0.1 ? 0.8 : 0 };
+        } },
+        // inside: the gate sliding shut on the Moon, the amber lamp, his face
+        { for: 2.8, line: 'Somebody has to go down and look.', at: () => { airlock.holdGate(false); playHatch(); }, cam: (k) => {
+          skater.vel?.set(0, 0, 0); airlock.setGate?.(Math.min(1, k * 1.4));   // (the gate sliding shut behind him)
+          const f = facing(dir); eye.copy(p).addScaledVector(f, 1.15).add(UP.clone().multiplyScalar(1.3)); target.copy(p).add(UP.clone().multiplyScalar(1.35));
+          return { fov: 36, lines: 0 };
+        } },
+        // down: the walls starting to slide, the red strips going by faster and faster
+        { for: 3.0, line: 'Restore power. Send the signal. Hold out until the lift comes back.', at: () => { S.shaft.visible = true; playDread(); }, cam: (k, t) => {
+          S.down(t);
+          // (from a top corner of the cage, across him to the far wall: its red strips starting to stream up past)
+          const c = inCage(1.55, -1.5), far = inCage(-0.7, 0.7); eye.set(c.x, y0 + 2.5 - 0.2 * k, c.z); target.set(far.x, y0 + 0.95, far.z);
+          return { fov: 60, shake: 0.03 + 0.03 * k, lines: k > 0.3 ? 0.8 : 0 };
+        } },
+        // his face in the red, the shaft streaming up behind him
+        { for: 2.8, line: 'Everyone comes back, or nobody does.', cam: (k, t) => {
+          S.down(t + 3.0);
+          const f = facing(dir); eye.copy(p).addScaledVector(f, 1.1).add(UP.clone().multiplyScalar(1.35)); target.copy(p).add(UP.clone().multiplyScalar(1.38));
+          return { fov: 34, shake: 0.05, lines: 0.6 };
+        } },
+        // looking up: the square of the top going away
+        { for: 2.4, line: '', cam: (k, t) => {
+          S.down(t + 5.8);
+          const c = inCage(0.4, -0.3); eye.set(c.x, y0 + 0.5, c.z); target.set(A.x, y0 + 30, A.z);
+          return { fov: 62, shake: 0.07, lines: 1 };
+        } },
+      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4);
+      scene.cleanup = () => { S.remove(); airlock.holdGate(false); };
+      scene.holds = [];   // (it plays through: nothing waits on Enter; Tab still skips it)
+    },
+
+    // Back up to the surface (the end of DEAD AIR): the cage rising, the strips streaming down, the cage breaking the surface
+    // by the sign, the gate opening on the Moon, Kirky rolling out. Then it is Free Ride again.
+    surface(airlock, done) {
+      const A = airlock.place, cage = airlock.cage, p = skater.pos, y0 = A.y;
+      cage.updateMatrixWorld(true);
+      const turn = cage.parent?.rotation.y || 0;
+      const S = makeShaft(stage, A, y0, turn);
+      stage.visible = true;
+      const inCage = (dx, dz) => new THREE.Vector3(A.x, 0, A.z).add(new THREE.Vector3(dx, 0, dz).applyAxisAngle(UP, turn));
+      const outward = inCage(0, -1).sub(inCage(0, 0)).normalize();
+      // (out through the gate and off to the side of the runway: the post with its sign stands on the runway's line, and the
+      // chase camera behind him, when he is his again, must have neither the cage nor the post between it and him)
+      const home = inCage(0, 0.3), gateOut = inCage(0, -3.2), out = inCage(3.0, -8.0);
+      airlock.holdGate(false);
+      p.x = home.x; p.z = home.z; skater.vel?.set(0, 0, 0);
+      // (the cage never leaves the ground: the skater's own physics keeps him on it; it is the shaft that slides, down past the
+      // cage, faster and faster, the way it slid up on the way down)
+      this.story([
+        // inside, rising: the strips streaming down past the cage, him at the rail
+        { for: 3.4, line: 'Lift ascending. Surface in ten.', at: () => { S.shaft.visible = true; }, cam: (k, t) => {
+          S.up(t); airlock.setGate?.(1);   // (shut, the way up)
+          const f = facing(dir); eye.copy(p).addScaledVector(f, 1.15).add(UP.clone().multiplyScalar(1.3)); target.copy(p).add(UP.clone().multiplyScalar(1.35));
+          return { fov: 36, shake: 0.04, lines: 0.6 };
+        } },
+        // from the floor of the cage, in its corner, looking up past him: the strips pouring down the shaft, the square of the
+        // surface coming (the cage's floor is plate: there is nothing to see looking down)
+        { for: 2.6, line: '', cam: (k, t) => {
+          S.up(t + 3.4);
+          const c = inCage(1.45, 1.35); eye.set(c.x, y0 + 0.35, c.z);
+          target.copy(p).setY(y0 + 2.6 + 6 * k).lerp(new THREE.Vector3(A.x, y0 + 2.6 + 6 * k, A.z), 0.4);
+          return { fov: 64 - 6 * k, shake: 0.05, lines: 0.8 };
+        } },
+        // the stop: the shaft gone, the Moon round the cage, the lamp going green; from outside, low, by the sign
+        // the stop: the shaft gone, the Moon round the cage; his face from under it, the sky over him
+        { for: 2.6, line: 'Surface. Mind the step.', at: () => { S.shaft.visible = false; playHatch(); }, cam: (k) => {
+          // (in front of him and under his chin: his face, and over it the dome and the black where the shaft was)
+          // (aimed over his head, not at his face: onFace would pull a camera aimed at it back along this low line, under the floor)
+          const f = facing(dir); eye.copy(p).addScaledVector(f, 1.35 - 0.15 * k).add(UP.clone().multiplyScalar(1.0));
+          target.copy(p).addScaledVector(f, -0.3).add(UP.clone().multiplyScalar(2.3 + 0.15 * k));
+          return { fov: 54, lines: k < 0.15 ? 0.6 : 0 };
+        } },
+        // the gate opens on the Moon; he rolls out
+        { for: 3.6, line: '...Never again. ...Same time tomorrow?', at: () => { airlock.holdGate(true); playPortalOpen(); }, cam: (k) => {
+          const e = k > 0.3 ? smooth((k - 0.3) / 0.7) : 0;
+          airlock.setGate?.(1 - smooth(k / 0.32));   // (sliding open on the Moon)
+          // (straight out through the gate, then bearing off to the side: a curve through gateOut)
+          const a = home.clone().lerp(gateOut, e), b = gateOut.clone().lerp(out, e), at = a.lerp(b, e);
+          const ahead = b.sub(gateOut.clone().lerp(home, 1 - e)).setY(0);
+          p.x = at.x; p.z = at.z;
+          if (ahead.lengthSq() > 1e-4) skater.fwd?.copy(ahead.normalize());
+          skater.vel?.copy(skater.fwd || outward).multiplyScalar(k > 0.3 && k < 0.95 ? 4.0 : 0);
+          const c = inCage(0, -6.6); eye.set(c.x, y0 + 1.6, c.z); target.set(p.x, y0 + 1.05, p.z);   // (on the runway's line, between the gate and the sign: the one way in clear of the boulders either side; it opening, him coming out and bearing away past us)
+          return { fov: 42, lines: 0 };
+        } },
+        // wide: the Moon, the dome, the lift behind him; a crane up and away from the side the sign is not on
+        { for: 3.4, line: '', cam: (k) => {
+          skater.vel?.set(0, 0, 0);
+          const toSign = new THREE.Vector3(airlock.signAt.x - A.x, 0, airlock.signAt.z - A.z).normalize(), away = new THREE.Vector3(toSign.z, 0, -toSign.x);
+          if (away.dot(new THREE.Vector3(p.x - A.x, 0, p.z - A.z)) < 0) away.negate();   // (on his side of the runway)
+          const e = smooth(k);
+          eye.copy(p).addScaledVector(away, 6.5 + 2.5 * e).addScaledVector(toSign, -2.5 - 1.5 * e).setY(y0 + 3.0 + 2.8 * e);   // (from over the ramps and blocks by the runway)
+          target.copy(p).addScaledVector(toSign, -1.2).setY(y0 + 1.1 + 0.6 * e);
+          return { fov: 50 + 6 * e, lines: 0 };
+        } },
+      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4, 'moon');
+      scene.cleanup = () => { S.remove(); airlock.holdGate(false); };
+      scene.holds = [];
     },
 
     // The start of it all (level 1). It gives very little away: who took what from him comes out a boss at a time.

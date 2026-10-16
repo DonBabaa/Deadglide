@@ -65,8 +65,13 @@ window.addEventListener('mouseup', (e) => {
   if (e.button === 2) input.aimHeld = false;
 });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
+// (the first moves after the pointer is taken can carry a wild delta: the browser's catch-up from wherever the cursor
+// was. Those are dropped, and no single move is allowed to swing the view more than a hand's width)
+let lockedAt = 0;
+document.addEventListener('pointerlockchange', () => { lockedAt = performance.now(); input.mouseDX = input.mouseDY = 0; });
 window.addEventListener('mousemove', (e) => {
   if (!document.pointerLockElement) return;
-  input.mouseDX += e.movementX;
-  input.mouseDY += e.movementY;
+  if (performance.now() - lockedAt < 150) return;
+  input.mouseDX += Math.max(-120, Math.min(120, e.movementX));
+  input.mouseDY += Math.max(-120, Math.min(120, e.movementY));
 });

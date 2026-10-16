@@ -60,6 +60,7 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 | M / Backspace / ` | Music on or off / restart the run / tuning panel |
 | F3 | Frame rate, and how much is being drawn |
 | R | Free Ride: back to spawn (also a button on the pause screen). The line you were on is lost |
+| B | Free Ride: off the board and on foot, and back on it. On foot: W A S D walk where the camera looks, Shift runs, Space is a moon hop, S alone backs off |
 | T (hold) | Emote wheel, in Free Ride and the casino: push the mouse toward one (or press its number) and let go. Wave, cheer, smoke, dance, laugh, bow; friends see them |
 
 ## A run
@@ -161,7 +162,7 @@ watches ("Nothing left to collect"). Leaving the House has its own scene: there 
 On the hill a title card names each stretch as you reach it (The Cemetery, Storm Drain 7, The Hillside, The Edge), and at the
 Edge the three ghosts drop back and fade.
 
-**The editor's tabs** (with ?editor in the address, the menu's Editor button): Scenes (every cinematic), Music (each level's track and each story soundtrack), Sounds (every sound on a button, and Stop all sounds), and Models (every monster, boss, costume and gun, and a few set pieces, on a turntable: drag to turn, scroll to zoom, Spin and Animate switches, with its size and triangle count).
+**The editor's tabs** (with ?editor in the address, the menu's Editor button): Scenes (every cinematic), Music (each level's track and each story soundtrack), Sounds (every sound on a button, and Stop all sounds), and Models (every monster, boss, costume and gun, and a few set pieces, on a turntable: drag to turn, scroll to zoom, Spin and Animate switches, with its size and triangle count). And **DEAD AIR**: every stage of the mode on a button (`STAGES` in deadair/index.js, `mode.stage(id)` after `enter()` has finished): the entrance, the choice, the bay, everything open, rounds 3/5/8, the Warden, the Watcher, a screamer, each objective (power, signal, hold, dock, won), the BOOF (unlocked there whether or not you finished the story: `game.boofFree`), a grab, going down, the pause menu, each scare (the lamp, the vent, the breath, the doorstep, the blackout, a sleeper: scares.js has `lamp()`, `vent()`, `breath(me)`, `doorstep(.., sure)`), the lounge, the open mic, the crate and the chip.
 
 **The cinematics editor.** With ?editor in the address the menu has a Cinematics button: a list of every scene (20), each
 playable on its own. A bar across the top shows the time and has a slider to drag through it, Pause, Restart, Speed (1x, 0.5x,
@@ -197,6 +198,14 @@ friends at once. There is no clock, no waves and no damage. You chase the bigges
 
 - **Rules:** nothing hurts you, there is no levelling, no power-ups, no HotBox and no gold. Everyone carries the sniper rifle and nothing else.
 - **Gravity** is about a third of normal, so everything is bigger and slower in the air.
+- **On foot (B):** with all four wheels down, B kicks the board up by its tail and flicks it over onto his back (slung across it,
+  nose over his right shoulder, hung from his chest bone so it moves with him: player/afoot.js). He walks (4 m/s), runs (Shift,
+  6.8 m/s), hops (Space: a metre and a half on the Moon) and backs off (S alone), the way the camera looks; the camera stops
+  swinging behind a heading and sits a little closer, over his shoulder. Ground he can step onto he does; a ramp's face or a wall
+  stops him. He runs out a fast step-off for a few strides. Vents, the Geyser and the lava throw him on foot just as on the board.
+  B again: the board drops off his back under his foot and he rolls away at the pace he was walking (3.4 m/s at least). The lift,
+  R and leaving Free Ride put him straight back on it. Friends see him walking with the board on his back. A key hint sits at the
+  bottom of the screen in Free Ride.
 - **The map:** hills rather than flat ground, half in sunlight and half in the dark (your headlamp works there). Three channels to
   ride (a winding one, a straight rille and one that feeds the lava), craters that work as bowls, kickers and slabs, rails that chain
   into one another, a lander and a comms tower to get on top of, and a wall all the way round with a **rail along its top** that
@@ -263,6 +272,222 @@ A Monte-Carlo style room reached from the menu, where you walk instead of skate.
 - Each player keeps their own gold; the host's browser runs the tables. Friends see where you are, your seat, your bets,
   your drink and the machine you are playing.
 
+## DEAD AIR (a secret mode)
+A repeatable co-op horror mode, apart from the story: up to four of you on foot, with guns, in Shackleton Station, a dark research
+base outside the Moon's dome, against the dead, round after round, until the last of you goes down. The way in is a secret on the
+Moon (how is deliberately not written here; it is in `src/freeride/airlock.js`, behind a spoiler warning). `?deadair` in the address
+goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not on the title screen.
+
+- **The way down (v2):** no hatch any more: a freight lift on the plaza behind spawn (freeride/airlock.js: the kit's plate, rails,
+  posts, a gate of two door halves, a green lamp, a call panel, a sign over the gate; a lit sign on a post by spawn with an arrow,
+  and a runway of chasing floor lights to it). Everyone in the party has to be aboard (`ride.positions()`): the lamp goes amber, a
+  klaxon counts 3 s, step off and it waits; then the gate shuts and `cutscenes.lift` plays (a 34 m shaft of walls with red
+  strips is built round the cage and slides up, faster and faster: the gate shutting from outside, his face in the red, from
+  over them, looking up at the square of the top going away), then the station.
+- **The landing:** the way in rebuilt (story.js `entrance`, 15.4 s): black and the name; the lot of you down in a heap where the
+  lift left you, his board against the wall, snapped ("...No board. Great."); up, and each lamp clicks on in its turn (friends'
+  via `others.lamp`); his lighter, and what it lights first is her hand on the wall, NINE DAYS; the PA's welcome ("Current crew
+  complement: zero", pa_welcome.wav); DEAD AIR. Then the bay is yours: nothing comes until you leave it (or 90 s): the first
+  scream (`wake()`: a cut-in down the Spine, the title) and round 1.
+- **The logs:** Jun Park's nine recorders (logs.js), one line each, the whole story: three a run of the days not found yet
+  (day one by the first body in the bay until it is found), in spots from `LOG_SPOTS`; E plays the card (hud `log`: REC, the
+  day, his name, the words typing), his voice (log1-9.wav, Zira at 1.06), a cut-in on the recorder then on Kirky listening,
+  and a word from him (log1/3/5/7/9). Found ones persist (`deadair.logs`); the card counts them; all nine: the crew's eight
+  names on the card. The ending: "Shuttle control: Deck C. How many?" / "...One." (or the count) / "They kept the days.
+  Someone should know." / "Next time, we take the stairs."
+- **Tonight's modifier** (nights.js, `game.night`, picked by the host in reset, on the choice card and a banner at round 1, sent
+  with 'diff' and the snapshot): BLACKOUT NIGHT (dark all night, the lamp scare sooner), LOW GRAVITY (jumps 1.45x, gravity 0.3 for
+  him and the dead, knock-back 2.2x), THE QUIET (walkers and runners only, every corpse a sleeper, lamp and breath sooner), THE
+  WARDEN'S TWINS (two, every third round from the third), STEAM NIGHT (fog 0.13), THE SWARM (1.7x as many, 0.55x the gap, 0.6x
+  the hp, 8 more at once). Read through `N()` in index.js at the spawn, hp, dark, warden and fog sites.
+- **Her writing** (`WRITING`, `writingTexture`): NINE DAYS (the bay), WE WERE HERE, HOLD IT SHUT, DON'T OPEN MED BAY, DAY 4, TWO KEYS.
+- **The way down (old):** rolling onto the open hatch on the Moon plays `cutscenes.hatch` first (7 s, it plays through, Tab skips): low
+  behind him on the hatch ("Shackleton Station went quiet nine days ago"), from over it as he drops into the red ("Every channel is
+  dead air"), down the steps after him ("Restore power. Send the signal. Hold out for the shuttle"), the hatch from above, smaller
+  and smaller ("Dock 1 is the only way home. Everyone comes back, or nobody does"); then the station is built. In a party the host
+  passes 'go' on and everyone's plays. The editor's Scenes tab has it ("Down the hatch, into DEAD AIR").
+- **The story:** the crew of Shackleton Station went quiet nine days ago and every channel is dead air. A cut-in on the way in (everyone
+  in the party lined up in the dark, lit by their cigarettes, Kirky's lighter that will not catch, the first scream down the Spine) says
+  so, and what to do: **restore power** (prime the core in the Reactor, standing by it for 8 s), **send the signal** (start the Med Bay
+  uplink and keep it alive 45 s: it draws every one of them), **hold out** three rounds for the shuttle, then **get everyone to Dock 1**
+  (the airlock in the Arrival Bay's west wall) and you are out: a win, posted as one. The objective is always at the top left, with the
+  distance to it, and a marker on it in the world (a diamond when it is in view, an arrow at the screen's edge pointing the way when
+  it is not). The rounds never stop for any of it. `src/deadair/story.js`.
+- **Look:** the crew where they fell (eight of them, blood under them and up the walls, nine days old); crates, barrels and a pillar to
+  fight round in Lab 2 and the bay; dust in the air that you only see where a lamp's beam goes through it (`makeDust`: a point cloud lit
+  by the beam in the shader); no two of them the same colour (five tints, each dirtied); the broken walls only where they come through.
+- **On foot:** WASD walks, Shift sprints, the mouse looks. The camera is over Kirky's shoulder; hold the right button and it goes to his
+  eyes, down the sights. Left fires, F is the melee (the knife or the butt: 110, knocks two of them back), R reloads, Q (or 1 / 2) swaps
+  between the two guns you can carry, E buys, opens and uses. Space jumps; at a crate or a barrel it vaults over it (moving at it, floor
+  on the far side) or climbs onto it, at full speed either way. H or Tab is the help card: every control and feature. Tips come up the
+  first time something new is in front of you (once per browser). **Esc** (the pointer let go) is a pause menu: Resume, Controls (the help
+  card), Settings (the game's own sound and mouse panel, borrowed into it), Leave (asked twice). Nothing else leaves: Esc twice does not.
+  With friends the station does not wait while the menu is up.
+- **Kirky on foot:** his gun arm is aimed by hand, never by a clip: up at what the crosshair is on while he aims or fires
+  (and for 1.1 s after); otherwise a pistol hangs at his side (the 'idle' clip: his hands are his own) and a long gun is carried at
+  low ready, both hands on it. The melee is the whole of him: 'riflemelee' played whole, at 1.6x, with a copy of his gun in the clip's
+  hand (kirkyBody.js `carryInClip`: how the gun sits in his hand is measured every frame his arm is his own, and the copy is put
+  there), and the hit lands 0.38 s after F, where the swing does (`MELEE.lands`). A long gun has its own clips (dl/: Rifle Run,
+  Sprint Forward rifle, Rifle Start Run, Rifle Run To Stop, Rifle Aim To Down, Reload, rifle melee, Rifle Run To Dying; `CUTS` in
+  walker.js says which stretch of each is played); bitten, he staggers back (the start of Fall Over); a jump is Standing Jump or
+  Rifle Jump from the push-off (the game lifts him: `how.lifted` keeps the clip's own rise out of it); a vault is Vault Over Box
+  (`VAULT` in walker.js: 0.62 s, the stretch 0.32–1.55 s, never the crouch behind the box at its end). Low props carry a `top`
+  (station.js boxes): you stand on them, nothing low stops you once you are above it, and a vault never goes through a wall
+  (`station.walled`).
+- **The dead climb and vault too:** a crate in a zombie's way, it goes over (its own Vault Over Box, slower: 1.15 s, a moment it is
+  easy to shoot); you up on a crate, it climbs up after you (the start of the wall climb, 1.7 s) and the claws come from level with
+  you, never from the floor (`HIGH` 0.6 m). dead.js states 'vault' and 'climb'; the Warden and crawlers do neither.
+- **Rounds never stall:** a zombie that has no way to you at all, or is far off (> 14 m) and has got no nearer for 12 s, comes in
+  again through an opening no one can see, dropping from it (dead.js `stuck`, the 'lost' event). One in the crowd round you, or
+  anywhere in anyone's sight, is never moved: that was the teleporting he saw. None is ever faster than you walk (3.9 vs 4 m/s).
+- **The grab:** now and then (two in five landing swings, never twice within 14 s) one of them gets hold of you instead of swinging:
+  a hard cut to the side as it slams into him (speed lines), then while it has you nobody else can hurt you (they wait their turn); its face in yours, lunging at you again and again, the view jolting
+  with each lunge and reddening; THROW IT OFF: each press of F is a shove (the view thrusts, it flinches), five frees you (a cut from
+  behind his shoulder as it staggers back); a friend's bullets loosen it too (two rifle rounds); else in 2.8 s it bites (45; a tight
+  cut on the two heads and a white flash) and lets go. `GRAB` in `dead.js`, the cut-ins in `index.js` (`runGrabCut`).
+- **Normal or Nightmare:** the host's call, before the first round (a card after the way in; the guests wait on it). Nightmare: a
+  third more of them, a quarter tougher, no getting better, lights out from round 2 (every third), the Watcher more often, grabs
+  more often. It unlocks once you have got out (`deadair.won` in this browser). The card and the board say which it was.
+- **Screamers** (from round 4, one in fourteen): the gaunt body, yellow, slow. In sight of you it stops and calls: everything in
+  earshot comes, and two more drop through the nearest walls. Not again for 14 s. 100 extra for the kill.
+- **The open mic** (an easter egg): the Crew Lounge has a stage, left of the airlock: a riser with a lit lip, a red curtain, rails,
+  a mic stand, three spots that are off, and a sign (OPEN MIC · EVERY NIGHT · NOBODY CAME). It stands empty. Get up on it and dance
+  (T, the emote wheel) for four seconds — with friends, every one of you on your own stage at once (the stage says "n of m dancing";
+  the host starts it for everyone) — and a film plays: the Warden at the mic with four of them at his sides, the spots coming on, him
+  singing ("BRAAAINS"), cut like a concert film, Kirky stepping down to dance out front. The film is `public/video/deadair_openmic.mp4`
+  (16.7 s, 1280x720, H.264): the live cut-in recorded from the game a frame at a time at 30 fps (the scratchpad's
+  `record_openmic.mjs` takes over the page's clock so no frame is rushed or dropped) and encoded by `tools/encode_frames.py`
+  (Blender's FFmpeg). The titles, the words and the speed lines are drawn over it by the HUD, in time with it; if the film cannot
+  play, the cut-in plays live. After it **the band plays on**, every night, for as long as you are in there. ENCORE: 300 points.
+- **The zombies' skin:** the soldier, the gaunt one, Hamzitus and Rubistus keep their own pictures (`tools/build_zombies.py`: the
+  skin at 1024 and its bumps at 512, JPEG, in `public/models/zombies.glb`); a part painted on two pictures is two meshes (`head`,
+  `head2`). They are drawn with them in DEAD AIR and in the main game alike (`paintedMaterial` in realMobs.js); their colours are
+  still on their points for anything that draws them without (the model viewer, the stand-ins).
+- **Babitus's chip:** one roll of the crate in seven is not a gun: a fat gold casino chip, G.O.Y on both faces, BABITUS round the
+  edge. Taking it is 500 gold and a word from Kirky ("He signs everything.").
+- **The PA's voice:** the recorded messages are spoken (Windows' own voice, Zira, band-passed and crushed into a ceiling speaker:
+  `public/sounds/deadair/pa*.wav`, made by `System.Speech`), and shuttle control answers over the radio the same way. Kirky's lines
+  are subtitles (ElevenLabs refused the account's free tier; his voice waits on an upgrade or a recording).
+- **Shooting** is the game's own: bullets fly (streaks from the muzzle to where the crosshair is), the shotgun's and the Hand Cannon's go on
+  through, the Longshot is a beam; a hit throws one back and it flinches; a kill bursts; each shot kicks the aim up, jolts the camera and
+  punches the view out for an instant. Bodies are a fair target (head, chest to the neck, legs).
+- **Rounds:** more of them each round (8, then 3 more and a bit each round), each taking more killing, and most of them running from the
+  first round (runners from round 1, sprinters and crawlers from round 3; walkers are the few). They come **through the broken walls**,
+  lit red from the other side, drop into the room and come for you; they hear shots. Only the downloaded bodies (the soldier and the gaunt
+  one), never the game's own shambler. Between rounds the lights go out for a moment. Every fifth round brings **the Warden**: Hamzitus's
+  body, half again as big, with a bounty of 500 and a burst of gold.
+- **Loading:** a loading screen while the station is welded and the guns and bodies are loaded, and every shader is compiled with nobody
+  looking (`renderer.compile` over a body of each kind, the bullets, the flash), so the first of anything mid-round is not a stall.
+- **Points:** 500 to start; a hit is 10, a kill 60, through the head 100. Points open the doors (Lab 2 750, the Med Bay 1000, the Reactor
+  1250) and buy the guns chalked on the walls (the MK4 rifle 1000 in the Spine, the Trench Gun 1200 in the Med Bay). The Reactor's crate
+  (950) rolls you a random gun (rifle, shotgun, Hand Cannon or the Longshot .50). The pistol never runs out.
+- **Reloading:** magazines come out and fall (and lie there), full ones go in, slides and pumps work, the revolver tips out its cases.
+  The shotgun loads a shell at a time; firing stops it. Each gun has its own recorded sounds (CC0: `public/sounds/deadair/CREDITS.txt`).
+- **Health:** 100; you get better after a few seconds without being hit. On your own, going down is the end. With friends you bleed out
+  over 30 seconds unless one of them holds E over you; bled out, you are back for the next round. When everybody is down it is over.
+- **Gold:** the dead sometimes drop coins (more often from a headshot); they fly to you when you are near. It is this game's gold, not the
+  story's, and it is spent in the **Crew Lounge**: an airlock in the Med Bay's east wall, behind that door and 2000 points to unseal
+  (a place earned, not given), through which is the casino (the same tables, the same staff, the same buttons) dressed as the station.
+  Nothing follows you in; the dead wait at the airlock and you hear
+  them on it. Blackjack and roulette win or lose your gold; the slots cost 5 a spin and three skulls gild the gun in your hand (+60%
+  damage, half again in the magazine, gold); the bar's drinks are upgrades: Deadeye Whisky (+20% damage, 60), Quickdraw Martini
+  (faster reload, steadier aim, 90), Iron Champagne (+40 health, 150). Emotes (hold T) work in there.
+- **The Golden BOOF:** for whoever has finished the story. Kills charge it (25; the meter bottom left, `game.boof`); charged, G
+  lights it: a 7.6 s cut-in ("Hold up. Let me hit that boof." on his face; the drag, the ember flaring; the BOOF, a cloud rolling
+  out across the frame (`k.exhale(dt * 2.2, 1.9)`: big golden puffs, thinning sooner) under the word BOOF; the nearest of them, close,
+  not knowing what it is looking at; GOLDEN HOUR with what it does spelled under it, "Thirty seconds. Everything dies."; the cough),
+  then 30 seconds of triple damage, no ammunition used and double points, the meter counting down. Then it charges again.
+- **The crate beacon:** nobody noticed the crate, so: a beam to the ceiling always on, two rings of light wobbling over it, a two-sided
+  MYSTERY CRATE · 950 sign turning above it, a stronger light, a low hum from where it stands (`sound.crateHum`), and a cyan HUD
+  marker on it whenever it is in view within 24 m (and not right next to you).
+- **Cut-ins everywhere** (index.js `playCut`/`runCut`, run at the end of the frame so nothing overrides the camera; the world goes
+  on behind them, with grace): every objective, as it begins (a reverse shot of you and whoever is near, with a word from Kirky, then
+  the place itself with its title and what it wants: the camera stands on your side of it, pulled in off walls) and as it is done
+  (POWER RESTORED, SIGNAL SENT, SHUTTLE DOCKED); and every scare, for a second (the lamp's stander in your face when the light comes
+  back, the vent grille as it bangs and the crawler behind you as it drops, right behind your ear for the breath, the sleeper rising,
+  the doorstep, LIGHTS OUT from above, IT SAW YOU snapping onto the Watcher): scares.js pushes `events`, index.js's `cutScare` plays
+  them. The grab's zombie bites (zbite) the whole time it has you; going down is Fall Over, all of it, and he stays flat.
+- **The open mic's cast:** the Warden sings (his Singing clip) with the mic in his right hand (dead.js keeps `handR`/`elbowR` for
+  the star from the forearm part's far end; the stand's mic goes dark while he has it), the four behind him breakdance, and a dozen
+  more stand in front of the stage cheering, clapping and rallying under a low cool light; the number cuts to them from behind and
+  from the side.
+- **More of them (the night of the 16th):** the stalker, Priya (silent, moves only while nobody is looking at it, a statue under your
+  eyes, KEEP EYES ON IT the first time); one hanging from a cable in the Reactor that lets go as you pass under (from round 2);
+  the knock (stand by a shut door a while: it is hammered on from the other side, the panels jolt, a crack); steam (six pipes that let
+  go as you pass, a cloud, sometimes one in it); blood trails across the floor; the sleepers' round (round 6, Nightmare 4: every
+  body on the floor gets up at once, THEY ARE ALL GETTING UP); the ankle (a body you step over takes your foot: held 1.1 s, 8 off);
+  the crawlspace (a duct from the Spine's south wall to the Lab's north, on your belly with his crawl clips, W on and S back, no
+  gun: halfway, one is coming the other way, it bites and goes over you and out); the Warden's hand (he grabs instead of clawing,
+  lifts you 0.95 m off the floor, 4.4 s to the bite, 70 off, LIFT.shove 0.16: the cut-in is your boots leaving the floor).
+- **Scares never go missing:** a director in scares.js makes one happen 14 s into a round and then every 20–34 s of play: the lamp
+  (anywhere but the bay, when it is quiet round you), else the vent (from round 2, within 10 m of it), else the Watcher, else a
+  breath behind your ear, else every light in the station stuttering with a bang not far off. The old triggers still fire on their
+  own too, loosened: the lamp from round 1, sleepers from round 1, the vent from round 2, a breath on half the quiet reloads, the
+  Watcher 65 % of rounds (85 % Nightmare). `scares.fired` counts them.
+- **Scares:** your lamp dies and one of them is standing there when it comes back; something crawls along the vent over your head and
+  drops out behind you; a breath behind your ear as you reload; one waiting on the doorstep of the lounge. None of them knock the camera.
+  **The Watcher** (from round 2, now and then): one of them stood in an opening a long way off, lit red, looking at you; it does not move
+  while you look at it, and a moment after you look away it is coming, screaming. **Lights out** every fourth round from the fourth: the
+  strips go, the reds drop to a glow, you have your lamps. Between rounds the station's **PA** crackles with a recorded line from a crew
+  that is not there (deadpan: "Please do not feed the research subjects"); the card at the end carries an epitaph ("He pressed E. It was
+  not a door."). Kirky talks at each step of the story. All of it in `src/deadair/story.js`.
+- **Sound:** every voice comes from where its owner is (HRTF), muffled through walls; the station hums, ticks and bangs; a drone rises
+  as they close in; hurt, the world goes dull and your heart is in your ears. The guns are recordings (The Free Firearm Sound Library:
+  a 1911, an AR-15, a Mossberg, a Colt 1917, a Tikka; the tail cut short on an automatic so the shots do not pile up), his boots on a
+  grate are recordings (congusbongus, CC-BY), so is his breath (Owlish Media: running, scared when he is low, a gasp and a lost breath
+  when he is grabbed), so is a round into meat or into metal (qubodup); their feet are heard on the plates when they are near; a thud in
+  the wall as one comes through it. Three more drones come up with the moment: lights out, the broadcast, Nightmare (Joth); under
+  everything a cramped-passage ambience (congusbongus) and a dark ambient track, "Paranoid Truth" (Tsorthan Grove), least when they
+  are on you (loaded last: nothing waits for it). Half their groans are real recordings now (Darsycho, ianzazz; two files of many
+  groans are cut into one each on load by RMS), the screamer's call and the far-off moans are qubodup's ghosts. A watchdog in
+  sound.update() wakes a context the browser put to sleep and reopens a bus that fell shut; `deadAir.sound.state()` says how it
+  all stands. The open mic has its own song, "DEAD AIR (Hit That Boof)" (public/sounds/deadair/show_song.ogg, 101 s, made with
+  Suno: hard rock, a zombie growl, about the mastre and his boof): it starts with the show, straight onto the bus (the lounge's
+  muffling is for the station, not the room), the cut-in's lyric cards are its first lines, the crowd roars as the band comes on and
+  cheers at the finish (`sound.crowd`), and after the cut-in it plays on at half level until you leave (`sound.song` handle). Every
+  recording and its licence is in `public/sounds/deadair/CREDITS.txt`.
+  **The dread** (sound.js): the station's bed is the mains hum with its harmonics (heard on any speaker), the air handlers
+  breathing, a hiss and a sub-bass rumble under it all; a chord that is wrong (root, minor second, tritone), filtered, swells and
+  brightens as they close in, with strings scraping high over it when they are on you; one of them is heard far off through the
+  walls every few seconds (a moan, a scream, something hammering a door), more often the closer the rest are; something heavy
+  crosses the ceiling over you now and then; one close behind you that you have not looked at breathes, wet, right there; and
+  half the time a round ends in dead air — everything drops away — and then a scream or a bang. The calm bed sits about -22 dB,
+  the station with five of them behind you about -9 dB (measured at the effects bus).
+- **Detail:** within 16 m of the camera up to twelve of each body are drawn in full detail (the sculpted parts); beyond, or past that,
+  the plainer stand-in. The band in the lounge is always full detail.
+- **Friends:** a Moon party (Free Ride's code) goes down together. The host's browser runs the dead and the rounds; everyone else
+  draws them and asks the host for what they do. If the host leaves, whoever is left carries on alone with what was there.
+- **Score:** the round you reached is kept (your best in this browser), and posted to the `deadair` leaderboard board on the published site.
+  With friends the card lists the crew: each one's kills, headshots and friends got up, and an MVP.
+- **Where:** `src/deadair/` (station, walker, dead, arms, reload, coins, lounge, party, scares, crate, sound, hud, index),
+  `src/freeride/airlock.js`, `tools/build_deadair_kit.py` (the station's kit: Quaternius's Modular Sci-Fi MegaKit, CC0),
+  `tools/build_deadair_audio.py`.
+
+### The station's two levels (2026-10-16)
+The map (station.js `MAP`, 24x13 cells of 4 m) has a floor up: zones carry `y` (the floor's height: the Observation Deck is
+`RISE` = 2 m up), `h` (the ceiling: 5, or 8 for the Med Bay, the deck and the Reactor), `stair` (the cell is a flight: two kit
+`Platform_Stairs_4` side by side, climbing `RISE` across the cell toward `STAIRS[].dir`) and `via` (open when that zone is).
+`linked(i, j, di, dj)` says whether you walk from one cell to the next: the same level, or through a stair's two ends; where a
+deck meets a room below, the room's wall is a parapet (a solid box with `top` = its height: bullets and a look go over it).
+`levelAt(p)` is the floor under a point (a slope in a stair cell), `ceilAt(p)` the ceiling over it; `groundAt` starts from
+`levelAt`. Walls stack to the ceiling (`stack()`); a taller room fills the gap over a shorter neighbour's ceiling. The dead step
+up what is under their feet (dead.js), so they take the stairs (the flow field uses `linked`); the walker snaps down a slope.
+Rooms: the Med Bay (13-17 x 4-6, plus the nook 18 x 6-7) with the deck over its south side (13-16 x 7) and the stairwell
+(17, 7); the Crew Quarters (12-16 x 9-11, through the Reactor's 1500 door) with bunks (`BUNKS`), lockers, the chicken; the
+Reactor one row deeper. Behind the deck's windows a painted Moon (`moonTexture`); the kit's glass is see-through (`loadKit`).
+
+### Co-op mechanics, the skit, the chicken
+All ten co-op mechanics live in index.js (hold it shut, decompression, strap in, carry the downed, revive together, the crank
+for the uplink `CRANK`, keep eyes on it, the dead-man safe `SAFE`, back to back, the core's two hands) with editor stages under
+Co-op. The reload skit: one magazine reload in ten with one of the dead in sight, `maybeFumble` → a five-shot cut-in
+(reload.js `hold/resume`, dead.js state 'skit'). The rubber chicken (`public/models/chicken.glb`, his) lies under the first bunk;
+taken, it rides the gun's muzzle (`mountChicken`) and F squeaks (arms `chicken`). `tools/sync_lyrics.py` times the open mic's
+lyric cards to the song with faster-whisper. The laughs: the boof dud (one Golden BOOF in ten), the conga (dance six seconds
+with the dead about), the Mastre trophy (round ten: a gold Kirky out of the ceiling). Cheap scares by place (scares.js
+`placeFire`): the deck window, the parapet, steps overhead, the bunk, the one on the stairs, the drip, the footlocker's lid, the
+wheel turning by itself, the missing body, the recorder playing by itself (`scares.logs` is handed in by index.js). The lounge's shaders are
+compiled in `prepare()` (`warm()`), so the show's first frame no longer stalls.
+
 ## House style
 - **Cut-ins** (boss and mini-boss arrivals, the boss's death, the portal, casino moments, Free Ride's kill cam and found costumes) follow one style: several hard cuts,
   snap zooms, close-ups, white flashes, speed lines, a beat of slow motion and a big title.
@@ -282,7 +507,8 @@ src/
   enemies/           types.js (the monsters' numbers), enemyModels.js, horde.js (spawning, moving, climbing, bosses)
   world/             level.js, terrain.js (the one place that answers "what is the ground here?"),
                      worldgen.js + noise.js (the Cemetery), catacombs.js (level 2), moon.js (Free Ride), features.js, chunkMesh.js, arena.js
-  freeride/          ride.js (riding together), targets.js (astronauts and aliens), eggs.js (the secrets: spoilers)
+  freeride/          ride.js (riding together), targets.js (astronauts and aliens), eggs.js (the secrets: spoilers), airlock.js (the way to DEAD AIR: spoilers)
+  deadair/           DEAD AIR: index.js (the rules, rounds, the party), station.js, walker.js, dead.js, arms.js, reload.js, lounge.js, scares.js, ...
   systems/           xp, upgrades, loot, gold, hotbox, portal, score, lines (Free Ride's scoring), profile (what you own), cosmetics, storage
   casino/            casino.js (the controller and the connection), room.js (the 3D room), blackjack.js, roulette.js,
                      slots.js, bar.js, net.js
@@ -298,3 +524,7 @@ functions/api/       leaderboard.js
 - Free Ride has not yet been played by two people on two computers: riding together, friendly fire and the kill cam have only
   been tested with two tabs on one machine. Frame rate with four riders is estimated, not measured.
 - Most recent additions have been checked by script and screenshot more than by play, so balance is unsettled.
+- DEAD AIR (2026-10-16): everything from the overnight build has been verified headless (stills, two browsers on one machine)
+  and not yet by a person; the open mic's cards are timed by faster-whisper (small + medium; the growled lines are the least certain);
+  the recorder scare is each browser's own; the ten co-op mechanics that need four players (the core's two hands) have only
+  been reasoned through, not run with four.

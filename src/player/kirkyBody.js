@@ -374,13 +374,13 @@ export function attachBody(model) {
   // hand (a clip that has him hunched over, and he is to sit up); legs: false = his legs are not the clip's but as
   // they are posed by hand (sat on something the clip's seat was not: his knees are where the stone lets them be) }.
   // (true: seated, and nothing else.)
-  model.play = (name, weight = 1, rate = 1, at, whole = false, how = null) => { model.acting = { name, weight, rate, at: performance.now(), time: at, whole, seated: how === true || !!how?.seated, upright: how?.upright || 0, legs: how?.legs !== false }; };
+  model.play = (name, weight = 1, rate = 1, at, whole = false, how = null) => { model.acting = { name, weight, rate, at: performance.now(), time: at, whole, seated: how === true || !!how?.seated, upright: how?.upright || 0, legs: how?.legs !== false, lifted: !!how?.lifted }; };
   const LEG_BONES = new Set(['thigh_l', 'calf_l', 'foot_l', 'ball_l', 'thigh_r', 'calf_r', 'foot_r', 'ball_r']);
   // Clips in which he goes over. In every other his hips are held as the figure holds them (upright under him: they
   // hang from nothing a clip could turn them on), and that is right for a man riding, sat or dancing; but a man
   // going down who stays bolt upright as his hips reach the floor has sunk into it to the waist. In these his hips
   // turn as the clip has them.
-  const OVER = new Set(['die']);
+  const OVER = new Set(['die', 'rifledie', 'fallover']);
   const STRAIGHT = { spine_01: 0.45, spine_02: 0.7, spine_03: 0.9, neck_01: 1, neck_02: 1, head: 1 };   // (how much of that each takes: his chest most of it, his head all of it)
   model.clips = () => (animFile ? animFile.animations.map((c) => ({ name: c.name, length: c.duration })) : []);
   const RIDING = new Set(['ride', 'push', 'ollie', 'air', 'hit', 'land']), RUNGS = new Set(['climb']);   // (RUNGS: his hips are not where they stand, and stay there: a ladder)
@@ -401,7 +401,7 @@ export function attachBody(model) {
       A[name].setEffectiveWeight(w);
       if (want) { A[name].timeScale = told.time === undefined ? told.rate : 0; if (told.time !== undefined) A[name].time = Math.max(0, Math.min(A[name].getClip().duration - 0.02, told.time)); }
       const curve = w > 0.001 && animDrop && !RUNGS.has(name) ? animDrop.drop[name] : null;
-      if (curve && curve.length) { const f = Math.min(curve.length - 1.001, Math.max(0, A[name].time * animDrop.fps)), i = Math.floor(f); drop += w * (curve[i] + (curve[i + 1] - curve[i]) * (f - i)); sum += w; }
+      if (curve && curve.length) { const f = Math.min(curve.length - 1.001, Math.max(0, A[name].time * animDrop.fps)), i = Math.floor(f), d = curve[i] + (curve[i + 1] - curve[i]) * (f - i); drop += w * (told?.lifted ? Math.min(0, d) : d); sum += w; }
     }
     mocap.blend += ((riding || told ? 1 : 0) - mocap.blend) * (1 - Math.exp(-10 * dt));
     mocap.drop = riding || (told && told.seated) ? 0 : drop / Math.max(1, sum);   // (on his board his hips are where his legs put them)
@@ -570,6 +570,22 @@ export function attachBody(model) {
     const away = !!(mocap && played > 0.5 && mocap.whole);
     if (mocap && away !== !!mocap.away) { mocap.away = away; model.gunArm.visible = !away; }
     body.updateMatrixWorld(true);
+    // (carryInClip: all of him is the clip's, but he keeps his gun: a copy of it, in the hand the clip moves, held the
+    // way his own hand holds it. How it sits in his hand is measured every frame his arm is his own.)
+    const hand = bones.hand_l, gun = model.gun?.group;
+    if (hand && gun) {
+      if (!away) { gun.updateWorldMatrix(true, false); (model.grip ||= new THREE.Matrix4()).copy(hand.matrixWorld).invert().multiply(gun.matrixWorld); model.gripOf = gun; }
+      const want = away && model.carryInClip && model.grip && model.gripOf === gun;
+      if (want && (!model.gripProxy || model.gripProxy.userData.of !== gun)) {
+        model.gripProxy?.removeFromParent();
+        const copy = gun.clone(true);
+        copy.matrixAutoUpdate = false; copy.userData.of = gun;
+        copy.traverse((o) => { o.visible = true; if (o.isMesh) o.castShadow = true; });
+        for (const name of ['rig-fresh', 'rig-shell', 'rig-loader']) { const o = copy.getObjectByName(name); if (o) o.visible = false; }
+        hand.add(copy); model.gripProxy = copy;
+      }
+      if (model.gripProxy) { model.gripProxy.visible = !!want; if (want) { model.gripProxy.matrix.copy(model.grip); model.gripProxy.updateMatrixWorld(true); } }
+    }
     if (BULK.length) { keepArmOut('r'); if (mocap && mocap.whole && played > 0.5) keepArmOut('l'); }
     plantFeet();
     if (alien) alien.follow();   // (the alien, or the suit, does as he does: see shadow)

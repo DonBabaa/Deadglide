@@ -15,6 +15,7 @@ import { Lines } from './systems/lines.js';
 import { createRide } from './freeride/ride.js';
 import { createTargets } from './freeride/targets.js';
 import { createEggs } from './freeride/eggs.js';
+import { createAirlock } from './freeride/airlock.js';
 import { COSTUMES } from './player/costumes.js';
 import { owns, award, slot } from './systems/cosmetics.js';
 import { TRICKS } from './player/tricks.js';
@@ -54,6 +55,8 @@ import { createCutscenes } from './cutscenes.js';
 import { createDescent } from './systems/descent.js';
 import { runTime as hillTime } from './ui/leaderboard.js';
 import { createEmoter } from './player/emotes.js';
+import { createAfoot, AFOOT } from './player/afoot.js';
+import { singlePass } from './fx/singlePass.js';
 import { createEmoteWheel } from './ui/emoteWheel.js';
 import { setMusicStyle, MUSIC_STYLES } from './fx/music.js';
 import * as SOUNDS from './fx/audio.js';
@@ -107,7 +110,7 @@ const ride = createRide({
     flip: skater.flip, speed: skater.speed, ground: skater.grounded ? 1 : 0, grind: skater.grinding ? 1 + skater.grindStyle : 0,   // (0: not grinding; otherwise which grind, plus one)
     trick: skater.trick ? TRICKS.indexOf(skater.trick) : -1, tp: skater.trickProgress, charge: skater.charge, steer: skater.steer,
     ax: aimPoint.x, ay: aimPoint.y, az: aimPoint.z, gun: gunIsUp ? 1 : 0, line: lines.total, best: lines.session,
-    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0, emote: emoter.playing,
+    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0, emote: emoter.playing, foot: afoot.on ? 1 : 0,
   }),
   onChange: () => {},
 });
@@ -132,7 +135,22 @@ const targets = createTargets({
     if (head) playHeadshot();
   },
 });
-ride.onGame = (from, message) => targets.onGame(from, message);
+// (game messages: the targets', and DEAD AIR's: those carry `da`)
+ride.onGame = (from, message) => {
+  if (!message?.da) return targets.onGame(from, message);
+  if (message.da === 'unseal' || message.da === 'go') {   // (the hatch: these pass through the host to everyone)
+    if (ride.hosting && from !== ride.myId) ride.toAll(message);
+    if (message.da === 'unseal') airlock.unseal();
+    else if (!deadAir.active && LEVELS[level].freeRide && !inMenu) downTheHatch();
+    return;
+  }
+  deadAir.onNet?.(from, message);
+};
+// Something for the whole party (the host tells everyone; a guest asks the host to).
+function partySay(message) {
+  if (!ride.active) return;
+  if (ride.hosting) ride.toAll(message); else ride.toHost(message);
+}
 // Another rider has shot you: nothing is hurt, but you're off your board, your line is gone, and for a moment you can't be shot again.
 ride.onHit = (by, head) => {
   if (!LEVELS[level].freeRide || invulnerable > 0) return;
@@ -158,6 +176,11 @@ const eggs = createEggs({
     cutscenes.found({ name: COSTUMES[id].name, wear: applyLook });
   },
 });
+// The way down to DEAD AIR (freeride/airlock.js: spoilers). In a party the lamp is everybody's, and whoever goes
+// down first takes the others with them (partySay: the host passes it on).
+// (down it: the lift's cut-in (cutscenes.lift), then the station)
+const downTheHatch = () => { if (cutscenes.active) return; afoot.reset(); cutscenes.lift(airlock, () => intoDeadAir()); };   // (on his board for it: the scene rolls him in)
+const airlock = createAirlock({ scene, onEnter: () => { partySay({ da: 'go' }); downTheHatch(); } });
 const powerups = new Powerups(scene);
 const chase = new ChaseCamera(camera);
 const menuScene = new MenuScene(scene, camera);
@@ -313,6 +336,8 @@ function restart(carry = false) {
   targets.setVisible(!!LEVELS[level].freeRide);
   eggs.reset();
   eggs.setVisible(!!LEVELS[level].freeRide);
+  airlock.reset();
+  airlock.setVisible(!!LEVELS[level].freeRide);
   leftBehind.visible = !!LEVELS[level].freeRide && finished();
   descent.reset();
   descent.setVisible(!!LEVELS[level].descent);
@@ -550,7 +575,7 @@ const viewer = createModelViewer({ renderer, look: currentLook, horde });
     document.body.classList.toggle('model-view', models);
     if (models) pick(last); else viewer.hide();
   };
-  for (const t of tabs) t.addEventListener('click', () => open(t.dataset.tab));
+  for (const t of tabs) t.addEventListener('click', () => { open(t.dataset.tab); if (t.dataset.tab === 'deadair') fillDeadAirStages(); });
   document.getElementById('cinema-back').addEventListener('click', () => open('scenes'));
   let group = '';
   viewer.MODELS.forEach((m, i) => {
@@ -681,6 +706,10 @@ function updateSpectate(dt, dx, dy) {
     b.addEventListener('click', () => startSpectate(n));
     spec('spectate-list').append(play, b);
   }
+  const station = Object.assign(document.createElement('button'), { type: 'button' });
+  station.innerHTML = 'Play DEAD AIR<small>The secret mode: Shackleton Station, on foot, the dead</small>';
+  station.addEventListener('click', () => playDeadAir());
+  spec('spectate-list').append(station);
   // The bosses' moves, one at a time: the level starts (nothing can hurt you, and you have a gun), the boss arrives,
   // and he does that one thing, again every few seconds, for as long as you want to watch it.
   const head = Object.assign(document.createElement('h3'), { textContent: 'Boss moves' });
@@ -746,6 +775,7 @@ const ending = (all) => () => {
 };
 const CINEMATICS = [
   { name: 'Cemetery: the opening', where: 'Level 1', run: () => { at(1); cutscenes.intro(); } },
+  { name: 'The lift down, into DEAD AIR', where: 'The Moon', run: () => { at(3); airlock.setVisible(true); skater.pos.set(airlock.place.x, airlock.place.y + 0.3, airlock.place.z); skater.vel.set(0, 0, 0); chase.snap(skater); airlock.force(); } },
   { name: 'Hamzitus arrives', where: 'Level 1', run: () => { at(1); horde.spawnBoss(skater); } },
   { name: 'Hamzitus dies, the portal, the chip', where: 'Level 1', run: () => { at(1); horde.spawnBoss(skater); }, replace: () => horde.damage(horde.boss, 1e9, 0, 0) },
   { name: 'Through the portal', where: 'Level 1', run: () => { at(1); portal.open(skater.pos.x, skater.pos.y, skater.pos.z - 12); cutscenes.exit(); } },
@@ -948,6 +978,7 @@ function showMenu() {
   hud.ride(null);
   targets.setVisible(false);
   eggs.setVisible(false);
+  airlock.setVisible(false);
   // The menu has its own place: the cemetery, or, once you have finished the game, the Moon.
   { const home = finished() || moonMenu ? 3 : 1, moved = level !== home; if (moved) setWorld(home); if (moved || menuScene.moon !== (home === 3)) { menuScene.setPlace(home === 3); arena.prime(menuScene.origin); } }
   paused = true;
@@ -997,8 +1028,67 @@ function showMenu() {
 // that it is there by the time the button is pressed), and until then `casino` is somebody who is never in.
 let casino = { active: false, emote() {} }, casinoComing = null;
 const openCasino = () => (casinoComing ||= import('./casino/casino.js').then(({ createCasino }) => (casino = createCasino({ onLeave: showMenu }))));
+// DEAD AIR (src/deadair/): the secret co-op mode out past the Moon's dome. A room of its own like the casino, fetched
+// the first time it is wanted. `deadAir` is somebody who is never in until then.
+let deadAir = { active: false }, deadAirComing = null, deadAirFault = false, ridersSeen = 0;
+const openDeadAir = () => (deadAirComing ||= import('./deadair/index.js').then(({ createDeadAir }) => (deadAir = createDeadAir({ renderer, onLeave: showMenu, onOut: backToMoon, openCasino, party: ride }))));
+// Out of a run (Free Ride, through the airlock) into DEAD AIR: the run stops, as it does for the menu, but the party,
+// if there is one, is not left (DEAD AIR plays on it). It is not on the title screen: the way in is the hatch (and, for
+// testing, the editor's scenes, or ?deadair).
+function intoDeadAir() {
+  store('deadair.found', '1');
+  inMenu = true;
+  paused = false;
+  document.body.classList.remove('free-ride', 'descent');
+  hud.line(null);
+  hud.hideOverlay();
+  cutscenes.cancel();
+  targets.setVisible(false);
+  eggs.setVisible(false);
+  airlock.setVisible(false);
+  model.setVisible(false);
+  SOUNDS.stopAllSounds();
+  playDeadAir();
+}
+// Out of DEAD AIR the way you went in: the lift back up to the Moon, and Free Ride again at the top of it.
+function backToMoon() {
+  inMenu = false;
+  paused = false;
+  document.body.classList.add('free-ride');
+  targets.setVisible(true);
+  eggs.setVisible(true);
+  airlock.setVisible(true);
+  model.setVisible(true);
+  airlock.reset();
+  const A = airlock.place;
+  skater.pos.set(A.x, A.y + 0.25, A.z); skater.vel?.set(0, 0, 0);
+  chase.snap(skater);
+  setTimeout(() => { if (!deadAir?.active) cutscenes.surface(airlock, () => { airlock.reset(); }); }, 400);   // (the lift's cage is built on demand: a moment for it)
+}
+// The editor's DEAD AIR tab: every stage of it on a button (the mode says what they are: deadair/index.js STAGES).
+let stagesFilled = false;
+function fillDeadAirStages() {
+  if (stagesFilled) return;
+  stagesFilled = true;
+  const list = document.getElementById('deadair-stage-list');
+  openDeadAir().then((made) => {
+    let group = '';
+    for (const s of made.stages) {
+      if (s.group !== group) { group = s.group; list.append(Object.assign(document.createElement('h3'), { textContent: group })); }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = `${s.name}<small>${s.blurb}</small>`;
+      b.addEventListener('click', () => playDeadAirStage(s.id));
+      list.append(b);
+    }
+  }).catch((error) => { stagesFilled = false; console.warn('DEAD AIR would not open for the editor.', error); });
+}
+const playDeadAirStage = (id) => playDeadAir().then(() => deadAir?.stage(id));
+const playDeadAir = () => openDeadAir().then((made) => { if (spectate) stopSpectate(false); viewer.hide(); document.body.classList.remove('model-view'); menu.hide(); return made.enter(); }).catch((error) => { deadAirComing = null; console.warn('DEAD AIR would not open.', error); });
 // Emotes (hold T): in the casino and in Free Ride.
 const emoter = createEmoter(model);
+// Free Ride on foot: B steps off the board (and back on). See player/afoot.js.
+const afoot = createAfoot({ skater, model, chase, input, emoter });
 const emoteWheel = createEmoteWheel({
   canOpen: () => casino.active || (LEVELS[level].freeRide && !inMenu && !paused && !dead && !cutscenes.active),
   onPick: (i) => (casino.active ? casino.emote(i) : emoter.play(i)),
@@ -1016,6 +1106,7 @@ document.getElementById('menu-casino-open').addEventListener('click', (e) => {
 // Start a run. loadout: Creative mode's choices (null: a normal run). chosen: the level. session: riding with friends
 // ({ host } or { join }), or { direct: true } from the editor: straight into the level, without the story that leads to it.
 function startRun(loadout, chosen = 1, session = null) {
+  sweepWait = 0.3;   // (what the level is about to make: drawn in one pass from its first moments, see fx/singlePass.js)
   const taken = !!session?.resume && !!kept && kept.level === chosen;   // (Continue: the run that was kept, taken up again)
   creative = loadout;
   demo = null;
@@ -1117,7 +1208,7 @@ canvas.addEventListener('click', () => { if (spectate || (!paused && !preview)) 
 canvas.addEventListener('mousedown', () => { if (!paused && cutscenes.active) cutscenes.next(); });   // (a click also moves the story on)
 // Esc releases the pointer (browser behaviour); treat that as pause.
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && !paused && !panel.open) pause();
+  if (!document.pointerLockElement && !paused && !panel.open && !deadAir.active) pause();
 });
 window.addEventListener('keydown', (e) => {
   if (inMenu) return;
@@ -1141,6 +1232,8 @@ window.addEventListener('keydown', (e) => {
     cutscenes.skip();   // (only the story scenes can be skipped)
   } else if (e.code === 'KeyR' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     backToSpawn();
+  } else if (e.code === AFOOT.key && !e.repeat && freeRide() && !paused && !dead && !cutscenes.active && !(e.target instanceof HTMLInputElement)) {
+    afoot.toggle();   // Free Ride: off the board and on foot, or back on it
   }
 });
 
@@ -1149,6 +1242,7 @@ window.addEventListener('keydown', (e) => {
 function backToSpawn() {
   if (!LEVELS[level].freeRide || inMenu || dead || cutscenes.active) return;
   lines.fail('Back to spawn');
+  afoot.reset();
   skater.respawn();
   chase.snap(skater);
   overLava = false;
@@ -1179,7 +1273,7 @@ window.addEventListener('keydown', (e) => {
   perfOn = !perfOn;
   perfEl.classList.toggle('hidden', !perfOn);
 });
-let last = performance.now(), accumulator = 0, runTime = 0, ventWait = 0, overLava = false, burnWait = 0;
+let last = performance.now(), accumulator = 0, runTime = 0, ventWait = 0, overLava = false, burnWait = 0, sweepWait = 0;
 const freeRide = () => !!LEVELS[level].freeRide;
 
 const kmh = (boost) => `+${Math.round(boost * 3.6)} km/h`;
@@ -1474,7 +1568,8 @@ function frame(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));   // (never backwards: `last` is sometimes reset to a moment after this frame began)
   last = now;
   {
-    const riding = !(inMenu || paused || spectate || casino.active || cutscenes.active || drag || dead);
+    if (afoot.on && (inMenu || deadAir.active || casino.active || !freeRide())) afoot.reset();   // (on foot is Free Ride's alone: anywhere else he is on his board)
+    const riding = !(inMenu || paused || spectate || casino.active || cutscenes.active || drag || dead || afoot.on);
     if (riding) speedLines(); else hud.speedLines(0);
     hud.balance(riding && skater.grinding ? skater.balance : null);
     rideFx.update(dt, skater, riding);
@@ -1493,7 +1588,19 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
     }
   }
   if (paused || inMenu || dead) setFlame(false);
+  if ((sweepWait -= dt) <= 0) { sweepWait = 2; singlePass(deadAir.active ? deadAir.scene : casino.active ? casino.scene : scene); }   // (see fx/singlePass.js)
 
+  if (deadAir.active) {   // in DEAD AIR (a room of its own: and its lounge is the casino, so it comes first, and runs the casino itself)
+    // (a fault in one frame of it is reported, once, and the game goes on: it is not the whole game's to stop)
+    try { deadAir.update(dt, input, [mouseDX, mouseDY]); } catch (error) { if (!deadAirFault) console.error('DEAD AIR:', error); deadAirFault = true; }
+    if (ride.active) {   // (a party that came out here together stays together: keep it alive; and whoever joins late is sent down after us)
+      ride.update(dt);
+      if (ride.hosting && ride.ghosts.size > ridersSeen) ride.toAll({ da: 'go' });
+      ridersSeen = ride.ghosts.size;
+    }
+    renderer.render(deadAir.scene, deadAir.camera);
+    return;
+  }
   if (casino.active) {   // in the casino (a room of its own, reached from the menu)
     casino.update(dt, input);
     renderer.render(casino.scene, casino.camera);
@@ -1527,13 +1634,15 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
   if (paused && !inMenu && !cutscenes.active && !casino.active) {
     if (dead && !won) model.play?.('die', 1, 1, 0.5 + (fallen += dt) * 1.4, true);   // (from where his knees go, and a little quicker than it was acted)
     else if (model.riding) model.riding = performance.now();
+    else if (afoot.on && model.acting) model.acting.at = performance.now();   // (on foot: he stays as he was)
   } else fallen = 0;
   if (!paused && drag) updateDrag(dt);
-  else if (!paused && cutscenes.active) cutscenes.update(preview ? (preview.paused ? 0 : dt * preview.speed) : dt);
+  else if (!paused && cutscenes.active) { cutscenes.update(preview ? (preview.paused ? 0 : dt * preview.speed) : dt); if (afoot.on && cutscenes.active) afoot.hold(dt); }
   else if (!paused) {
     accumulator += dt;
     while (accumulator >= STEP) {
-      skater.update(STEP, input);
+      if (afoot.on) afoot.step(STEP, input, chase.yaw + chase.aimYaw, input.aimHeld);   // (on foot: walking, not rolling)
+      else skater.update(STEP, input);
       accumulator -= STEP;
     }
     // (The Moon) The line you're building, the lava, and the vents.
@@ -1556,6 +1665,9 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
       }
       targets.update(dt, skater.pos);
       eggs.update(dt);
+      airlock.update(dt, skater.pos, ride.positions());
+      if (airlock.waiting && !airlock.waitSaid) { airlock.waitSaid = true; hud.popup(`The lift waits for everyone: ${airlock.aboard} of ${airlock.party} aboard`, 'loot'); }
+      if (!airlock.waiting) airlock.waitSaid = false;
       lines.update(dt, skater.grounded && !skater.grinding);
       for (const e of lines.events) {
         if (e.type === 'banked') {
@@ -1633,7 +1745,7 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
     // Gun: the arm points at whatever is under the crosshair, bullets fly there.
     weapon.aimPoint(camera, aimPoint);
     gunIsUp = aiming || firing;
-    model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
+    if (!afoot.pose(dt, renderPos, aimPoint, aiming || firing, chase.scope > 0.4, invulnerable)) model.update(dt, skater, renderPos, aimPoint, aiming || firing, invulnerable, chase.scope > 0.4);
     emoter.update(dt);
     trickBuff = Math.max(0, trickBuff - dt);
     const damageMult = (airborne() ? stats.airDamage : 1) * (trickBuff > 0 ? 2 : 1);
@@ -1647,6 +1759,7 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
           // Free Ride: what did that hit? A target, or another rider (whichever is nearer).
           const { origin, dir, reach } = weapon.shot;
           eggs.shot(dir);
+          if (airlock.shot(origin, dir, reach)) hud.popup('Something opens behind you', 'loot');
           const rider = ride.rayHit(origin, dir, reach);
           const doing = { air: !skater.grounded && !skater.grinding, trick: !!skater.trick || Math.abs(skater.spin) > 1.2 || Math.abs(skater.flip) > 1.2, scoped: chase.scope > 0.5 };
           const target = targets.shoot(origin, dir, rider ? rider.dist : reach, doing);
@@ -1773,6 +1886,7 @@ hud.weapons(weapon, WEAPONS);
 hud.score(score);
 showMenu();
 requestAnimationFrame(frame);
+if (new URLSearchParams(location.search).has('deadair')) playDeadAir();   // (?deadair in the address: straight in, for testing)
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { renderer, scene, hurt, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { renderer, scene, hurt, airlock, startRun, afoot, model, chase, input, camera, cutscenes, get skater() { return skater; }, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };

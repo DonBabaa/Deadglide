@@ -28,15 +28,24 @@ import { playCard, playChip, playCashIn, playCoin, playLose, playPowerup, playLa
 const $ = (id) => document.getElementById(id);
 const COIN = '<i class="coin"></i>';
 const CHIPS = [10, 25, 100, 500];
+const PAYTABLE = document.getElementById('casino-paytable')?.innerHTML || '';   // (the slots' line, as the page has it)
 const EMPTY = { state: { phase: 'betting', turn: -1, countdown: 0, turnLeft: 0, dealer: [], seats: [null, null, null, null, null] }, busy: false };
 
+// One casino a page (its buttons are the page's), but more than one room it can be in: the grand hall from the menu,
+// or a room handed to enter() (DEAD AIR's lounge, with a purse of its own, drinks of its own and its own prizes).
 export function createCasino({ onLeave }) {
-  const room = new CasinoRoom();
+  let grand = null, room = null;
+  const hall = () => (grand ||= new CasinoRoom());
   const C = config.casino;
+  // Where your gold comes from and goes to: your bank (the menu's casino), or the purse a room came with.
+  //   gold  what you have   pay(n) -> false if you can't   purse.bank(n)   took(lost, staked): what the house made on a bet
+  const BANK = { get gold() { return profile.gold; }, pay: (n) => pay(n, () => {}), bank: (n) => bank(n), took: (lost, staked) => houseTook(lost, staked), get houseTake() { return profile.houseTake; } };
+  let purse = BANK, drinks = DRINKS, award = null, leaveTo = onLeave;
 
   let role = 'alone';     // 'alone' | 'host' | 'guest'
   let engine = null;      // the table, when this browser is running it
   let net = null;         // the connection, when playing with friends
+  let othersFrom = null;  // (a room entered from elsewhere, DEAD AIR's lounge: who else is in it, from there)
   let code = '';          // the table's code
   let myId = 'me';
   let view = EMPTY;       // the table as last delivered: { state, busy }
@@ -106,16 +115,16 @@ export function createCasino({ onLeave }) {
       void el.offsetWidth;
       el.classList.add('show');
     } else if (e.type === 'roundStart' && me && me.ready && me.bet > 0) {
-      pay(me.bet, () => {});   // your stake leaves your bank as the cards come out
+      purse.pay(me.bet);   // your stake leaves your bank as the cards come out
       staked = lastBet = me.bet;
       playChip();
     } else if ((e.type === 'double' || e.type === 'split') && e.seat === seat) {   // (either way, more of your gold goes on the table)
-      pay(e.extra, () => {});
+      purse.pay(e.extra);
       staked += e.extra;
       playChip();
     } else if (e.type === 'result' && e.seat === seat) {
-      bank(e.payout);
-      houseTook(staked - e.payout, staked);
+      purse.bank(e.payout);
+      purse.took(staked - e.payout, staked);
       const net2 = e.payout - staked;
       banner({ blackjack: 'Blackjack!', win: 'You win', push: 'Push', lose: e.split ? 'You lose' : handTotal(me.cards).total > 21 ? 'Bust' : 'Dealer wins' }[e.result], net2);
       if (e.result === 'blackjack') { playPowerup(); playCashIn(); room.celebrate(true); }   // (up off his stool for it, with a cut-in)
@@ -124,7 +133,7 @@ export function createCasino({ onLeave }) {
       else playCoin(0.3);
       staked = 0;
     } else if (e.type === 'roundEnd' && me) {
-      bet = Math.min(lastBet, profile.gold, C.maxBet);   // the same bet again, if you can cover it
+      bet = Math.min(lastBet, purse.gold, C.maxBet);   // the same bet again, if you can cover it
       if (bet < C.minBet) bet = 0;
       request(myId, 'act', 'bet', bet);
     }
@@ -175,7 +184,7 @@ export function createCasino({ onLeave }) {
   // What the others need to know to draw you: where you are, and what you're up to at the bar or a slot machine.
   const doing = () => ({
     x: room.pos.x, z: room.pos.z, y: +room.y.toFixed(2), yaw: room.yaw, bar: room.bar, lounge: room.lounge,
-    glass: room.glass && room.glass.ready && room.glass.level > 0 ? DRINKS.findIndex((d) => d.id === room.glass.drinkId) : -1, sip: +room.sip.toFixed(2),
+    glass: room.glass && room.glass.ready && room.glass.level > 0 ? drinks.findIndex((d) => d.id === room.glass.drinkId) : -1, sip: +room.sip.toFixed(2),
     slot: room.slot, spin: !!spinning, win: room.slot >= 0 && room.win > 0,
     smoke: room.smokeLeft > 0 ? room.puffing || 1 : 0,   // having a smoke at the table: 1 drawing on it, 2 blowing it out
     emote: room.emoter.playing,
@@ -201,7 +210,7 @@ export function createCasino({ onLeave }) {
   function goAlone(why = '') {
     net?.close();
     net = null;
-    if (staked > 0) { bank(staked); staked = 0; }   // the hand never finished: your stake comes back
+    if (staked > 0) { purse.bank(staked); staked = 0; }   // the hand never finished: your stake comes back
     role = 'alone';
     myId = 'me';
     code = '';
@@ -227,21 +236,21 @@ export function createCasino({ onLeave }) {
   }
 
   function setBet(amount) {
-    bet = Math.max(0, Math.min(C.maxBet, profile.gold, amount));
+    bet = Math.max(0, Math.min(C.maxBet, purse.gold, amount));
     request(myId, 'act', 'bet', bet);
     playChip();
   }
 
   function deal() {
-    if (bet < C.minBet || bet > profile.gold || view.state.phase !== 'betting') return;
+    if (bet < C.minBet || bet > purse.gold || view.state.phase !== 'betting') return;
     request(myId, 'act', 'ready');
   }
 
   function play(action) {
     const mine = mySeat();
     if (!mine) return;
-    if (action === 'double' && profile.gold < currentHand(mine).bet) return;   // (can't cover it)
-    if (action === 'split' && (profile.gold < mine.bet || !canSplit(mine))) return;
+    if (action === 'double' && purse.gold < currentHand(mine).bet) return;   // (can't cover it)
+    if (action === 'split' && (purse.gold < mine.bet || !canSplit(mine))) return;
     request(myId, 'act', action);
   }
 
@@ -255,9 +264,17 @@ export function createCasino({ onLeave }) {
   }
 
   // At the bar: pay, and the barman gets to work.
+  // Down it (and whatever it does to you, it does now: drunk(), if the drink has one).
+  function drinkUp() {
+    const id = room.glass?.drinkId;
+    if (!room.drink()) return;
+    drinks.find((d) => d.id === id)?.drunk?.();
+    refresh();
+  }
+
   function order(drink) {
-    if (profile.gold < drink.price || !room.order(drink)) return;
-    pay(drink.price, () => {});
+    if (purse.gold < drink.price || !room.order(drink)) return;
+    purse.pay(drink.price);
     playChip();
     refresh();
   }
@@ -267,12 +284,11 @@ export function createCasino({ onLeave }) {
   const reelEls = [...document.querySelectorAll('#casino-reels span')], names = Object.keys(SYMBOLS);
   const shown = [];   // (the same three symbols go on the machine's own screen)
   const showReel = (el, name) => { el.textContent = SYMBOLS[name]; el.className = name; shown[reelEls.indexOf(el)] = SYMBOLS[name]; if (shown.length === 3) room.showReels(shown); };
-  reelEls.forEach((el, i) => showReel(el, ['seven', 'skull', 'seven'][i]));
 
   function pullLever() {
-    if (room.slot < 0 || spinning || room.win > 0 || profile.gold < SPIN_COST) return;
-    pay(SPIN_COST, () => {});
-    spinning = { result: spin(), time: 0, stopped: 0, tick: 0 };   // (decided now; the reels catch up)
+    if (room.slot < 0 || spinning || room.win > 0 || purse.gold < SPIN_COST) return;
+    purse.pay(SPIN_COST);
+    spinning = { result: spin(award), time: 0, stopped: 0, tick: 0 };   // (decided now; the reels catch up)
     room.pull();
     playLever();
     $('casino-slot-result').textContent = '';
@@ -294,11 +310,11 @@ export function createCasino({ onLeave }) {
     // All three are down: pay out.
     const { result } = s;
     spinning = null;
-    bank(result.gold);
-    houseTook(SPIN_COST - result.gold, SPIN_COST);
+    purse.bank(result.gold);
+    purse.took(SPIN_COST - result.gold, SPIN_COST);
     $('casino-slot-result').textContent = result.gold ? `${result.text}  +${result.gold}` : result.text || 'Nothing. Again?';
     if (result.prize) room.kirky.applyLook(currentLook());   // he puts it straight on
-    if (result.big) { room.bigWin(result.prize ? result.prize.option.name : `+${result.gold} gold`); playJackpot(); }
+    if (result.big) { room.bigWin(result.prize ? result.prize.option.name : result.award || `+${result.gold} gold`); playJackpot(); }
     else if (result.gold > SPIN_COST) playCashIn();
     else if (result.gold) playCoin(0.4);
     else playLose();
@@ -309,8 +325,8 @@ export function createCasino({ onLeave }) {
     const playing = room.slot >= 0;
     $('casino-slots').classList.toggle('hidden', !playing);
     if (!playing) return;
-    $('casino-spin').disabled = !!spinning || room.win > 0 || profile.gold < SPIN_COST;
-    if (profile.gold < SPIN_COST && !spinning) $('casino-slot-result').textContent = `You need ${SPIN_COST} gold to spin`;
+    $('casino-spin').disabled = !!spinning || room.win > 0 || purse.gold < SPIN_COST;
+    if (purse.gold < SPIN_COST && !spinning) $('casino-slot-result').textContent = `You need ${SPIN_COST} gold to spin`;
   }
   $('casino-spin').innerHTML = `Spin ${COIN}${SPIN_COST} <kbd>Space</kbd>`;
   $('casino-spin').addEventListener('click', pullLever);
@@ -355,7 +371,7 @@ export function createCasino({ onLeave }) {
     if (!room.roulette || rolling) return;
     if (take) delete bets[id];
     else {
-      const amount = Math.min(chip, C.maxBet - wagered(), profile.gold - wagered());   // (the table limit, and what you've got)
+      const amount = Math.min(chip, C.maxBet - wagered(), purse.gold - wagered());   // (the table limit, and what you've got)
       if (amount <= 0) return;
       bets[id] = (bets[id] || 0) + amount;
     }
@@ -386,7 +402,7 @@ export function createCasino({ onLeave }) {
 
   // You want the wheel spun.
   function spinRoulette() {
-    if (!room.roulette || rolling || !wagered() || wagered() > profile.gold) return;
+    if (!room.roulette || rolling || !wagered() || wagered() > purse.gold) return;
     if (role === 'guest') net?.send({ t: 'rspin' });
     else hostSpin(myId);
   }
@@ -406,7 +422,7 @@ export function createCasino({ onLeave }) {
   function startSpin(number) {
     if (!Number.isInteger(number) || number < 0 || number > 36) return;
     if (rolling) { queued = number; return; }
-    const total = room.roulette ? wagered() : 0, playing = total > 0 && pay(total, () => {}), back = playing ? settle(bets, number) : 0;
+    const total = room.roulette ? wagered() : 0, playing = total > 0 && purse.pay(total), back = playing ? settle(bets, number) : 0;
     rolling = { number, total, back, paid: false, playing };
     room.spinRoulette(number, `${number} ${colour(number)}`, playing && back > total ? `+${back - total} gold` : '', playing && back === 0, room.roulette);
     if (room.roulette) playWheel();
@@ -426,8 +442,8 @@ export function createCasino({ onLeave }) {
       $('casino-roulette-history').innerHTML = lastNumbers.map((n) => `<b class="${colour(n)}">${n}</b>`).join('');
       $('casino-roulette-result').textContent = `${number} ${colour(number)}${!playing ? '' : `: ${back > total ? `you win ${back - total}` : back === total ? 'you break even' : back ? `you get ${back} back` : 'the house wins'}`}`;
       if (playing) {
-        bank(back);
-        houseTook(total - back, total);
+        purse.bank(back);
+        purse.took(total - back, total);
         if (back >= total * 6) playJackpot();
         else if (back > total) playCashIn();
         else if (back) playCoin(0.4);
@@ -437,7 +453,7 @@ export function createCasino({ onLeave }) {
     }
     if (room.rtime < 0) {   // and it's over: the same bets stay down if you can cover them
       rolling = null;
-      if (wagered() > profile.gold) bets = {};
+      if (wagered() > purse.gold) bets = {};
       sendBets();
       if (queued !== null) { const next = queued; queued = null; startSpin(next); }
     }
@@ -468,9 +484,9 @@ export function createCasino({ onLeave }) {
   function refresh() {
     const s = view.state, mine = mySeat(), seated = seat >= 0, friends = role !== 'alone';
     room.showTable(s);
-    room.setWealth(profile.houseTake);
-    $('casino-gold').innerHTML = `${COIN}${profile.gold.toLocaleString()}`;
-    $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, profile.houseTake).toLocaleString()}`;
+    room.setWealth(purse.houseTake);
+    $('casino-gold').innerHTML = `${COIN}${purse.gold.toLocaleString()}`;
+    $('casino-house').innerHTML = `Babitus has taken ${COIN}${Math.max(0, purse.houseTake).toLocaleString()}`;
     $('casino-table').classList.toggle('hidden', !seated);
     $('casino-stand').classList.toggle('hidden', !seated && room.bar < 0 && room.lounge < 0 && room.slot < 0 && !room.roulette);
     $('casino-smoke').classList.toggle('hidden', !seated && room.bar < 0 && room.lounge < 0);
@@ -494,10 +510,10 @@ export function createCasino({ onLeave }) {
     $('casino-betting').classList.toggle('hidden', !betting);
     $('casino-actions').classList.toggle('hidden', !myTurn);
     $('casino-bet').innerHTML = `${COIN}${(betting ? bet : mine.bet + (mine.second?.bet || 0)).toLocaleString()}`;
-    $('casino-deal').disabled = bet < C.minBet || bet > profile.gold;
-    for (const b of document.querySelectorAll('#casino-chips button[data-chip]')) b.disabled = bet + Number(b.dataset.chip) > Math.min(C.maxBet, profile.gold);
-    $('casino-double').disabled = !myTurn || now.cards.length !== 2 || profile.gold < now.bet;
-    $('casino-split').disabled = !myTurn || !canSplit(mine) || profile.gold < mine.bet;
+    $('casino-deal').disabled = bet < C.minBet || bet > purse.gold;
+    for (const b of document.querySelectorAll('#casino-chips button[data-chip]')) b.disabled = bet + Number(b.dataset.chip) > Math.min(C.maxBet, purse.gold);
+    $('casino-double').disabled = !myTurn || now.cards.length !== 2 || purse.gold < now.bet;
+    $('casino-split').disabled = !myTurn || !canSplit(mine) || purse.gold < mine.bet;
 
     const dealer = handTotal(s.dealer), turnSeat = s.seats[s.turn];
     const total = (h) => { const t = handTotal(h.cards); return `${t.soft && t.total < 21 ? 'Soft ' : ''}${t.total}`; };
@@ -505,7 +521,7 @@ export function createCasino({ onLeave }) {
     $('casino-you').textContent = !mine.cards.length ? '' : !mine.second ? total(mine)
       : [mine, mine.second].map((h) => (myTurn && h === now ? `[${total(h)}]` : total(h))).join('  ');
     $('casino-dealer').textContent = s.dealer.length ? String(dealer.total) : '';
-    $('casino-status').textContent = betting ? (profile.gold < C.minBet ? `You need ${C.minBet} gold to play` : `Place your bet (${C.minBet} to ${C.maxBet})${s.countdown > 0 ? `  ·  dealing in ${Math.ceil(s.countdown)}` : ''}`)
+    $('casino-status').textContent = betting ? (purse.gold < C.minBet ? `You need ${C.minBet} gold to play` : `Place your bet (${C.minBet} to ${C.maxBet})${s.countdown > 0 ? `  ·  dealing in ${Math.ceil(s.countdown)}` : ''}`)
       : s.phase === 'betting' ? (s.countdown > 0 ? `Waiting for the others  ·  dealing in ${Math.ceil(s.countdown)}` : 'Waiting...')
         : s.phase === 'dealing' ? 'Dealing...'
           : myTurn ? `Your move${mine.second ? (mine.active ? ': second hand' : ': first hand') : ''}${s.seats.filter((x) => x && x.ready).length > 1 ? `  ·  ${Math.ceil(s.turnLeft)}` : ''}`
@@ -518,19 +534,20 @@ export function createCasino({ onLeave }) {
     $('casino-bar').classList.toggle('hidden', !atBar);
     if (!atBar) return;
     const busy = room.barShop.busy || room.drinking > 0 || room.cutOff > 0;
-    for (const b of document.querySelectorAll('#casino-drinks button')) b.disabled = busy || profile.gold < Number(b.dataset.price);
+    for (const b of document.querySelectorAll('#casino-drinks button')) b.disabled = busy || purse.gold < Number(b.dataset.price);
     $('casino-drink').classList.toggle('hidden', !room.canDrink);
     $('casino-bar-status').textContent = room.cutOff > 0 ? `You've had enough. Come back in ${Math.ceil(room.cutOff)}` : room.barShop.busy ? 'Coming right up...' : room.canDrink ? '' : room.drinking > 0 ? '' : "What'll it be?";
   }
-  $('casino-drinks').replaceChildren(...DRINKS.map((drink) => {
+  // (the menu: built each time you come in, from whatever this room's bar serves; `does` says what a drink does to you, if anything)
+  const buildDrinks = () => $('casino-drinks').replaceChildren(...drinks.map((drink) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.price = drink.price;
-    b.innerHTML = `${drink.name} ${COIN}${drink.price}`;
+    b.innerHTML = `${drink.name} ${COIN}${drink.price}${drink.does ? `<small>${drink.does}</small>` : ''}`;
     b.addEventListener('click', () => order(drink));
     return b;
   }));
-  $('casino-drink').addEventListener('click', () => { room.drink(); refresh(); });
+  $('casino-drink').addEventListener('click', drinkUp);
 
   // Build the chip buttons once.
   $('casino-chips').replaceChildren(...CHIPS.map((value) => {
@@ -617,16 +634,17 @@ export function createCasino({ onLeave }) {
     if (staked > 0) return;   // finish the hand first
     if (role !== 'alone') goAlone('');
     active = false;
-    document.body.classList.remove('in-casino', 'casino-cine', 'casino-woozy', 'casino-tipsy');
+    document.body.classList.remove('in-casino', 'casino-cine', 'casino-woozy', 'casino-tipsy', 'casino-station');
     $('casino').classList.add('hidden');
-    onLeave();
+    leaveTo();
   }
 
   return {
-    scene: room.scene,
-    camera: room.camera,
+    get scene() { return room.scene; },
+    get camera() { return room.camera; },
     get active() { return active; },
-    room,   // (handy in the browser console)
+    get room() { return room; },   // (handy in the browser console)
+    leave,
     // Play an emote (see player/emotes.js). A smoke at the blackjack table gets the full cut-in.
     emote(i) {
       if (!active || room.smokeLeft > 0 || room.cine.on) return;
@@ -635,7 +653,23 @@ export function createCasino({ onLeave }) {
     },
     get table() { return engine; },
 
-    enter() {
+    // opts (all may be left out: the casino from the menu): { room: a CasinoRoom to be in, purse (see BANK), drinks:
+    // what its bar serves, award: three skulls on the slots (see slots.js), onLeave: where Leave goes, leave: what its
+    // button says, friends: false = no playing with friends from here, paytable: the slots' line, style: a class on the
+    // page for its look }
+    enter(opts = {}) {
+      room = opts.room || hall();
+      purse = opts.purse || BANK;
+      drinks = opts.drinks || DRINKS;
+      award = opts.award || null;
+      leaveTo = opts.onLeave || onLeave;
+      $('casino-leave').textContent = opts.leave || 'Leave casino';
+      $('casino-friends').classList.toggle('hidden', opts.friends === false);
+      $('casino-paytable').innerHTML = opts.paytable || PAYTABLE;
+      if (opts.style) document.body.classList.add(opts.style);
+      othersFrom = typeof opts.others === 'function' ? opts.others : null;
+      buildDrinks();
+      reelEls.forEach((el, i) => showReel(el, ['seven', 'skull', 'seven'][i]));
       active = true;
       setMusicStyle('casino');
       document.body.classList.add('in-casino');
@@ -654,6 +688,7 @@ export function createCasino({ onLeave }) {
 
       // Everyone else in the room, at their seat if they have one.
       const others = [...people.values()].filter((p) => p.id !== myId).map((p) => ({ ...p, seat: seatOf(p.id) }));
+      if (othersFrom) for (const p of othersFrom() || []) others.push({ bar: -1, glass: -1, sip: 0, slot: -1, spin: false, win: false, smoke: 0, emote: 0, seat: -1, lounge: -1, y: 0, ...p });
       room.update(dt, input, others);
 
       // A few times a second, tell the others where you are (a guest tells the host; the host tells everyone).
@@ -688,7 +723,7 @@ export function createCasino({ onLeave }) {
         else if (nearRoulette) { room.playRoulette(others); sendBets(); }
         else if (nearSofa >= 0) { room.sitLounge(nearSofa); refresh(); }
         else if (room.slot >= 0) pullLever();   // E at a machine: pull
-        else if (room.canDrink) room.drink();   // E at the bar: drink up
+        else if (room.canDrink) drinkUp();   // E at the bar: drink up
       }
       if (room.bar >= 0) refreshBar();
 

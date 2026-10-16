@@ -4,12 +4,16 @@
 #   blender --background --python tools/build_zombies.py -- dl public/models/zombies.glb
 #
 # A monster in the game is not a skinned body: it is a handful of stiff parts (body, head, two arms, two legs), each
-# an instanced mesh hinged where it joins him, coloured by its points and not by a picture (src/enemies/horde.js,
-# realMobs.js). So each character here is stood with his arms down, cut into those parts along his joints, given the
-# colours of his picture on his points, and saved with every part sat at its hinge:
+# an instanced mesh hinged where it joins him (src/enemies/horde.js, realMobs.js). So each character here is stood with
+# his arms down, cut into those parts along his joints, and saved with every part sat at its hinge:
 #   <name>_body, _head, _arm_l, _arm_r, _leg_l, _leg_r        the one drawn close to
 #   <name>_lite_...                                           the same, far lighter, for the crowd
+# A part painted on two pictures is saved as two objects (<name>_head, <name>_head2): one picture each.
 # (knees.js cuts each leg again at the knee; mobAnims.js moves the lot by motion capture.)
+#
+# He keeps his pictures: his skin (the diffuse, 1024 square, JPEG) and the bumps in it (the normal map, 512 square).
+# He was painted for daylight and is met at night, so the game lightens him: by how much is in his material's name
+# (zombieb|1.9). His colours are also put on his points, the old way, for anything that draws him without a picture.
 import bpy, sys, os, math, traceback
 import numpy as np
 from mathutils import Matrix, Vector
@@ -17,8 +21,9 @@ from mathutils import Matrix, Vector
 a = sys.argv[sys.argv.index('--') + 1:]
 DL, OUT = os.path.abspath(a[0]), os.path.abspath(a[1])
 TALL = 1.8            # how tall each is made (m): what the game's zombie is
-# name -> (the file he is in, how many triangles close to, and far off, how much lighter his colours are made, and
-# how tall he is made if not a zombie's height: a boss is the height his kind is in src/enemies/types.js)
+SKIN_PX, BUMP_PX = 1024, 512
+# name -> (the file he is in, how many triangles close to, and far off, how much lighter he is made, and how tall he is
+# made if not a zombie's height: a boss is the height his kind is in src/enemies/types.js)
 SKINS = {
     'zombieb': ('Crouched To Sprinting.fbx', 15000, 2600, 1.9),       # a soldier, in what is left of his uniform and cap
     'zombiec': ('Sprint.fbx', 26000, 2600, 2.6),                      # gaunt, bare to the waist, in boots
@@ -56,7 +61,68 @@ def part_of(bone):
     return 'head' if name.startswith(('Head', 'Jaw')) else 'body'
 
 
-def skin(name, file, fine, lite, gain, shared, tall=TALL):
+def image_of(mat, socket):
+    """The picture plugged into that socket of the material's shader (or, for the bumps, into its normal map node)."""
+    if not (mat and mat.use_nodes):
+        return None
+    for n in mat.node_tree.nodes:
+        if n.type == 'TEX_IMAGE' and n.image:
+            for l in n.outputs['Color'].links:
+                if l.to_socket.name == socket:
+                    return n.image
+                if socket == 'Normal' and l.to_node.type == 'NORMAL_MAP':
+                    return n.image
+    return None
+
+
+def resampled(img, px, label):
+    """A new picture, px square, made from img by averaging its pixels in blocks (Blender's own scale() is not always what
+    the exporter writes)."""
+    W, H = img.size
+    arr = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    if W > px or H > px:
+        fy, fx = max(1, H // px), max(1, W // px)
+        arr = arr[:fy * (H // fy), :fx * (W // fx)].reshape(H // fy, fy, W // fx, fx, 4).mean(axis=(1, 3))
+    h, w = arr.shape[:2]
+    out = bpy.data.images.new(label, w, h, alpha=False)
+    out.colorspace_settings.name = img.colorspace_settings.name
+    out.pixels.foreach_set(arr.ravel())
+    out.pack()
+    return out
+
+
+def simple(mat, slot, name, gain, shrunk):
+    """The material remade with only its skin and its bumps (what the game can draw), its pictures shrunk."""
+    skin, bump = image_of(mat, 'Base Color'), image_of(mat, 'Normal')
+    if bump is None:
+        for n in mat.node_tree.nodes:
+            if n.type == 'TEX_IMAGE' and n.image and 'normal' in n.image.name.lower() + n.image.filepath.lower():
+                bump = n.image
+    out = bpy.data.materials.new(f'{name}|{gain}|{slot}')   # (unique: Blender would rename a second one, number and all)
+    out.use_nodes = True
+    tree = out.node_tree
+    shader = next(n for n in tree.nodes if n.type == 'BSDF_PRINCIPLED')
+    shader.inputs['Roughness'].default_value = 0.8
+    def shrink(img, px):
+        key = (img.name, px)
+        if key not in shrunk:
+            shrunk[key] = resampled(img, px, f'{name}_{"skin" if px == SKIN_PX else "bump"}_{len(shrunk)}')
+        return shrunk[key]
+    if skin is not None:
+        t = tree.nodes.new('ShaderNodeTexImage')
+        t.image = shrink(skin, SKIN_PX)
+        tree.links.new(t.outputs['Color'], shader.inputs['Base Color'])
+    if bump is not None:
+        t = tree.nodes.new('ShaderNodeTexImage')
+        bump.colorspace_settings.name = 'Non-Color'
+        t.image = shrink(bump, BUMP_PX)
+        nm = tree.nodes.new('ShaderNodeNormalMap')
+        tree.links.new(t.outputs['Color'], nm.inputs['Color'])
+        tree.links.new(nm.outputs['Normal'], shader.inputs['Normal'])
+    return out
+
+
+def skin(name, file, fine, lite, gain, tall=TALL):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.fbx(filepath=os.path.join(DL, file))
     new = set(bpy.data.objects) - before
@@ -92,15 +158,13 @@ def skin(name, file, fine, lite, gain, shared, tall=TALL):
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.data.objects.remove(arm, do_unlink=True)
 
-    # His colours, off his picture and onto his points (the game draws him by those; and lighter: he was painted for
-    # daylight, and is met at night).
+    # His colours, off his picture and onto his points too (lighter: he was painted for daylight, and is met at night).
     mesh = body.data
     uv = np.empty(len(mesh.loops) * 2, dtype=np.float32)
     mesh.uv_layers.active.data.foreach_get('uv', uv)
     uv = uv.reshape(-1, 2)
     at = np.empty(len(mesh.loops), dtype=np.int64)
     mesh.loops.foreach_get('vertex_index', at)
-    # (each face off the picture of the material it is in: some of them are painted on two)
     of = np.empty(len(mesh.polygons), dtype=np.int64)
     mesh.polygons.foreach_get('material_index', of)
     sides = np.empty(len(mesh.polygons), dtype=np.int64)
@@ -108,11 +172,7 @@ def skin(name, file, fine, lite, gain, shared, tall=TALL):
     loop_of = np.repeat(of, sides)
     seen = np.zeros((len(mesh.loops), 3), dtype=np.float32)
     for slot, mat in enumerate(mesh.materials):
-        image = None
-        if mat and mat.use_nodes:
-            for n in mat.node_tree.nodes:
-                if n.type == 'TEX_IMAGE' and n.image and any(l.to_socket.name == 'Base Color' for l in n.outputs['Color'].links):
-                    image = n.image
+        image = image_of(mat, 'Base Color')
         if image is None:
             continue
         W, H = image.size
@@ -123,11 +183,16 @@ def skin(name, file, fine, lite, gain, shared, tall=TALL):
     count = np.zeros(len(mesh.vertices), dtype=np.float64)
     np.add.at(total, at, seen)
     np.add.at(count, at, 1)
-    colour = np.clip((total / np.maximum(count, 1)[:, None]) ** 2.2 * gain + 0.004, 0, 1)      # (from the picture's own scale to light itself)
+    colour = np.clip((total / np.maximum(count, 1)[:, None]) ** 2.2 * gain + 0.004, 0, 1)
     layer = mesh.color_attributes.new('Color', 'FLOAT_COLOR', 'POINT')
     layer.data.foreach_set('color', np.hstack([colour, np.ones((len(colour), 1))]).ravel())
-    mesh.materials.clear()
-    mesh.materials.append(shared)
+    # His pictures stay: each material remade with only its skin and its bumps, shrunk.
+    shrunk = {}
+    remade = [simple(mat, slot, name, gain, shrunk) for slot, mat in enumerate(mesh.materials)]
+    for attr in [a for a in mesh.color_attributes if a.name != 'Color']:   # (only the colours made here: the file's own are not wanted)
+        mesh.color_attributes.remove(attr)
+    for slot, mat in enumerate(remade):
+        mesh.materials[slot] = mat
 
     # Stood on the ground, the middle of him over the middle of it, the game's zombie's height.
     P = points(body)
@@ -139,8 +204,34 @@ def skin(name, file, fine, lite, gain, shared, tall=TALL):
     hinge = {part: fit(p) for part, p in hinge.items()}
     hinge['body'] = Vector((0, 0, 0))
 
+    def belongs_of(whole):
+        groups = {g.index: part_of(g.name) for g in whole.vertex_groups}
+        out = []
+        for v in whole.data.vertices:
+            share = {}
+            for g in v.groups:
+                share[groups[g.group]] = share.get(groups[g.group], 0) + g.weight
+            out.append(max(share, key=share.get) if share else 'body')
+        return out
+
+    def separate(whole, keep):
+        """The selected faces of `whole`, off as an object of their own (None if none were selected)."""
+        picked = 0
+        for poly in whole.data.polygons:
+            poly.select = keep(poly)
+            picked += poly.select
+        if not picked:
+            return None
+        had = set(bpy.data.objects)
+        only(whole)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.separate(type='SELECTED')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return next(iter(set(bpy.data.objects) - had))
+
     def cut(source, tag, most):
-        """`source`, thinned to about `most` triangles and cut into his parts: each an object of its own, sat at its hinge."""
+        """`source`, thinned to about `most` triangles and cut into his parts (and each part by its picture): each an
+        object of its own, sat at its hinge."""
         only(source)
         bpy.ops.object.duplicate()
         whole = bpy.context.view_layer.objects.active
@@ -149,75 +240,71 @@ def skin(name, file, fine, lite, gain, shared, tall=TALL):
             mod = whole.modifiers.new('thin', 'DECIMATE')
             mod.ratio = most / tris
             bpy.ops.object.modifier_apply(modifier=mod.name)
-        groups = {g.index: part_of(g.name) for g in whole.vertex_groups}
-        belongs = []
-        for v in whole.data.vertices:
-            share = {}
-            for g in v.groups:
-                share[groups[g.group]] = share.get(groups[g.group], 0) + g.weight
-            belongs.append(max(share, key=share.get) if share else 'body')
+        only(whole)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_mode(type='FACE')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT')
         made = 0
+        pieces = []
         for part in ('head', 'arm_l', 'arm_r', 'leg_l', 'leg_r', 'body'):
             if part != 'body':
-                only(whole)
-                bpy.ops.object.mode_set(mode='EDIT')
-                bpy.ops.mesh.select_mode(type='FACE')
-                bpy.ops.mesh.select_all(action='DESELECT')
-                bpy.ops.object.mode_set(mode='OBJECT')
-                picked = 0
-                for poly in whole.data.polygons:
-                    poly.select = sum(belongs[v] == part for v in poly.vertices) * 2 > len(poly.vertices)
-                    picked += poly.select
-                if not picked:
+                belongs = belongs_of(whole)
+                piece = separate(whole, lambda poly: sum(belongs[v] == part for v in poly.vertices) * 2 > len(poly.vertices))
+                if piece is None:
                     continue
-                had = set(bpy.data.objects)
-                bpy.ops.object.mode_set(mode='EDIT')
-                bpy.ops.mesh.separate(type='SELECTED')
-                bpy.ops.object.mode_set(mode='OBJECT')
-                piece = next(iter(set(bpy.data.objects) - had))
-                # (which part each of what is left belongs to: its points have been numbered again)
-                groups = {g.index: part_of(g.name) for g in whole.vertex_groups}
-                belongs = []
-                for v in whole.data.vertices:
-                    share = {}
-                    for g in v.groups:
-                        share[groups[g.group]] = share.get(groups[g.group], 0) + g.weight
-                    belongs.append(max(share, key=share.get) if share else 'body')
             else:
                 piece = whole
-            piece.name = f'{name}_{tag}{part}'
-            piece.data.name = piece.name
-            piece.data.transform(Matrix.Translation(-hinge[part]))
-            piece.location = hinge[part]
-            piece.vertex_groups.clear()
-            for poly in piece.data.polygons:
-                poly.use_smooth = True
-            made += sum(len(p.vertices) - 2 for p in piece.data.polygons)
-        return made
-    print('SKIN', name, 'from', file, ':', cut(body, '', fine), 'triangles close to,', cut(body, 'lite_', lite), 'far off; hinges', {p: [round(c, 3) for c in v] for p, v in hinge.items()})
+            # (a part painted on two pictures: one object per picture, the second named with a 2 after it)
+            slots = sorted({poly.material_index for poly in piece.data.polygons})
+            bits = [piece]
+            for n, slot in enumerate(slots[1:], start=2):
+                other = separate(piece, lambda poly, s=slot: poly.material_index == s)
+                if other is not None:
+                    bits.append(other)
+            for n, bit in enumerate(bits):
+                bit.name = f'{name}_{tag}{part}{n + 1 if n else ""}'
+                bit.data.name = bit.name
+                bit.data.transform(Matrix.Translation(-hinge[part]))
+                bit.location = hinge[part]
+                bit.vertex_groups.clear()
+                for poly in bit.data.polygons:
+                    poly.use_smooth = True
+                # (only the picture its faces are on)
+                used = sorted({poly.material_index for poly in bit.data.polygons})
+                if len(used) == 1 and len(bit.data.materials) > 1:
+                    keep = bit.data.materials[used[0]]
+                    for poly in bit.data.polygons:
+                        poly.material_index = 0
+                    bit.data.materials.clear()
+                    bit.data.materials.append(keep)
+                made += sum(len(p.vertices) - 2 for p in bit.data.polygons)
+                pieces.append(bit.name)
+        return made, pieces
+    fine_tris, fine_parts = cut(body, '', fine)
+    lite_tris, lite_parts = cut(body, 'lite_', lite)
+    print('SKIN', name, 'from', file, ':', fine_tris, 'triangles close to', fine_parts, ';', lite_tris, 'far off; hinges', {p: [round(c, 3) for c in v] for p, v in hinge.items()})
     bpy.data.objects.remove(body, do_unlink=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    shared = bpy.data.materials.new('Zombie')
-    shared.use_nodes = True
-    tree = shared.node_tree
-    shader = next(n for n in tree.nodes if n.type == 'BSDF_PRINCIPLED')
-    col = tree.nodes.new('ShaderNodeVertexColor')
-    col.layer_name = 'Color'
-    tree.links.new(col.outputs['Color'], shader.inputs['Base Color'])
     for name, (file, fine, lite, gain, *more) in SKINS.items():
         if not os.path.exists(os.path.join(DL, file)):
             print('MISSING', file)
             continue
         try:
-            skin(name, file, fine, lite, gain, shared, more[0] if more else TALL)
+            skin(name, file, fine, lite, gain, more[0] if more else TALL)
         except Exception:
             traceback.print_exc()
     for o in bpy.data.objects:
         o.select_set(o.type == 'MESH')
-    bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True, export_animations=False, export_skins=False, export_yup=True, export_materials='EXPORT')
+    props = bpy.ops.export_scene.gltf.get_rna_type().properties.keys()
+    opts = dict(filepath=OUT, export_format='GLB', use_selection=True, export_animations=False, export_skins=False, export_yup=True, export_materials='EXPORT', export_image_format='JPEG')
+    for key, value in (('export_jpeg_quality', 82), ('export_image_quality', 82)):
+        if key in props:
+            opts[key] = value
+    bpy.ops.export_scene.gltf(**opts)
     print('EXPORTED', OUT, os.path.getsize(OUT))
 
 

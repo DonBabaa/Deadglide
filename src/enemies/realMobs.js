@@ -38,12 +38,29 @@ function plain(mesh) {
   const from = mesh.geometry, geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', from.attributes.position.clone());
   geometry.setAttribute('normal', from.attributes.normal.clone());
-  geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(from.attributes.position.count * 2), 2));   // (the built ones have one: parts get merged together)
+  // (its own texture coordinates, if it came painted; otherwise none worth having, but the built ones have one: parts get merged together)
+  geometry.setAttribute('uv', from.attributes.uv ? from.attributes.uv.clone() : new THREE.BufferAttribute(new Float32Array(from.attributes.position.count * 2), 2));
   const c = from.attributes.color, colours = new Float32Array(from.attributes.position.count * 3);
   for (let i = 0; i < from.attributes.position.count; i++) { colours[i * 3] = c ? c.getX(i) : 0.5; colours[i * 3 + 1] = c ? c.getY(i) : 0.5; colours[i * 3 + 2] = c ? c.getZ(i) : 0.5; }
   geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
   if (from.index) geometry.setIndex(from.index.clone());
   return geometry;
+}
+
+// What a part is painted with, if it came painted (tools/build_zombies.py): its skin, the bumps in it, and how much it is
+// lightened (it was painted for daylight; the number is in its material's name: "zombieb|1.9").
+function paint(mesh) {
+  const m = mesh.material;
+  if (!m || !m.map) return {};
+  return { map: m.map, normalMap: m.normalMap || null, gain: +String(m.name).split('|')[1] || 1 };
+}
+// The material a painted part is drawn with, one per picture (so the parts of a body that share one share it). The
+// rest are drawn by the colours of their points, as they always were.
+const PAINTED = new Map();
+export function paintedMaterial(p, extra = {}) {
+  const key = `${p.map.uuid}|${p.gain}|${JSON.stringify(extra)}`;
+  if (!PAINTED.has(key)) PAINTED.set(key, new THREE.MeshStandardMaterial({ map: p.map, normalMap: p.normalMap, color: new THREE.Color().setScalar(p.gain), roughness: 0.82, side: THREE.DoubleSide, ...extra }));
+  return PAINTED.get(key);
 }
 
 ENEMY_PARTS.ultimus = () => ENEMY_PARTS.boss2();   // (until his own model has arrived, or if it never does)
@@ -55,12 +72,15 @@ export async function loadRealMobs() {
   try { gltf.scene.add((await loadModel('zombies.glb')).scene); } catch (error) { console.warn('Monsters: no other zombies to load.', error); }
   // (and the rat: tools/build_rat.py. Its parts are numbered as the first modelled rat's were, and take their place.)
   try { gltf.scene.add((await loadModel('rat.glb')).scene); } catch (error) { console.warn('Monsters: no rat to load.', error); }
-  const found = {};   // name -> { fine: { part: mesh }, lite: { part: mesh } }
+  const found = {};   // name -> { fine: { part: [mesh...] }, lite: { part: [mesh...] } }  (a part painted on two pictures is two meshes: head, head2)
+  const fileOf = (o) => { while (o.parent && o.parent !== gltf.scene) o = o.parent; return o; };   // (which of the files it came in)
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     const is = o.name.match(/^([a-z0-9]+)_(lite_)?([a-z_]+?)(?:\d*)$/i);
     if (!is || !SWINGS[is[1]] || !SWINGS[is[1]][is[3]]) return;
-    ((found[is[1]] ||= { fine: {}, lite: {} })[is[2] ? 'lite' : 'fine'])[is[3]] = o;
+    const set = (found[is[1]] ||= { fine: {}, lite: {} })[is[2] ? 'lite' : 'fine'], from = fileOf(o);
+    if (!set[is[3]] || set[is[3]].from !== from) { set[is[3]] = []; set[is[3]].from = from; }   // (a later file's part replaces an earlier one's)
+    set[is[3]].push(o);
   });
   // The creatures (and the ghost) replace the built ones part for part: a mesh called <monster>_p<n> is part n's new
   // shape, hinged where the mesh sits; how it swings is what the built part did.
@@ -84,7 +104,7 @@ export async function loadRealMobs() {
     ENEMY_PARTS.queen = () => crowned(spider());
   }
   for (const name in found) {
-    const make = (set) => () => Object.entries(SWINGS[name]).filter(([part]) => set[part]).map(([part, [swing, phase, glow]]) => ({ geometry: plain(set[part]), pivot: set[part].position.toArray(), swing, phase, glow: !!glow }));
+    const make = (set) => () => Object.entries(SWINGS[name]).filter(([part]) => set[part]).flatMap(([part, [swing, phase, glow]]) => set[part].map((mesh) => ({ geometry: plain(mesh), pivot: mesh.position.toArray(), swing, phase, glow: !!glow, ...paint(mesh) })));
     if (!Object.keys(found[name].fine).length) continue;
     // Babitus puts his gold on as the fight goes on: boss3b, c and d are him again with one, two and all three lots of
     // it (meshes called boss3_gold1..3: made in Blender, their shine baked on, drawn unlit).
@@ -98,7 +118,7 @@ export async function loadRealMobs() {
     }
     const real = make(found[name].fine);
     ENEMY_PARTS[name] = !PROPS[name] ? real : () => {
-      const parts = real(), names = Object.keys(SWINGS[name]).filter((part) => found[name].fine[part]);
+      const parts = real(), names = Object.keys(SWINGS[name]).filter((part) => found[name].fine[part]).flatMap((part) => found[name].fine[part].map(() => part));
       for (const [on, pieces] of PROPS[name]()) {
         const host = parts[names.indexOf(on)];
         if (!host) continue;

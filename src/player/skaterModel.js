@@ -687,7 +687,8 @@ export class SkaterModel {
   }
 
   // Blowing out a lungful: call every frame while he exhales. A thick cloud rolls out of his mouth.
-  exhale(dt) {
+  // big: how much bigger than a lungful (the Golden BOOF: a cloud).
+  exhale(dt, big = 1) {
     this.blow = (this.blow || 0) + dt * 34;   // puffs per second
     this.torso.localToWorld(z.set(0, 0.8, 0));               // out from his head through the cigarette: the way he is facing
     this.ember.getWorldPosition(x).sub(z).setY(0).normalize();
@@ -698,8 +699,9 @@ export class SkaterModel {
       this.ember.getWorldPosition(puff.position);
       puff.position.y -= 0.02;
       puff.userData.life = 1;
-      puff.userData.size = 2.2 + Math.random() * 1.6;
-      puff.userData.drift.set((Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.45, (Math.random() - 0.5) * 0.5).addScaledVector(z, 0.7 + Math.random() * 0.9);
+      puff.userData.size = (2.2 + Math.random() * 1.6) * big;
+      puff.userData.drift.set((Math.random() - 0.5) * 0.5 * big, 0.15 + Math.random() * 0.45, (Math.random() - 0.5) * 0.5 * big).addScaledVector(z, (0.7 + Math.random() * 0.9) * Math.sqrt(big));
+      puff.material.color.set(big > 1 ? 0xc4b48c : 0xb9bcc4);
       puff.visible = true;
     }
   }
@@ -709,6 +711,8 @@ export class SkaterModel {
     this.armed = gunUp ? 0.5 : Math.max(0, this.armed - dt);
     this.recoil *= Math.exp(-25 * dt);
     this.root.updateMatrixWorld();
+    // (freeArm: a clip has all of him (the dance: his gun put away). Nothing here is to hold the gun arm.)
+    if (this.freeArm) { this.gunArm.updateMatrixWorld(); return; }
     // Out straight to shoot (a little give in it for the kick); loose at his side otherwise. Both hands on a long gun: straight.
     // A long gun is held in to his body: his upper arm down along his ribs, his forearm (and the gun along it) out
     // at what he is shooting, so that his other hand can get to its fore-end.
@@ -760,16 +764,17 @@ export class SkaterModel {
       this.ember.getWorldPosition(puff.position);
       puff.userData.life = 1;
       puff.userData.size = 1;
+      puff.material.color.set(0xb9bcc4);
       puff.userData.drift.set((Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.3, (Math.random() - 0.5) * 0.3);
       puff.visible = true;
     }
     for (const puff of this.smoke) {
       const u = puff.userData;
       if (u.life <= 0) continue;
-      u.life -= dt / 2.2;
+      u.life -= dt / (u.size > 4.5 ? 1.6 : 2.2);   // (a big cloud thins sooner, or nothing is seen through it for a while)
       puff.position.addScaledVector(u.drift, dt);
       puff.scale.setScalar((0.06 + (1 - u.life) * 0.5) * u.size);
-      puff.material.opacity = Math.max(0, u.life) * (u.size > 1 ? 0.5 : 0.3);
+      puff.material.opacity = Math.max(0, u.life) * (u.size > 4.5 ? 0.48 : u.size > 1 ? 0.5 : 0.3);
       puff.visible = u.life > 0;
     }
   }

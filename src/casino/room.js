@@ -118,7 +118,8 @@ function cardFace(card) {
 // ---- The room -----------------------------------------------------------------------
 
 export class CasinoRoom {
-  constructor() {
+  // options: { shell(room, kit) } builds the room round the tables in place of the grand hall (see below).
+  constructor(options = {}) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0508);
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
@@ -138,109 +139,12 @@ export class CasinoRoom {
     // ceiling. Its fittings are sculpted, and are the ones Babitus's own house is furnished with (see decor.js). ----
     const fitted = FIT.painted(), cloth = FIT.painted({ roughness: 0.92, metalness: 0, side: THREE.DoubleSide, emissive: 0x000000 });
     const stand = (geo, x = 0, y = 0, z = 0, turn = 0, material = fitted, parent = this.scene) => { const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); m.rotation.y = turn; parent.add(m); return m; };
-    this.scene.environment = FIT.roomLight();   // (what the gilt and the marble have to shine with)
-    this.scene.environmentIntensity = 0.5;
-    const NX = Math.round(W / 3.2), NZ = Math.round(D / 3.2);
-    add(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), std(0xffffff, 0.14, { map: FIT.marbleFloor([W / 4.2, D / 4.2]), metalness: 0.08 }), 0, 0, 0);
-    add(new THREE.PlaneGeometry(W, D).rotateX(Math.PI / 2), std(0xffffff, 0.9, { map: FIT.cofferPanel([NX, NZ]) }), 0, H, 0);
-    stand(FIT.coffers(W, D, 3.2), 0, H, 0);
-    // (The windows are cut through the walls: [x, z, which way it faces]. What is seen through them is a long way off.)
-    const WINDOWS = [[-11, -D / 2, 0], [11, -D / 2, 0], [-W / 2, -7.5, Math.PI / 2], [-W / 2, 0, Math.PI / 2], [-W / 2, 7.5, Math.PI / 2], [W / 2, 7.5, -Math.PI / 2]], WIN = { w: 3.2, h: 6.2, sill: 0.95 };
-    this.scene.add(FIT.outside(75, 1.4));
-    for (const [w, x, z, turn] of [[W, 0, -D / 2, 0], [W, 0, D / 2, Math.PI], [D, -W / 2, 0, Math.PI / 2], [D, W / 2, 0, -Math.PI / 2]]) {
-      const tex = FIT.wallPanels();
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.repeat.set(Math.round(w / 3.8), 1);
-      const holes = WINDOWS.filter((o) => o[2] === turn).map(([wx, wz]) => (turn === 0 ? wx : turn > 0 ? -wz : wz));   // (where each is along its wall)
-      add(FIT.wall(w, H, holes, WIN), std(0xffffff, 0.8, { map: tex }), x, 0, z).rotation.y = turn;
-      stand(FIT.mouldings(w, H, 2.2), x, 0, z, turn);   // skirting, dado rail, cornice
-    }
-    add(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), std(0xffffff, 0.95, { map: FIT.rug() }), TABLE.x, 0.012, TABLE.z + 0.6);        // a carpet under the table...
-    const runner = FIT.rug();
-    runner.wrapT = THREE.RepeatWrapping;
-    runner.repeat.set(1, 3);
-    add(new THREE.PlaneGeometry(3.4, 11).rotateX(-Math.PI / 2), std(0xffffff, 0.95, { map: runner }), 0, 0.01, 9.4);                           // ...and a runner from the door
-
-    // Light: warm and generous, from four chandeliers, each hung from a plaster rose.
-    this.scene.add(new THREE.HemisphereLight(0xfff0d8, 0x4a3a30, 0.8));
     const bulb = glow(0xffe2b0);
-    this.chandeliers = [];
-    for (const [x, z, big] of [[0, -5, 1.25], [-10, 5, 1], [10, 5, 1], [0, 10, 0.8]]) {
-      const lamp = new THREE.PointLight(0xffd9a8, 95 * big, 34, 1.6);
-      lamp.position.set(x, H - 2.6, z);
-      this.scene.add(lamp);
-      const size = 0.5 * big, c = FIT.chandelier(size, bulb, 0.6);
-      c.position.set(x, H - 0.6 - size * 2.9, z);
-      this.scene.add(c);
-      stand(FIT.ceilingRose(1.5 * big), x, H - 0.3, z);
-      this.chandeliers.push(c);
-    }
-
-    // Fluted columns down both sides.
-    const pillar = FIT.column(H, 0.45);
-    for (const x of [-12.5, 12.5]) for (const z of [-11, -4, 3, 10]) stand(pillar, x, H / 2, z);
-
-    // Arched windows on the harbour, each in a gilt frame under velvet curtains caught back with a cord, a lamp on
-    // a bracket either side. The glass is clear: the harbour is out there (see outside() in decor.js).
-    const flame = glow(0xffd9a0), clear = FIT.glass(), plaster = std(0xe7dcc4, 0.85, { side: THREE.DoubleSide });
-    const frame = FIT.windowFrame(WIN.w, WIN.h), pane = FIT.windowPane(WIN.w, WIN.h), reveal = FIT.windowReveal(WIN), hung = FIT.drapes(6.4, 7.0), light = FIT.sconce(0.42);
-    for (const [x, z, turn] of WINDOWS) {
-      const g = new THREE.Group();
-      g.position.set(x, 0, z);
-      g.rotation.y = turn;
-      stand(reveal, 0, WIN.sill, 0, 0, plaster, g);
-      stand(pane, 0, WIN.sill, -0.22, 0, clear, g);
-      stand(frame, 0, WIN.sill, 0.03, 0, fitted, g);
-      stand(hung, 0, 8.05, 0.06, 0, cloth, g);
-      for (const side of [-1, 1]) { stand(light.lamp, side * 3.65, 3.3, 0.02, 0, fitted, g); stand(light.flames, side * 3.65, 3.3, 0.02, 0, flame, g); }
-      this.scene.add(g);
-    }
-
-    // Signs.
-    const title = FIT.sign(['CASINO DE DEADSLIDE', 'MONTE-CARLO'], 9, 2.2, { size: 0.5 });
-    title.position.set(0, H - 2.0, D / 2 - 0.06);
-    title.rotation.y = Math.PI;
-    const rules = FIT.sign(['BLACKJACK PAYS 3 TO 2', 'DEALER STANDS ON 17'], 5.6, 1.3, { size: 0.42 });
-    rules.position.set(TABLE.x - 5.2, 5.2, -D / 2 + 0.06);
-    this.houseSign = FIT.sign(['BABITUS GOYITUS', 'THE HOUSE HAS TAKEN 0'], 5.6, 1.3, { size: 0.42, color: '#ffd76a' });
-    this.houseSign.position.set(TABLE.x + 5.2, 5.2, -D / 2 + 0.06);
-    this.scene.add(title, rules, this.houseSign);
-
-    // The doors you came in by, under the casino's name: shut behind you.
-    {
-      const S = 0.32, trim = FIT.doorTrim(S), [lw, lh, ld] = FIT.DOOR.leaf.map((n) => n * S), oak = std(0x3a2116, 0.5);
-      stand(FIT.doorway(S), 0, 0, D / 2);
-      for (const side of [-1, 1]) {
-        const leaf = add(new THREE.BoxGeometry(lw, lh, ld), oak, side * (lw / 2 + 0.01), lh / 2, D / 2 - 0.12);
-        leaf.rotation.y = side > 0 ? Math.PI : 0;   // (its hinges on the outside edge)
-        stand(trim, 0, 0, 0, 0, fitted, leaf);
-      }
-    }
-
-    // The man himself in gilt, twice, on dark marble either side of his table; and palms in gilt urns in the corners.
-    const gilded = new THREE.MeshStandardMaterial({ color: 0xe0b548, roughness: 0.3, metalness: 0.85, emissive: 0x2a1c06 }), block = FIT.plinth(1.1, 1.3);
-    for (const x of [-7, 7]) {
-      stand(block, x, 0, -12.2);
-      const idol = standIn('boss3');
-      for (const part of idol.parts) part.mesh.material = gilded;
-      idol.group.scale.setScalar(0.9);
-      idol.group.position.set(x, 1.3, -12.2);
-      idol.group.rotation.y = x < 0 ? 0.3 : -0.3;
-      this.scene.add(idol.group);
-      idol.pose('cards', 0.3, null, 0, 0, false, (P) => laughing(P, 1, 0.065));   // (as he is when the house wins)
-    }
-    const tree = FIT.palm(1.05);
-    for (const [x, z] of [[-16.5, -12.8], [16.5, -12.8], [-16.5, 12.8], [16.5, 12.8]]) stand(tree, x, 0, z, x * z);
-
-    // Velvet ropes on gilt posts, either side of the way in.
-    const post = FIT.ropePost();
-    for (const side of [-1, 1]) {
-      const zs = [12.4, 9.6, 6.8];
-      zs.forEach((z, i) => {
-        stand(post, side * 2.3, 0, z);
-        if (i) stand(FIT.rope([side * 2.3, 0.99, zs[i - 1] - 0.07], [side * 2.3, 0.99, z + 0.07]), 0, 0, 0, 0, cloth);
-      });
-    }
+    // The room round the tables: the grand hall (buildHall), or whatever shell is asked for (DEAD AIR's lounge: a
+    // crew room in a dark station). A shell is given what it needs to build with, and leaves this.chandeliers (lights
+    // that stir on their chains: may be none) and this.houseSign (something with redraw(lines): may do nothing).
+    if (options.shell) options.shell(this, { add, std, stand, fitted, cloth, glow, bulb, W, D, H, TABLE, ROU });
+    else this.buildHall({ add, std, stand, fitted, cloth, glow, bulb });
 
     this.buildRoulette();
 
@@ -284,7 +188,7 @@ export class CasinoRoom {
       }
       this.scene.add(bottles);
       const hang = FIT.pendant(1.5);
-      for (const z of [-8.6, -5.5, -2.4, 0.7]) { stand(hang.shade, W / 2 - 3.1, 4.3, z); stand(hang.bulb, W / 2 - 3.1, 4.3, z, 0, bulb); const p = new THREE.PointLight(0xffd9a8, 6, 6, 1.8); p.position.set(W / 2 - 3.1, 2.7, z); this.scene.add(p); }
+      for (const z of [-8.6, -5.5, -2.4, 0.7]) { stand(hang.shade, W / 2 - 3.1, 4.3, z); stand(hang.bulb, W / 2 - 3.1, 4.3, z, 0, bulb); const p = new THREE.PointLight(0xffd9a8, options.shell ? 10 : 6, 6, 1.8); /* (brighter where they are the only light: DEAD AIR's lounge) */ p.position.set(W / 2 - 3.1, 2.7, z); this.scene.add(p); }
     }
     // Bar stools you can sit on, and the barman who serves them (see bar.js).
     this.barShop = new Bar(this.scene, { counterY: 1.25, serveX: W / 2 - 3.84, backX: W / 2 - 1.7, homeZ: -4 });
@@ -376,6 +280,113 @@ export class CasinoRoom {
     this.time = 0;
     this.laughing = 0;        // seconds of the dealer's laugh left
     this.reset();
+  }
+
+  // The grand hall: marble, silk, gilt and chandeliers, windows on the harbour, his statues, palms and ropes.
+  buildHall({ add, std, stand, fitted, cloth, glow, bulb }) {
+    this.scene.environment = FIT.roomLight();   // (what the gilt and the marble have to shine with)
+    this.scene.environmentIntensity = 0.5;
+    const NX = Math.round(W / 3.2), NZ = Math.round(D / 3.2);
+    add(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), std(0xffffff, 0.14, { map: FIT.marbleFloor([W / 4.2, D / 4.2]), metalness: 0.08 }), 0, 0, 0);
+    add(new THREE.PlaneGeometry(W, D).rotateX(Math.PI / 2), std(0xffffff, 0.9, { map: FIT.cofferPanel([NX, NZ]) }), 0, H, 0);
+    stand(FIT.coffers(W, D, 3.2), 0, H, 0);
+    // (The windows are cut through the walls: [x, z, which way it faces]. What is seen through them is a long way off.)
+    const WINDOWS = [[-11, -D / 2, 0], [11, -D / 2, 0], [-W / 2, -7.5, Math.PI / 2], [-W / 2, 0, Math.PI / 2], [-W / 2, 7.5, Math.PI / 2], [W / 2, 7.5, -Math.PI / 2]], WIN = { w: 3.2, h: 6.2, sill: 0.95 };
+    this.scene.add(FIT.outside(75, 1.4));
+    for (const [w, x, z, turn] of [[W, 0, -D / 2, 0], [W, 0, D / 2, Math.PI], [D, -W / 2, 0, Math.PI / 2], [D, W / 2, 0, -Math.PI / 2]]) {
+      const tex = FIT.wallPanels();
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.set(Math.round(w / 3.8), 1);
+      const holes = WINDOWS.filter((o) => o[2] === turn).map(([wx, wz]) => (turn === 0 ? wx : turn > 0 ? -wz : wz));   // (where each is along its wall)
+      add(FIT.wall(w, H, holes, WIN), std(0xffffff, 0.8, { map: tex }), x, 0, z).rotation.y = turn;
+      stand(FIT.mouldings(w, H, 2.2), x, 0, z, turn);   // skirting, dado rail, cornice
+    }
+    add(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), std(0xffffff, 0.95, { map: FIT.rug() }), TABLE.x, 0.012, TABLE.z + 0.6);        // a carpet under the table...
+    const runner = FIT.rug();
+    runner.wrapT = THREE.RepeatWrapping;
+    runner.repeat.set(1, 3);
+    add(new THREE.PlaneGeometry(3.4, 11).rotateX(-Math.PI / 2), std(0xffffff, 0.95, { map: runner }), 0, 0.01, 9.4);                           // ...and a runner from the door
+
+    // Light: warm and generous, from four chandeliers, each hung from a plaster rose.
+    this.scene.add(new THREE.HemisphereLight(0xfff0d8, 0x4a3a30, 0.8));
+    this.chandeliers = [];
+    for (const [x, z, big] of [[0, -5, 1.25], [-10, 5, 1], [10, 5, 1], [0, 10, 0.8]]) {
+      const lamp = new THREE.PointLight(0xffd9a8, 95 * big, 34, 1.6);
+      lamp.position.set(x, H - 2.6, z);
+      this.scene.add(lamp);
+      const size = 0.5 * big, c = FIT.chandelier(size, bulb, 0.6);
+      c.position.set(x, H - 0.6 - size * 2.9, z);
+      this.scene.add(c);
+      stand(FIT.ceilingRose(1.5 * big), x, H - 0.3, z);
+      this.chandeliers.push(c);
+    }
+
+    // Fluted columns down both sides.
+    const pillar = FIT.column(H, 0.45);
+    for (const x of [-12.5, 12.5]) for (const z of [-11, -4, 3, 10]) stand(pillar, x, H / 2, z);
+
+    // Arched windows on the harbour, each in a gilt frame under velvet curtains caught back with a cord, a lamp on
+    // a bracket either side. The glass is clear: the harbour is out there (see outside() in decor.js).
+    const flame = glow(0xffd9a0), clear = FIT.glass(), plaster = std(0xe7dcc4, 0.85, { side: THREE.DoubleSide });
+    const frame = FIT.windowFrame(WIN.w, WIN.h), pane = FIT.windowPane(WIN.w, WIN.h), reveal = FIT.windowReveal(WIN), hung = FIT.drapes(6.4, 7.0), light = FIT.sconce(0.42);
+    for (const [x, z, turn] of WINDOWS) {
+      const g = new THREE.Group();
+      g.position.set(x, 0, z);
+      g.rotation.y = turn;
+      stand(reveal, 0, WIN.sill, 0, 0, plaster, g);
+      stand(pane, 0, WIN.sill, -0.22, 0, clear, g);
+      stand(frame, 0, WIN.sill, 0.03, 0, fitted, g);
+      stand(hung, 0, 8.05, 0.06, 0, cloth, g);
+      for (const side of [-1, 1]) { stand(light.lamp, side * 3.65, 3.3, 0.02, 0, fitted, g); stand(light.flames, side * 3.65, 3.3, 0.02, 0, flame, g); }
+      this.scene.add(g);
+    }
+
+    // Signs.
+    const title = FIT.sign(['CASINO DE DEADSLIDE', 'MONTE-CARLO'], 9, 2.2, { size: 0.5 });
+    title.position.set(0, H - 2.0, D / 2 - 0.06);
+    title.rotation.y = Math.PI;
+    const rules = FIT.sign(['BLACKJACK PAYS 3 TO 2', 'DEALER STANDS ON 17'], 5.6, 1.3, { size: 0.42 });
+    rules.position.set(TABLE.x - 5.2, 5.2, -D / 2 + 0.06);
+    this.houseSign = FIT.sign(['BABITUS GOYITUS', 'THE HOUSE HAS TAKEN 0'], 5.6, 1.3, { size: 0.42, color: '#ffd76a' });
+    this.houseSign.position.set(TABLE.x + 5.2, 5.2, -D / 2 + 0.06);
+    this.scene.add(title, rules, this.houseSign);
+
+    // The doors you came in by, under the casino's name: shut behind you.
+    {
+      const S = 0.32, trim = FIT.doorTrim(S), [lw, lh, ld] = FIT.DOOR.leaf.map((n) => n * S), oak = std(0x3a2116, 0.5);
+      stand(FIT.doorway(S), 0, 0, D / 2);
+      for (const side of [-1, 1]) {
+        const leaf = add(new THREE.BoxGeometry(lw, lh, ld), oak, side * (lw / 2 + 0.01), lh / 2, D / 2 - 0.12);
+        leaf.rotation.y = side > 0 ? Math.PI : 0;   // (its hinges on the outside edge)
+        stand(trim, 0, 0, 0, 0, fitted, leaf);
+      }
+    }
+
+    // The man himself in gilt, twice, on dark marble either side of his table; and palms in gilt urns in the corners.
+    const gilded = new THREE.MeshStandardMaterial({ color: 0xe0b548, roughness: 0.3, metalness: 0.85, emissive: 0x2a1c06 }), block = FIT.plinth(1.1, 1.3);
+    for (const x of [-7, 7]) {
+      stand(block, x, 0, -12.2);
+      const idol = standIn('boss3');
+      for (const part of idol.parts) part.mesh.material = gilded;
+      idol.group.scale.setScalar(0.9);
+      idol.group.position.set(x, 1.3, -12.2);
+      idol.group.rotation.y = x < 0 ? 0.3 : -0.3;
+      this.scene.add(idol.group);
+      idol.pose('cards', 0.3, null, 0, 0, false, (P) => laughing(P, 1, 0.065));   // (as he is when the house wins)
+    }
+    const tree = FIT.palm(1.05);
+    for (const [x, z] of [[-16.5, -12.8], [16.5, -12.8], [-16.5, 12.8], [16.5, 12.8]]) stand(tree, x, 0, z, x * z);
+
+    // Velvet ropes on gilt posts, either side of the way in.
+    const post = FIT.ropePost();
+    for (const side of [-1, 1]) {
+      const zs = [12.4, 9.6, 6.8];
+      zs.forEach((z, i) => {
+        stand(post, side * 2.3, 0, z);
+        if (i) stand(FIT.rope([side * 2.3, 0.99, zs[i - 1] - 0.07], [side * 2.3, 0.99, z + 0.07]), 0, 0, 0, 0, cloth);
+      });
+    }
+
   }
 
   // The lounge: two corners of the room to sit down in, each a sofa and two armchairs round a low marble table (an

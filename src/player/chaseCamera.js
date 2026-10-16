@@ -27,6 +27,8 @@ export class ChaseCamera {
     this.fov = config.camera.fov;
     this.dip = 0;                 // landing thump
     this.shake = 0;
+    this.free = false;            // on foot (Free Ride, off his board: afoot.js): the view is the mouse's alone, and never swings round behind a heading
+    this.foot = 0;                // 0..1: how far into the on-foot view (closer, and over his shoulder)
   }
 
   snap(skater) {
@@ -64,12 +66,12 @@ export class ChaseCamera {
     // Swing lazily behind the heading (ignore it when the board points straight up/down).
     // Not in the air: spinning a 360 turns the board, not the view.
     const { fwd } = skater;
-    if ((skater.grounded || skater.grinding || skater.ceiling) && fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
+    if (!this.free && (skater.grounded || skater.grinding || skater.ceiling) && fwd.x * fwd.x + fwd.z * fwd.z > 0.1) {
       const step = wrap(Math.atan2(fwd.x, fwd.z) - this.yaw) * damp(c.yawLag, dt);
       this.yaw += step;
       if (holding) this.aimYaw = wrap(this.aimYaw - step);   // cancel it out: keep pointing where you were pointing
     }
-    if (this.idle > c.recenterDelay) {
+    if (this.idle > c.recenterDelay && !this.free) {
       this.aimYaw *= 1 - damp(c.aimRecenter, dt);
       this.aimPitch *= 1 - damp(c.aimRecenter, dt);
     }
@@ -89,9 +91,10 @@ export class ChaseCamera {
     const elevation = Math.max(pitch, -0.08);
     const viewPitch = rad(c.viewTilt) - pitch;   // + = looking up
     this.zoom = lerp(this.zoom, this.zoomTarget, damp(12, dt));
-    const dist = lerp(lerp(lerp(c.distance, c.distanceFast, speed01), c.aimDistance, this.aim) * this.zoom, -0.35, this.scope);   // scoped: just in front of his face
-    // Over-the-shoulder: slide the camera and its look point sideways together.
-    const shoulder = lerp(c.aimShoulder * this.aim, 0.12, this.scope), rx = -Math.cos(yaw) * shoulder, rz = Math.sin(yaw) * shoulder;
+    this.foot = lerp(this.foot, this.free ? 1 : 0, damp(4, dt));
+    const dist = lerp(lerp(lerp(c.distance, c.distanceFast, speed01) * lerp(1, 0.68, this.foot), c.aimDistance, this.aim) * this.zoom, -0.35, this.scope);   // scoped: just in front of his face
+    // Over-the-shoulder: slide the camera and its look point sideways together (on foot, a little of the way all the time).
+    const shoulder = lerp(c.aimShoulder * Math.max(this.aim, 0.5 * this.foot), 0.12, this.scope), rx = -Math.cos(yaw) * shoulder, rz = Math.sin(yaw) * shoulder;
 
     const cam = this.camera;
     cam.position.set(

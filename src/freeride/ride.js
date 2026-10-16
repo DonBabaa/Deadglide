@@ -19,15 +19,16 @@ import { Net } from '../casino/net.js';
 import { SkaterModel } from '../player/skaterModel.js';
 import { TRICKS } from '../player/tricks.js';
 import { createEmoter } from '../player/emotes.js';
+import { poseFriendAfoot, friendOnBoard } from '../player/afoot.js';
 import { WEAPONS } from '../player/weapons.js';
 
 export const MAX_RIDERS = 4;
-const SEND_EVERY = 1 / 12, GONE_AFTER = 5000;   // seconds between updates; milliseconds of silence before a rider is taken to have left
+const SEND_EVERY = 1 / 12, GONE_AFTER = 12000;   // seconds between updates; milliseconds of silence before a rider is taken to have left (building DEAD AIR's station can hold a browser for several seconds)
 // x y z: position.  vx vy vz: velocity.  fx fy fz / ux uy uz: the board's heading and its up.
 // flip: front / back flip so far (radians).  speed.  ground, grind: 1 or 0.  trick: its place in TRICKS (-1 = none), tp: how far through.
 // charge: ollie charge.  steer.  ax ay az: where the gun is aimed.  gun: 1 if it's up.  line: the line being built.  best: best line this session.
 // safe: seconds of safety left after being shot off the board (they blink, and can't be shot again).
-const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe', 'emote'];
+const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe', 'emote', 'foot'];   // (foot: 1 while they are off their board, walking: player/afoot.js)
 const clean = (raw) => { const s = {}; for (const k of STATE) s[k] = Number.isFinite(raw?.[k]) ? raw[k] : 0; return s; };
 
 // A name floating over a rider's head.
@@ -61,15 +62,18 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
   let net = null, role = 'alone', myId = 'me', sinceSend = 0;
   const riders = new Map();   // (host) everyone, me included: id -> { id, name, look, ...state }
   const ghosts = new Map();   // everyone else, as drawn: id -> { id, name, model, tag, pos, aim, skater (what the model reads), last (their newest state), heard }
-  const ride = { code: '', status: '', onGame: null, onHit: null, get active() { return role !== 'alone'; }, get hosting() { return role === 'host'; }, get myId() { return myId; } };
+  const ride = { code: '', status: '', onGame: null, onHit: null, get active() { return role !== 'alone'; }, get hosting() { return role === 'host'; }, get myId() { return myId; },
+    stats: { sent: 0, got: 0, dropped: 0, riders: () => riders.size } };   // (how much has gone each way: for finding out why a party has gone quiet)
   // The session's clock, in seconds: the host's, which guests follow. (Alone, just this browser's.) Things that
   // must be in the same place for everyone, like the targets, are worked out from it.
   let ahead = 0;   // (guest) how far the host's clock is ahead of ours
   const local = () => performance.now() / 1000;
   ride.clock = () => local() + ahead;
   // Messages for the game on top. toHost: a guest asks the host (the host, or a rider alone, just gets it back).
+  // Where everyone else is (as drawn), for the lift: it waits until every one of you is aboard.
+  ride.positions = () => [...ghosts.values()].map((g) => g.pos);
   // toAll: the host tells every guest (it does not come back to the host).
-  ride.toHost = (m) => { if (role === 'guest') net.send({ t: 'g', m }); else ride.onGame?.(myId, m); };
+  ride.toHost = (m) => { if (role === 'guest') { ride.stats.sent++; net.send({ t: 'g', m }); } else ride.onGame?.(myId, m); };
   ride.toAll = (m) => { if (role === 'host') net.broadcast({ t: 'g', m }); };
   // You've shot the rider `id` (head: in the head).
   ride.hit = (id, head = false) => {
@@ -134,7 +138,11 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
     },
     message(id, m) {
       if (!m || typeof m !== 'object') return;
+      ride.stats.got++;
+      if (role === 'host' && m.t === 'g' && !riders.has(id)) ride.stats.dropped++;   // (from somebody we have given up on: see send)
       if (role === 'host') {
+        // (somebody we had given up on, still connected and talking: ask who they are, and they are back in)
+        if ((m.t === 's' || m.t === 'g') && !riders.has(id)) { net.sendTo(id, { t: 'who' }); return; }
         if (m.t === 'hello') {
           if (riders.size >= MAX_RIDERS) return net.sendTo(id, { t: 'full' });
           riders.set(id, { id, name: String(m.name || 'Rider').slice(0, 16), look: m.look && typeof m.look === 'object' ? m.look : {}, ...clean(null), heard: performance.now() });
@@ -149,6 +157,7 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
           hear(id, r.name, r.look, r);
         }
       } else if (m.t === 'welcome') myId = m.id;
+      else if (m.t === 'who') net.send({ t: 'hello', name: myName(), look: myLook() });
       else if (m.t === 'g') ride.onGame?.('host', m.m || {});
       else if (m.t === 'hit') ride.onHit?.(String(m.by || 'someone').slice(0, 16), !!m.head);
       else if (m.t === 'full') { ride.leave(); ride.status = 'That session is full'; onChange(); }
@@ -204,7 +213,7 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
   }
   // A browser stops drawing a tab you've switched away from, which would freeze a hosted session for
   // everyone. So while this tab is hidden, a timer keeps the host passing things on.
-  setInterval(() => { if (role === 'host' && document.hidden) send(); }, 100);
+  setInterval(() => { if (role !== 'alone' && document.hidden) send(); }, 100);   // (a guest in a hidden tab keeps saying where they are, too: otherwise the host gives up on them)
 
   // Every frame: pass on our own state now and then, and move everybody else's ghost.
   ride.update = (dt) => {
@@ -225,7 +234,8 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
       k.flip = s.flip; k.speed = s.speed; k.grounded = !!s.ground; k.grinding = !!s.grind; k.grindStyle = Math.max(0, Math.round(s.grind) - 1); k.steer = s.steer; k.charge = s.charge;
       k.trick = TRICKS[s.trick] || null; k.trickProgress = s.tp;
       g.aim.set(s.ax, s.ay, s.az);
-      g.model.update(dt, k, g.pos, g.aim, !!s.gun, s.safe);   // (they blink while they can't be shot)
+      if (s.foot) poseFriendAfoot(g, dt, s);   // (off their board: walking, their board on their back)
+      else { friendOnBoard(g); g.model.update(dt, k, g.pos, g.aim, !!s.gun, s.safe); }   // (they blink while they can't be shot)
       g.emoter ||= createEmoter(g.model);
       g.emoter.match(Math.round(s.emote));
       g.emoter.update(dt);

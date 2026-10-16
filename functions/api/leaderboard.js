@@ -13,7 +13,7 @@
 const KEEP = 200;              // entries stored
 const SHOW = 20;               // entries sent to the game
 const MAX_SCORE = 100_000_000;
-const KEYS = { main: 'level1', line: 'moon-line', run: 'long-way-down' };   // (run: stored as 1,000,000 less the time in hundredths of a second, so that a higher score is still a better one)
+const KEYS = { main: 'level1', line: 'moon-line', run: 'long-way-down', deadair: 'dead-air' };   // (deadair: DEAD AIR, the round reached: stored as round x 100,000 + kills)   // (run: stored as 1,000,000 less the time in hundredths of a second, so that a higher score is still a better one)
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 

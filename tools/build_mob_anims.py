@@ -36,6 +36,10 @@ CLIPS = {
     'hamz': 'hamzitus goyitus.fbx', 'rubi': 'rubistus goyitus.fbx',   # (the clip each of the two brothers came with)
     'runstop': 'Action Adventure Pack/run to stop.fbx',   # (pulling up out of a run: Babitus, before he does anything else)
     'rummage': 'rummaging.fbx',   # (both hands going through something in front of him: Goyitus Ultimus, reaching for Kirky off the last ramp)
+    'vault': 'Vault Over Box.fbx',   # (DEAD AIR: over a crate in its way, slower than Kirky goes over one)
+    # (the open mic: the star sings, the backup dancers breakdance, the crowd cheers, claps and rallies)
+    'sing': 'Singing.fbx', 'breakdance': 'Breakdance 1990.fbx', 'cheer': 'Cheering (1).fbx', 'clap': 'Clapping.fbx', 'rally': 'Rallying.fbx',
+    'neckbite': 'Zombie Neck Bite.fbx', 'pickup': 'Unarmed Grab Torch From Floor.fbx',
     'breathe': 'Breathing Idle.fbx', 'shift': 'Action Adventure Pack/idle.fbx',   # (stood, breathing; stood, shifting about: Babitus at his table in the players' casino, with nobody to deal to)
 }
 # Turning on the spot: the game turns him (he always faces you), so what is kept of these is the stepping round, and
@@ -43,7 +47,7 @@ CLIPS = {
 ON_THE_SPOT = ('mturnr', 'mturnl', 'sturn', 'veer', 'arc')
 # Going up a wall, and coming down off one: the game takes him up and down it, so how high his hips have got is left
 # out of these (`rise` keeps it, a hip's height to the unit, for whoever wants to know where in the clip he is).
-NO_RISE = ('wallclimb', 'walldrop')
+NO_RISE = ('wallclimb', 'walldrop', 'vault')
 SPIDER = 'tarantula-animation/source/TarantulaBase.fbx'
 # The rat runs as another rat does (dl/rat run: a rigged one, with `run-inplace` and `idle`; names here: ratrun,
 # ratidle). What is kept, for a body of stiff parts on four legs:

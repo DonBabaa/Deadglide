@@ -12,6 +12,7 @@
 // opens some way off (main.js draws it) and overtime starts: the portal stays
 // open, and monsters pour out of the ground exponentially faster until you
 // leave through it or they get you.
+import { paintedMaterial } from './realMobs.js';
 import * as THREE from 'three';
 import { config } from '../config.js';
 import { heightAt, groundAt, placeAt, confineX, airFloorAt, onPipe, pipeS, pipeRound, hasPipe, lapNear } from '../world/terrain.js';
@@ -179,7 +180,7 @@ export class Horde {
       });
       const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });   // eyes: lit from within
       const build = (list, most) => withKnees(name, list).map((p, index, all) => {
-        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : material, most);
+        const mesh = new THREE.InstancedMesh(p.geometry, p.glow ? glow : p.map ? paintedMaterial(p, { emissive: T.emissive || 0, transparent: !!T.opacity, opacity: T.opacity || 1, roughness: 0.85 }) : material, most);
         mesh.castShadow = !p.glow;
         mesh.frustumCulled = false;
         mesh.matrixAutoUpdate = false;   // (it stays where it is: each of its copies is put in its own place)

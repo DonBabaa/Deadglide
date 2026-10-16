@@ -21,7 +21,7 @@ HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 
 MONSTERS = ('mobs.glb', 'zombies.glb', 'rat.glb')   # (in the order the game reads them: a later one's monster replaces an earlier one's)
 RULES = {
     'mobs.glb': {'monsters': True},
-    'zombies.glb': {'monsters': True, 'drop': ['TEXCOORD_0']},
+    'zombies.glb': {'monsters': True},   # (its texture coordinates are kept: the zombies are drawn by their own pictures)
     'rat.glb': {'monsters': True, 'drop': ['TEXCOORD_0']},
     'lighter.glb': {'drop': ['TEXCOORD_0']},
 }
@@ -76,7 +76,9 @@ def looked_for(files):
         for i, name in named(doc):
             is_ = re.match(r'^([a-z0-9]+)_(lite_)?([a-z_]+?)(?:\d*)$', name, re.I)
             if is_ and is_.group(1) in PARTS and is_.group(3) in PARTS[is_.group(1)].split():
-                found[(is_.group(1), bool(is_.group(2)), is_.group(3))] = (file, i)
+                key = (is_.group(1), bool(is_.group(2)), is_.group(3))   # (a part painted on two pictures is two meshes, head and head2: both kept)
+                if key in found and found[key][0] == file: found[key][1].append(i)
+                else: found[key] = (file, [i])                           # (a later file's replaces an earlier one's)
             is_ = re.match(r'^([a-z0-9]+?)_(lite_)?p(\d+)$', name, re.I)
             if is_:
                 numbered[(is_.group(1), bool(is_.group(2)), int(is_.group(3)))] = (file, i)
@@ -85,9 +87,9 @@ def looked_for(files):
                 gold[name] = (file, i)
     kept = {file: set() for file, _ in files}
     whole = {name for (name, lite, part) in found if not lite}   # (monsters that come as named parts: those are what is drawn of them...)
-    for (name, lite, part), (file, i) in found.items():
+    for (name, lite, part), (file, idxs) in found.items():
         if not lite or name in PLAIN:
-            kept[file].add(i)
+            kept[file].update(idxs)
     for (name, lite, n), (file, i) in numbered.items():
         if name in whole and not lite:
             continue                                               # (...and not the numbered ones another file may still have of the same monster)

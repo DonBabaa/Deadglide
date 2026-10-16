@@ -65,7 +65,7 @@ export function withKnees(name, parts) {
       return made;
     };
     out[i] = { ...p, geometry: half(0, [0, 0, 0]) };
-    out.push({ geometry: half(1, [kx, ky, kz]), pivot: [px + kx, py + ky, pz + kz], swing: [0, 0, 0], phase: p.phase, glow: false, role: 'shin', parent: i, hinge: K.cut === 'y' ? 'x' : 'z', flex: K.flex });
+    out.push({ geometry: half(1, [kx, ky, kz]), pivot: [px + kx, py + ky, pz + kz], swing: [0, 0, 0], phase: p.phase, glow: false, map: p.map, normalMap: p.normalMap, gain: p.gain, role: 'shin', parent: i, hinge: K.cut === 'y' ? 'x' : 'z', flex: K.flex });
   });
   if (K.elbow) {
     const shoulders = new Map();   // a shoulder (where it is, as text) -> { arm: the index of its upper half, at: its elbow, from that shoulder }
@@ -95,7 +95,7 @@ export function withKnees(name, parts) {
       if (!halves) return;
       out[i] = { ...p, geometry: halves[0], elbow: true };
       shoulders.set(p.pivot.join(), { arm: i, at: [kx, ky, kz] });
-      out.push({ geometry: halves[1], pivot: [px + kx, py + ky, pz + kz], swing: [0, 0, 0], phase: p.phase, glow: false, role: 'forearm', parent: i });
+      out.push({ geometry: halves[1], pivot: [px + kx, py + ky, pz + kz], swing: [0, 0, 0], phase: p.phase, glow: false, map: p.map, normalMap: p.normalMap, gain: p.gain, role: 'forearm', parent: i });
     });
   }
   return out;

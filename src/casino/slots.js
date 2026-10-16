@@ -37,12 +37,19 @@ function losingLine() {
 
 // Spin once. Returns { reels: [three symbol names], gold: gold won (0 if none), text, big: a big win,
 // prize: the cosmetic won as { slot, option }, if any }. Winning a cosmetic gives it to you here.
-export function spin() {
+// award: what three skulls win instead of a cosmetic, somewhere that has prizes of its own (DEAD AIR's lounge): called
+// when they come up, it gives the prize and says what it was: { name } (or null: nothing left to win, so gold).
+export function spin(award = null) {
   let r = Math.random();
   for (const [chance, reels, pays, text] of OUTCOMES) {
     if ((r -= chance) >= 0) continue;
     const line = reels.map((s) => s || pick(NAMES.filter((n) => n !== 'cherry')));
     if (text !== 'prize') return { reels: line, gold: pays * SPIN_COST, text, big: pays >= 40 };
+    if (award) {
+      const won = award();
+      if (won) return { reels: line, gold: 0, text: `You won: ${won.name}`, big: true, award: won.name };
+      return { reels: line, gold: PRIZE_FALLBACK * SPIN_COST, text: 'Three skulls', big: true };
+    }
     const left = casinoPrizes();
     if (!left.length) return { reels: line, gold: PRIZE_FALLBACK * SPIN_COST, text: 'Three skulls', big: true };
     const [slot, option] = pick(left);

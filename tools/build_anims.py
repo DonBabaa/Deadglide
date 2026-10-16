@@ -64,6 +64,22 @@ CLIPS = {
     # (and, in the casino too: flat out across the floor, and a jump off it)
     'sprint': ('Sprint.fbx', 1, 0, 'mixamo'),
     'leap': ('Action Adventure Pack/jumping up.fbx', 1, 0, 'mixamo'),
+    # DEAD AIR, on foot with a long gun (mirrored: their rifle is in the right hand, his in the left): a run, a sprint, starting
+    # off and pulling up, lowering it from the shoulder, a reload, the butt of it, going down with it; and a fall (the bite).
+    'riflerun': ('Rifle Run.fbx', 1, 0, 'mixamo', True),
+    'riflesprint': ('Sprint Forward rifle.fbx', 1, 0, 'mixamo', True),
+    'riflestart': ('Rifle Start Run.fbx', 1, 0, 'mixamo', True),
+    'riflestop': ('Rifle Run To Stop.fbx', 1, 0, 'mixamo', True),
+    'rifledown': ('Rifle Aim To Down.fbx', 1, 0, 'mixamo', True),
+    'reload': ('Reload.fbx', 1, 0, 'mixamo', True),
+    'riflemelee': ('rifle melee.fbx', 1, 0, 'mixamo', True),
+    'rifledie': ('Rifle Run To Dying.fbx', 1, 0, 'mixamo', True),
+    'fallover': ('Fall Over.fbx', 1, 0, 'mixamo'),
+    # (over a crate, a barrel: Space at one, moving)
+    'vault': ('Vault Over Box.fbx', 1, 0, 'mixamo'),
+    # (the crawlspace: on his belly through a duct, forward and back)
+    'crawl': ('Crawl Forward.fbx', 1, 0, 'mixamo'),
+    'crawlback': ('Crawl Backwards In Prone.fbx', 1, 0, 'mixamo'),
 }
 
 

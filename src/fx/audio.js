@@ -3,7 +3,7 @@
 import { config } from '../config.js';
 
 // sfx / music: the two volume controls. duck: turns the music down for a moment (cutscenes) without touching its volume setting.
-export const audio = { ctx: null, noise: null, sfx: null, music: null, duck: null, score: null, out: null, verb: null, verbOut: null, sends: null, places: null, tails: null, muted: false, sfxMuted: false };   // muted = the music is off
+export const audio = { ctx: null, noise: null, sfx: null, music: null, duck: null, radio: null, score: null, out: null, verb: null, verbOut: null, sends: null, places: null, tails: null, muted: false, sfxMuted: false };   // muted = the music is off
 
 // Recorded sounds (optional). Any audio file dropped into src/assets/sounds/
 // replaces the synthesized sound of the same name: e.g. sniper.mp3 replaces
@@ -85,7 +85,12 @@ function build(ctx) {
   audio.music = level(1);
   audio.duck = level(1);
   audio.sfx.connect(sfxOut);
-  audio.music.connect(audio.duck).connect(musicOut);
+  // (radio: the music as if out of a little speaker in another room, when setRadio says so; otherwise it lets it all through)
+  audio.radio = ctx.createBiquadFilter();
+  audio.radio.type = 'lowpass';
+  audio.radio.frequency.value = 22000;
+  audio.music.connect(audio.duck).connect(audio.radio).connect(musicOut);
+  setRadio(radioOn);
   // The story's own music (fx/score.js): on the music's volume control, but not held down with the level's music.
   audio.score = level(1);
   audio.score.connect(musicOut);
@@ -589,6 +594,16 @@ export function playPowerup() {
   if (!ready()) return;
   hiss('bandpass', 500, 5000, 0.45, 0.12);
   [65, 72, 77, 84].forEach((note, i) => tone('triangle', midi(note), midi(note), 0.7, 0.13, 0.12 + i * 0.05));
+}
+// The music as if out of an old speaker (on: DEAD AIR's lounge, where the band is a tape on a loop), or as it is.
+let radioOn = false;
+export function setRadio(on) {
+  radioOn = !!on;
+  if (!audio.radio) return;
+  const t = audio.ctx.currentTime;
+  audio.radio.type = on ? 'bandpass' : 'lowpass';
+  audio.radio.Q.setTargetAtTime(on ? 0.55 : 0.7, t, 0.05);
+  audio.radio.frequency.setTargetAtTime(on ? 1300 : 22000, t, 0.05);
 }
 // Turn the music down to `level` (a fraction of its volume) for `seconds`.
 // Hold the music at `level` (a fraction of its volume) until told otherwise: a scene is playing, and what happens in
@@ -1455,4 +1470,30 @@ export function playKillNote(streak = 1) {
   const n = Math.min(19, Math.max(0, streak - 1)), f = 392 * Math.pow(2, Math.floor(n / 5) + STEPS[n % 5] / 12);
   tone('triangle', f, f * 1.003, 0.16, 0.13);
   tone('sine', f * 2, f * 2.01, 0.1, 0.06);
+}
+
+// ---- On foot (Free Ride: off his board) ----
+// A boot coming down in the Moon's dust: a soft, dry crunch and the weight of him under it (heavier as he runs).
+export function playFootstep(level = 0.6) {
+  if (!ready() || !spaced('footstep', 0.12)) return;
+  const r = 0.85 + Math.random() * 0.3;
+  hiss('bandpass', 900 * r, 420 * r, 0.09, 0.05 + 0.07 * level);
+  hiss('lowpass', 480, 140, 0.12, 0.05 + 0.06 * level, 0.01);
+  tone('sine', 78 * r, 44, 0.1, 0.08 + 0.12 * level);
+}
+// His board: kicked up by its tail and flicked over onto his back (a clack, and it swishing through the air).
+export function playBoardFlick() {
+  if (!ready()) return;
+  tone('square', 210, 95, 0.04, 0.07);
+  hiss('bandpass', 2600, 1300, 0.05, 0.16);
+  hiss('bandpass', 500, 1800, 0.28, 0.07, 0.06);
+  hiss('highpass', 2200, 1500, 0.04, 0.06, 0.36);   // (on to the strap)
+}
+// ...and dropped from his back, wheels down, under his front foot: the clack of it landing, and the first of the roll.
+export function playBoardDown() {
+  if (!ready()) return;
+  hiss('bandpass', 1400, 600, 0.22, 0.06);
+  tone('square', 170, 80, 0.05, 0.09, 0.3);
+  hiss('bandpass', 2400, 1100, 0.06, 0.18, 0.3);
+  tone('sine', 120, 55, 0.14, 0.22, 0.3);
 }
