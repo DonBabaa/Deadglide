@@ -19,10 +19,15 @@ friends, with no damage and no clock. Everything is made in code: there are no a
   (the Catacombs), a hall (the House), almost none (the Moon). A gun never makes more than 18 shot sounds a second: a faster gun
   sounds a little higher and each shot a little quieter. Small sounds (hits, kills, pickups) give way first when a lot is
   playing. `renderOffline()` plays any sound into a context that is not connected to the speakers, for measuring levels.
-- **Each level has its own music** (`src/fx/music.js`): the Cemetery and the menu, haunted drum and bass; the Catacombs, a slow
-  heavy dub; the House, a fast minor swing with a brass section; the Long Way Down, a four-on-the-floor chase; the Moon, half-time
-  and weightless (also the menu's, once the game is finished); the casino, a lounge trio. A boss turns the Cemetery's or the
-  Catacombs' music to hard rock. The editor (?editor) has a button for each, and for each story soundtrack.
+- **Each level has its own music**, his, made with Suno (2026-10-16 night; dl/Audio, made into loops by
+  `tools/master_loops.py`: each keeps its intro, then loops between a start and an end found by matching rhythm and tone either
+  side of the join, phase-aligned, the join crossfaded; all brought to one loudness; AAC in public/sounds/music): the title
+  screen, DEADSLIDE (haunted drum and bass with the words); the Cemetery, high-BPM horror rock; the Catacombs, dark industrial
+  techno; Free Ride on the Moon, a steady dark electro breakbeat; the House, dark electro-swing; the Long Way Down, epic hard
+  rock; a boss fight, symphonic horror metal (cutting in over the Cemetery's or the Catacombs'). `src/fx/music.js` TRACKS plays
+  them (the buffer's own loopStart / loopEnd) on the music's bus (its volume, the scenes holding it down); the generated
+  music is still there for the casino's lounge trio, and plays any style until its recording has loaded. The menu plays the
+  title theme. The editor (?editor) has a button for each, and for each story soundtrack.
 - **The story has its own music** (`src/fx/score.js`): while any scene plays, the level's music is held right down; story scenes
   play one of seven quiet looping cues in its place (the cemetery, the Catacombs, the city, the House, the collapse, the launch,
   the Moon), which fades out when the scene ends and the level's music comes back.
@@ -67,8 +72,10 @@ The game listens for physical keys, so the letters below are for a QWERTY keyboa
 - Pick a level from the menu (a nickname is required first). **Creative mode** lets you choose your starting guns, upgrades
   and power-ups, and switch monsters or damage off; it earns no gold and cannot post a score.
 - **Waves** come every 30 seconds, each bigger and tougher. The **final boss** arrives at wave 7.
-- Kills drop **XP gems**. Each level (cap 20) offers a choice of three **upgrades**.
-- **HotBox zones** appear ahead of you: stay inside one to win a **power-up** (you can hold four different ones; after that zones level up the ones you have).
+- Kills drop **XP gems**. Each level offers a choice of three **upgrades**. The curve climbs the whole run (5 + 4·n + 0.8·n² XP
+  for the next, cap 40): about level 14 by the end of the Cemetery, 20 through the Catacombs.
+- **HotBox zones** appear ahead of you: stay inside one and you **pick one of three power-ups**: ones you hold, levelled up, and
+  (while you have room: four different ones at most) ones you do not. What you pick is your build.
 - Monsters also drop hearts, gold coins and, rarely, chests (a gun or an item). Elites always drop a chest.
 - When the boss dies, an **exit portal** opens some way off and **overtime** begins: monsters arrive faster and faster. Leave
   through the portal to bank your gold and post your score, or stay and farm at your own risk. **Die and the gold is lost.**
@@ -247,6 +254,23 @@ You start with the pistol. Others are unlocked in the shop, then turn up in ches
 - **Level-up upgrades** (`src/systems/upgrades.js`): damage, fire rate, split shot, pierce, air damage, Deck Spikes (ram monsters at speed),
   shockwave landings, a damage buff after tricks, pickup range, XP, top speed, max health, healing, a little extra safety after a hit,
   and boosters for whichever power-ups you hold.
+- **Builds (the balance pass, 2026-10-16/17):** a bot that played the Cemetery (da/balance.mjs, `game.testGod`) hit the old XP
+  cap of 20 at 2:40, before the boss, and stacked the gun's three cards into 9.6 times its damage against monsters 1.9 times
+  tougher; the HotBox's roll and the chests' consumables built nothing. Now: the gun's cards are trimmed (Hollow Points +20% ×6,
+  Rapid Fire +15% ×5, Split Shot ×2) and so are the power-ups' damage boosters (+25%, thorns and frost +30%); the deal leans to
+  what you hold (a power-up's boosters come up half again as often, one of the three is always for your build if any is left);
+  a HotBox is a pick of three; and **synergies** turn up once you hold their pair (pink cards, once each): Thermal Shock (Fire +
+  Frost: +30% each on the other's victims), Superconductor (Lightning + Frost: +40% on the frozen, 2 more jumps), Combustion
+  (Gas + Fire: +50% gas on the burning, the sick burn twice as long), Spiked Shell (Thorns + Shield: +60% and a third further
+  while the shield holds), Grave Barrage (Seekers + Bone Rain: one more each, 20% faster), Open Wounds (any of Fire / Frost /
+  Gas: bullets +25% on what is burning, frozen or sick); through `horde.damage`'s `kind` and `stats.combo`. Chests: the Old
+  Tome three times as often, an unowned gun more often. **So that it does not get easy** (his ask), the crowd grows with you as
+  well as with the wave, per level of yours above the first: +5% health, +7% to their hits, +2.5% more of them coming faster
+  (`config.horde.hpPerLevel`, `damagePerLevel`, `crowdPerLevel`: at level 14, +65%, +91%, +32%); Frost Aura slows less (0.68 at
+  level 2, 0.5 at most) and an elite only a little. Measured (da/power.mjs: wave 6 of the Cemetery, standing, the pistol, nothing
+  but the build): the old game's stacked gun took 25.5 damage a second; a chosen Fire / Frost / Gas build at level 14 took 6.2
+  before the tuning and 10.4-11.9 after; Thorns and Shield about 39; a level-20 elemental build 10.9. The gun stacked alone is
+  now far harder than it was.
 - **Power-ups** (`src/player/powerups.js`): Shield, TozToxik (gas cloud and trail), Ring of Fire, Grave Seekers (homing skulls), Thorns,
   Chain Lightning, Moon Rocks (lower gravity), Frost Aura, Bone Rain, Blood Pact (kills heal).
 - Winning a power-up for the first time in a run pauses the game on a card explaining it, followed by a short smoking cut-in.
@@ -278,17 +302,27 @@ base outside the Moon's dome, against the dead, round after round, until the las
 Moon (how is deliberately not written here; it is in `src/freeride/airlock.js`, behind a spoiler warning). `?deadair` in the address
 goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not on the title screen.
 
-- **The way down (v2):** no hatch any more: a freight lift on the plaza behind spawn (freeride/airlock.js: the kit's plate, rails,
-  posts, a gate of two door halves, a green lamp, a call panel, a sign over the gate; a lit sign on a post by spawn with an arrow,
-  and a runway of chasing floor lights to it). Everyone in the party has to be aboard (`ride.positions()`): the lamp goes amber, a
-  klaxon counts 3 s, step off and it waits; then the gate shuts and `cutscenes.lift` plays (a 34 m shaft of walls with red
-  strips is built round the cage and slides up, faster and faster: the gate shutting from outside, his face in the red, from
-  over them, looking up at the square of the top going away), then the station.
-- **The landing:** the way in rebuilt (story.js `entrance`, 15.4 s): black and the name; the lot of you down in a heap where the
-  lift left you, his board against the wall, snapped ("...No board. Great."); up, and each lamp clicks on in its turn (friends'
-  via `others.lamp`); his lighter, and what it lights first is her hand on the wall, NINE DAYS; the PA's welcome ("Current crew
-  complement: zero", pa_welcome.wav); DEAD AIR. Then the bay is yours: nothing comes until you leave it (or 90 s): the first
-  scream (`wake()`: a cut-in down the Spine, the title) and round 1.
+- **The way down (v3, 2026-10-16 night):** a freight lift on the plaza behind spawn, as in his picture (freeride/airlock.js): a
+  frame of dark square tube with wire mesh between, two mesh doors under a lit sign, a call panel, a caged lamp. It is sealed
+  until somebody shoots the lamp (`airlock.shot`; a friend's shot arrives as `unseal()`), then the doors open. Walk in on foot and
+  press E to say you are ready (`toggleReady`, the `#lift-ready` prompt counts who is in and who is ready; `ride.readies()`); once
+  everyone in it is, the doors shut and `cutscenes.lift` plays, cut to his recorded cue (`moon_down`, fx/score.js `RECORDED`):
+  high alongside as they walk in, behind them over the rails, the doors slamming on the cue's first hit (5.4 s), the drop (7.6),
+  the shaft's red (10.2), looking up (13.4). They walk in and stand in it: the scene poses everyone on foot (`afoot.cine`).
+  The post sign and the runway of lights are gone (`signAt` is kept: the line the cameras keep off).
+- **The way out, on the Moon:** after the win the lift comes back up (`cutscenes.surface`, his `moon_up` cue): a look up past
+  them at the shaft and the sky, the stop, and they walk out (walk clip, feet on the dust) and off to the side. Then the card
+  (freeride/outcard.js: YOU GOT OUT, the round, the crew's scores best first) and, closing it, a two-shot reveal of the **Mastre of
+  the Month**: a gold statue of Kirky on a plinth by the lift, with a brass plate bearing the name of whoever did worst
+  (`results()` in index.js: points for kills, heads and friends got up). The round-ten trophy in the station is off; it is an
+  editor stage only.
+- **The landing:** the way in (story.js `entrance`, 39.3 s), cut to his cue `cue_way_in` and kept in time with it (index.js
+  `runIntro` follows the cue's clock; a hitch catches up, music that came in late starts where the scene is): the cage's lamp
+  coming down the shaft, inside it at the rails ("Mind the stop"), the slam on the cue's first hit (6.8 s) and the lot of you down
+  in a heap, his board snapped ("...No board. Great."); up along the faces; his lighter and NINE DAYS; the PA's welcome in the
+  cue's silence; then out of the lift on foot into a line, the torches clicking on one by one, a puff each in the beams, a quiet
+  shot of a second drag with the smoke standing in his beam (the cue holds its breath), and DEAD AIR on the hit at 36.3. Then
+  the bay is yours: nothing comes until you leave it: the first scream (`wake()`) and round 1.
 - **The logs:** Jun Park's nine recorders (logs.js), one line each, the whole story: three a run of the days not found yet
   (day one by the first body in the bay until it is found), in spots from `LOG_SPOTS`; E plays the card (hud `log`: REC, the
   day, his name, the words typing), his voice (log1-9.wav, Zira at 1.06), a cut-in on the recorder then on Kirky listening,
@@ -296,8 +330,7 @@ goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not o
   names on the card. The ending: "Shuttle control: Deck C. How many?" / "...One." (or the count) / "They kept the days.
   Someone should know." / "Next time, we take the stairs."
 - **Tonight's modifier** (nights.js, `game.night`, picked by the host in reset, on the choice card and a banner at round 1, sent
-  with 'diff' and the snapshot): BLACKOUT NIGHT (dark all night, the lamp scare sooner), LOW GRAVITY (jumps 1.45x, gravity 0.3 for
-  him and the dead, knock-back 2.2x), THE QUIET (walkers and runners only, every corpse a sleeper, lamp and breath sooner), THE
+  with 'diff' and the snapshot): BLACKOUT NIGHT (dark all night, the lamp scare sooner), THE QUIET (walkers and runners only, every corpse a sleeper, lamp and breath sooner), THE
   WARDEN'S TWINS (two, every third round from the third), STEAM NIGHT (fog 0.13), THE SWARM (1.7x as many, 0.55x the gap, 0.6x
   the hp, 8 more at once). Read through `N()` in index.js at the spawn, hp, dark, warden and fog sites.
 - **Her writing** (`WRITING`, `writingTexture`): NINE DAYS (the bay), WE WERE HERE, HOLD IT SHUT, DON'T OPEN MED BAY, DAY 4, TWO KEYS.
@@ -309,7 +342,8 @@ goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not o
 - **The story:** the crew of Shackleton Station went quiet nine days ago and every channel is dead air. A cut-in on the way in (everyone
   in the party lined up in the dark, lit by their cigarettes, Kirky's lighter that will not catch, the first scream down the Spine) says
   so, and what to do: **restore power** (prime the core in the Reactor, standing by it for 8 s), **send the signal** (start the Med Bay
-  uplink and keep it alive 45 s: it draws every one of them), **hold out** three rounds for the shuttle, then **get everyone to Dock 1**
+  uplink and keep it alive 45 s: it draws every one of them), **hold out** three rounds for the shuttle, then **get everyone into the lift** (the cage comes back down to the bay; E at a rail, the last one in mashes F on
+  the lever)
   (the airlock in the Arrival Bay's west wall) and you are out: a win, posted as one. The objective is always at the top left, with the
   distance to it, and a marker on it in the world (a diamond when it is in view, an arrow at the screen's edge pointing the way when
   it is not). The rounds never stop for any of it. `src/deadair/story.js`.
@@ -437,8 +471,7 @@ goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not o
   grate are recordings (congusbongus, CC-BY), so is his breath (Owlish Media: running, scared when he is low, a gasp and a lost breath
   when he is grabbed), so is a round into meat or into metal (qubodup); their feet are heard on the plates when they are near; a thud in
   the wall as one comes through it. Three more drones come up with the moment: lights out, the broadcast, Nightmare (Joth); under
-  everything a cramped-passage ambience (congusbongus) and a dark ambient track, "Paranoid Truth" (Tsorthan Grove), least when they
-  are on you (loaded last: nothing waits for it). Half their groans are real recordings now (Darsycho, ianzazz; two files of many
+  everything a cramped-passage ambience (congusbongus). Half their groans are real recordings now (Darsycho, ianzazz; two files of many
   groans are cut into one each on load by RMS), the screamer's call and the far-off moans are qubodup's ghosts. A watchdog in
   sound.update() wakes a context the browser put to sleep and reopens a bus that fell shut; `deadAir.sound.state()` says how it
   all stands. The open mic has its own song, "DEAD AIR (Hit That Boof)" (public/sounds/deadair/show_song.ogg, 101 s, made with
@@ -446,6 +479,20 @@ goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not o
   muffling is for the station, not the room), the cut-in's lyric cards are its first lines, the crowd roars as the band comes on and
   cheers at the finish (`sound.crowd`), and after the cut-in it plays on at half level until you leave (`sound.song` handle). Every
   recording and its licence is in `public/sounds/deadair/CREDITS.txt`.
+  **His music** (2026-10-16 night; made with Suno, in dl/Audio; cut, faded and levelled by `tools/master_audio.py` into
+  public/sounds/deadair/music/*.aac and public/sounds/music/cue_moon_*.aac; Suno's mp4/webm are decoded in the browser and
+  encoded with WebCodecs' AAC, since Blender's FFmpeg reads neither): `sound.music` in sound.js plays the loops **dread**
+  (before they wake, between rounds), **hunt** (a round), **swarm** (five or more within 11 m, or holding a door, a
+  decompression, a grab; it drops back to the hunt only after 9 s calm) and **lounge** (in the Crew Lounge, in place of the
+  casino's own music; silent while the band plays), each starting somewhere in itself and crossfading (4 s) into the next and
+  into its own start; the cues of the way in and the way out (each scene follows the cue's clock: `music.cue()` returns it);
+  a child's music-box **jingle** for each objective done (power, signal, the lift down); **stingers** with the bang of one coming
+  through a grille near you (`spawnNoise`: at most one stinger in 9 s); now and then, in the quiet, one of them **laughing**
+  somewhere off in the dark (through the walls if that is where it is); the loops duck under the PA and the tapes. index.js
+  `runMusic` picks the loop. `deadAir.music` says what is playing and keeps a log of the last events (the tests).
+  **The mix:** less reverb (a 1.5 s steel tail, its return at 0.28), more of the sounds themselves: their groans and screams
+  louder, drier and heard further (ref 4.5 m), more often while they chase; their feet are recorded steps slowed and dulled,
+  with a dragged foot for the walkers, heard within 22 m; his own steps drier, with his kit's clink and his jacket's rub.
   **The dread** (sound.js): the station's bed is the mains hum with its harmonics (heard on any speaker), the air handlers
   breathing, a hiss and a sub-bass rumble under it all; a chord that is wrong (root, minor second, tritone), filtered, swells and
   brightens as they close in, with strings scraping high over it when they are on you; one of them is heard far off through the
@@ -463,28 +510,27 @@ goes straight in, for testing; so does the editor's "Play DEAD AIR". It is not o
   `src/freeride/airlock.js`, `tools/build_deadair_kit.py` (the station's kit: Quaternius's Modular Sci-Fi MegaKit, CC0),
   `tools/build_deadair_audio.py`.
 
-### The station's two levels (2026-10-16)
-The map (station.js `MAP`, 24x13 cells of 4 m) has a floor up: zones carry `y` (the floor's height: the Observation Deck is
-`RISE` = 2 m up), `h` (the ceiling: 5, or 8 for the Med Bay, the deck and the Reactor), `stair` (the cell is a flight: two kit
-`Platform_Stairs_4` side by side, climbing `RISE` across the cell toward `STAIRS[].dir`) and `via` (open when that zone is).
-`linked(i, j, di, dj)` says whether you walk from one cell to the next: the same level, or through a stair's two ends; where a
-deck meets a room below, the room's wall is a parapet (a solid box with `top` = its height: bullets and a look go over it).
-`levelAt(p)` is the floor under a point (a slope in a stair cell), `ceilAt(p)` the ceiling over it; `groundAt` starts from
-`levelAt`. Walls stack to the ceiling (`stack()`); a taller room fills the gap over a shorter neighbour's ceiling. The dead step
-up what is under their feet (dead.js), so they take the stairs (the flow field uses `linked`); the walker snaps down a slope.
-Rooms: the Med Bay (13-17 x 4-6, plus the nook 18 x 6-7) with the deck over its south side (13-16 x 7) and the stairwell
-(17, 7); the Crew Quarters (12-16 x 9-11, through the Reactor's 1500 door) with bunks (`BUNKS`), lockers, the chicken; the
-Reactor one row deeper. Behind the deck's windows a painted Moon (`moonTexture`); the kit's glass is see-through (`loadKit`).
+### The station: one floor (2026-10-16 night)
+The Observation Deck, its stairs and parapets are gone, at his word: `MAP` (station.js, 24x13 cells of 4 m) is one floor
+again, ceilings back to the original height, `STAIRS = []`. The level machinery (`levelAt`, `ceilAt`, `linked`) stays and
+returns the one floor. The Spine's north branch stops short of the Med Bay (its last cell was a way round the Med Bay's door).
+`SPAWNS` (28 holes, each with its red gash over it) is in again; the Arrival Bay's five open only once the station is awake.
+The bay's corner crates stand off the west wall as one block: offset, they made a pocket in front of the (1,1) hole that a
+zombie could not get out of (found by the bot soak). And one that means to move and has not for 1.6 s steps aside along
+whatever it is against (dead.js `aside`), so nothing stays wedged.
 
 ### Co-op mechanics, the skit, the chicken
 All ten co-op mechanics live in index.js (hold it shut, decompression, strap in, carry the downed, revive together, the crank
 for the uplink `CRANK`, keep eyes on it, the dead-man safe `SAFE`, back to back, the core's two hands) with editor stages under
-Co-op. The reload skit: one magazine reload in ten with one of the dead in sight, `maybeFumble` → a five-shot cut-in
-(reload.js `hold/resume`, dead.js state 'skit'). The rubber chicken (`public/models/chicken.glb`, his) lies under the first bunk;
+Co-op: the two keys are terminals at opposite ends of the station (KEY A in the Arrival Bay, KEY B in Lab 2 by the Reactor door) that
+have to be turned within a window of each other (3 s with friends, 14 s alone) to open the Reactor's door (it cannot be bought);
+the crank is turned by moving the mouse in circles. The reload skit: one magazine reload in twenty-five with one of the dead in sight, `maybeFumble` → a five-shot cut-in
+(reload.js `hold/resume`, dead.js state 'skit'). The rubber chicken (`public/models/chicken.glb`, his) lies on the table in the bunk room (`buildTable`);
 taken, it rides the gun's muzzle (`mountChicken`) and F squeaks (arms `chicken`). `tools/sync_lyrics.py` times the open mic's
-lyric cards to the song with faster-whisper. The laughs: the boof dud (one Golden BOOF in ten), the conga (dance six seconds
-with the dead about), the Mastre trophy (round ten: a gold Kirky out of the ceiling). Cheap scares by place (scares.js
-`placeFire`): the deck window, the parapet, steps overhead, the bunk, the one on the stairs, the drip, the footlocker's lid, the
+lyric cards to the song with faster-whisper. The laughs: Porro trop chargé (one Golden BOOF in ten: a coughing fit until one of
+them smacks him on the back), the conga (dance a few seconds with the dead about: they line up behind you breakdancing, as at the open
+mic), the Mastre of the Month (now a statue on the Moon, after a win). Cheap scares by place (scares.js
+`placeFire`): steps overhead (on the roof), the bunk, the one sitting against the Med Bay wall, the drip from the ceiling, the footlocker's lid, the
 wheel turning by itself, the missing body, the recorder playing by itself (`scares.logs` is handed in by index.js). The lounge's shaders are
 compiled in `prepare()` (`warm()`), so the show's first frame no longer stalls.
 

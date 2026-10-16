@@ -27,15 +27,14 @@ const BACK = 2.8;               // ...and its back (it is solid all the way thro
 
 // The map. '#' is rock; a letter is a cell of floor in that zone.
 //   b  the Arrival Bay (where you come in)     c  the Spine (the corridor: two cells wide where it leaves the bay, for a party)     l  Lab 2
-//   m  the Med Bay (along from the end of the Spine; tall)     r  the Reactor (down from Lab 2; tall)
-//   o  the Observation Deck (a floor up, along the Med Bay's north side, looking down into it over a parapet, and out of
-//      its windows at the Moon: nothing of the station lies north of it)     s  the stairs up to it (from the Med Bay's north arm)
+//   m  the Med Bay (along from the end of the Spine)     r  the Reactor (down from Lab 2)
+//   (one floor, every room the station's own height: the deck over the Med Bay, its stairs and the taller rooms are gone, at his word)
 //   q  the Crew Quarters (east of the Reactor, through its own door: the cell past it is the doorway)
 const MAP = [
   '########################',
-  '#bbbbbb#cccc############',
+  '#bbbbbb#ccc#############',   // (the Spine's north branch stops short of the Med Bay: its last cell was a way round the Med Bay's door)
   '#bbbbccccccmmm##########',
-  '#bbbbbb###c##msoooo#####',
+  '#bbbbbb###c##m##########',
   '#bbbbbb#llll#mmmmm######',
   '#bbbbbb#llll#mmmmm######',
   '#bbbbbb#llll#mmmmmm#####',
@@ -47,15 +46,13 @@ const MAP = [
   '########################',
 ];
 // The stairs: the cell, and the way it climbs (from the floor at its far edge to RISE at this one).
-export const STAIRS = [{ i: 14, j: 3, dir: 'e' }];
+export const STAIRS = [];   // (none now: one floor)
 export const ZONES = {
   b: { name: 'Arrival Bay', floor: 'Platform_DarkPlates', wall: ['WallAstra_Straight', 'WallAstra_Straight_Divided', 'WallAstra_Straight_Flat'], top: 'TopCables_Straight', open: true },
   c: { name: 'The Spine', floor: 'Platform_Metal', wall: ['WallBand_Straight', 'WallBand_Straight', 'WallBand_Straight'], top: 'TopCables_Straight_Hanging', open: true },   // (the kit has no divided WallBand: asking for one left a hole)
   l: { name: 'Lab 2', floor: 'Platform_Squares', wall: ['WallAstra_Straight_Flat', 'WallAstra_Straight', 'WallAstra_Straight_Divided'], top: 'TopSimple_Straight', open: false },
-  m: { name: 'Med Bay', floor: 'Platform_CenterPlate', wall: ['WallAstra_Straight_Window', 'WallAstra_Straight_Flat', 'WallBand_Straight'], top: 'TopPlastic_Straight', open: false, h: 8 },
-  r: { name: 'The Reactor', floor: 'Platform_X', wall: ['WallBand_Straight', 'WallAstra_Straight_Divided', 'WallBand_Straight'], top: 'TopCables_Straight_Hanging', open: false, h: 8 },
-  o: { name: 'Observation Deck', floor: 'Platform_Metal', wall: ['WallAstra_Straight_Window', 'WallWindow_Straight', 'WallAstra_Straight_Window'], top: 'TopSimple_Straight', via: 'm', y: RISE, h: 8 },
-  s: { name: 'Observation Deck', floor: 'Platform_Metal', wall: ['WallAstra_Straight_Flat', 'WallAstra_Straight_Flat', 'WallAstra_Straight_Divided'], top: 'TopSimple_Straight', via: 'm', stair: true, h: 8 },
+  m: { name: 'Med Bay', floor: 'Platform_CenterPlate', wall: ['WallAstra_Straight_Window', 'WallAstra_Straight_Flat', 'WallBand_Straight'], top: 'TopPlastic_Straight', open: false },
+  r: { name: 'The Reactor', floor: 'Platform_X', wall: ['WallBand_Straight', 'WallAstra_Straight_Divided', 'WallBand_Straight'], top: 'TopCables_Straight_Hanging', open: false },
   q: { name: 'Crew Quarters', floor: 'Platform_3Plates', wall: ['WallAstra_Straight_Flat', 'WallAstra_Straight_Divided', 'WallAstra_Straight'], top: 'TopPlastic_Straight', open: false },
 };
 // Doors that points open: the edge between two cells. Closed, they stop everything: you, the dead, bullets.
@@ -67,17 +64,19 @@ export const DOORS = [
 ];
 // Where the dead come from (in the dark, out of sight if they can be), the ones found feeding, the player's start,
 // the gun on the wall, and what stands about.
-export const SPAWNS = [[9, 1], [10, 1], [11, 6], [8, 6], [11, 4], [16, 4], [17, 4], [13, 2], [7, 10], [11, 8], [9, 11], [16, 10], [13, 11], [14, 7]]   // (none in the Arrival Bay: it is the safe room; they come in through the Spine).map(([i, j]) => ({ i, j }));
+export const SPAWNS = [[1, 1], [6, 6], [1, 6], [6, 1], [4, 6], [8, 2], [9, 1], [10, 1], [9, 2], [8, 5], [11, 5], [16, 7], [18, 6], [11, 10], [7, 11], [16, 11], [11, 6], [8, 6], [11, 4], [16, 4], [17, 4], [13, 2], [7, 10], [11, 8], [9, 11], [16, 10], [13, 11], [14, 7]].map(([i, j]) => ({ i, j }));   // (each a hole in the wall with a red gash over it; the Arrival Bay's five open only once the station is awake: until you leave the bay it is the safe room)
 export const FEEDERS = [{ i: 8, j: 2, yaw: 0.6 }];   // (in the Spine: the bay is safe until you leave it)
 // Where Jun's recorders can lie (logs.js): [x, z, yaw]; the first is the bay's, by the first body, always day one.
-export const LOG_SPOTS = [[6.9, 13.1, 1.2], [30.7, 7.0, 0.4], [41.5, 9.3, 2.8], [34.6, 18.5, 2.0], [54.5, 10.6, 1.1], [62.4, 21.4, 0.3], [31.6, 38.5, 1.9], [42.4, 34.6, 2.4], [10.2, 6.4, 0.7], [26.4, 8.8, 1.5], [58.2, 18.4, 2.2], [38.4, 39.2, 0.9], [57.5, 42.6, 1.0], [66.5, 11.2, 2.2, RISE], [51.9, 39.4, 0.5]];   // ([x, z, yaw, y]: the deck's lies a floor up)
+export const LOG_SPOTS = [[6.9, 13.1, 1.2], [30.7, 7.0, 0.4], [41.5, 9.3, 2.8], [34.6, 18.5, 2.0], [54.5, 10.6, 1.1], [62.4, 21.4, 0.3], [31.6, 38.5, 1.9], [42.4, 34.6, 2.4], [10.2, 6.4, 0.7], [26.4, 8.8, 1.5], [58.2, 18.4, 2.2], [38.4, 39.2, 0.9], [57.5, 42.6, 1.0], [66.0, 15.4, 2.2], [51.9, 39.4, 0.5]];
 // Kask's hand, on the walls, in blood: [i, j, side, along, height, text]. The first is what his lighter finds first.
 export const WRITING = [[2, 1, 'n', 0.3, 1.55, 'NINE DAYS'], [1, 5, 'w', 0.2, 1.5, 'WE WERE HERE'], [8, 1, 'n', 0.1, 1.6, 'HOLD IT SHUT'], [12, 2, 'n', 0.4, 1.55, "DON'T OPEN MED BAY"], [7, 8, 'w', 0.2, 1.6, 'DAY 4'], [16, 4, 'n', -0.4, 1.45, 'TWO KEYS'], [13, 11, 's', 0.2, 1.5, 'SHE WAS RIGHT'], [16, 4, 'n', 0.4, 1.5, 'LOOK UP'], [16, 9, 'e', 0.1, 1.6, 'DAY 6  ·  THREE LEFT']];
 export const NINE_DAYS = { x: 0, y: 0, z: 0, nx: 0, nz: 0 };
 // The crank for the dish (the uplink needs two, with friends): a wheel on a post in the Med Bay, a few strides from the console.
 export const CRANK = { x: 13 * CELL + 0.4, z: 4 * CELL + 0.6 };
-// The dead-man safe (the crew's two-key rule after day four): two plates on the Lab's south wall (the Reactor door's wall), a safe between them.
-export const SAFE = { a: { x: 10 * CELL, z: 6 * CELL + FACE }, b: { x: 11 * CELL, z: 6 * CELL + FACE }, at: { x: 10.5 * CELL, z: 6 * CELL + FACE } };
+// The two keys (his ask): two terminals at opposite ends of the station, KEY A on the Arrival Bay's north wall, KEY B on
+// Lab 2's south wall by the Reactor's door; turn one and the other within the window (seconds: index.js) and the Reactor's
+// door opens, and the safe beside KEY B with it. { x, z, face: the way its screen looks, name, where }
+export const SAFE = { a: { x: 3 * CELL + 0.8, z: 1 * CELL - FACE, face: 0, name: 'KEY A', where: 'the Arrival Bay' }, b: { x: 11 * CELL, z: 6 * CELL + FACE, face: Math.PI, name: 'KEY B', where: 'Lab 2, by the Reactor door' }, at: { x: 10.5 * CELL - 0.8, z: 6 * CELL + FACE } };
 // The crawlspace: a duct through the rock from the Spine's south wall (cell 8, 2) to the Lab's north wall (cell 8, 4), a metre
 // square, on your belly. Either end has a hatch; it is the old shaft access (log 3). Something uses it too.
 export const DUCT = { from: new THREE.Vector3(8 * CELL, 0, 2 * CELL + FACE - 0.05), to: new THREE.Vector3(8 * CELL, 0, 4 * CELL - FACE + 0.05), w: 1.1, h: 1.1 };   // (where NINE DAYS is, and which way it faces into the room: filled in when the station is built)
@@ -91,12 +90,14 @@ export const UPLINK = { i: 14, j: 4, x: 14 * CELL, z: 4 * CELL - 1.25 };
 export const LIFT_CELL = { i: 1, j: 2 };
 // The bay crate the drill sends you over (PROPS' 'Prop_Crate4' at 4.5, 3.6: in metres).
 export const BAY_CRATE = new THREE.Vector3(4.5 * CELL - CELL / 2, 0.9, 3.6 * CELL - CELL / 2);
-export const WALL_GUNS = [{ gun: 'machineGun', price: 1000, i: 7, j: 2, side: 'n' }, { gun: 'shotgun', price: 1200, i: 14, j: 6, side: 's' }];
+export const WALL_GUNS = [{ gun: 'machineGun', price: 1000, i: 7, j: 2, side: 'n' }, { gun: 'shotgun', price: 1200, i: 13, j: 5, side: 'w' }];
 // The crate in the Reactor: points in, a gun out (any of them: see arms.js).
 export const CRATE = { x: 36, z: 44.6, price: 950 };   // (where it stands: against the Reactor's back wall, behind its core)
 export const CORE = { x: 36, z: 36 };                  // the reactor's core, in the middle of it
 const PROPS = [
-  ['Prop_Crate4', 1.3, 0.56, 1.6, 0.3], ['Prop_Crate3', 1.7, 0.56, 1.0, 0.1], ['Prop_Crate4', 1.4, 1.68, 1.5, 0.2], ['Prop_Barrel_Large', 4.6, 0, 4.4, 0],
+  // (the corner pair stands off the west wall, one square on the other: offset, they made a pocket in front of the (1,1) hole
+  // that a zombie coming through it could not get out of)
+  ['Prop_Crate4', 1.6, 0.56, 1.6, 0.3], ['Prop_Crate3', 1.7, 0.56, 1.0, 0.1], ['Prop_Crate4', 1.6, 1.68, 1.6, 0.45], ['Prop_Barrel_Large', 4.6, 0, 4.4, 0],
   ['Prop_Barrel_Large', 4.2, 0, 4.7, 0], ['Prop_Crate4', 3.6, 0.56, 1.2, 0.8], ['Prop_Computer', 8.3, 0, 4.25, 0], ['Prop_Computer', 8.75, 0, 4.25, 0],
   ['Prop_Crate3', 11.3, 0.56, 6.4, 0.5], ['Prop_Barrel_Large', 11.6, 0, 4.3, 0], ['Prop_Chest', 9.0, 0, 6.6, 0], ['Prop_Vent_Big', 6.0, 3.6, 1.62, 0],
   // the Med Bay: beds (crates under sheets, near enough), its computers, a cabinet
@@ -112,8 +113,6 @@ const PROPS = [
   ['Prop_Crate4', 8.1, 0.56, 11.7, 0.6], ['Prop_Barrel_Large', 11.5, 0, 11.75, 0], ['Column_Pipes', 8.25, 0, 11.4, 0], ['Column_Pipes', 10.75, 0, 11.4, Math.PI],
   // the Med Bay's east end: the nook under the stairs, more beds
   ['Prop_Crate4', 17.9, 0.56, 4.7, 0.1], ['Prop_Crate3', 18.4, 0.56, 4.6, 0.7], ['Prop_Barrel_Large', 18.6, 0, 5.4, 0], ['Prop_Chest', 19.3, 0, 7.6, Math.PI],
-  // the Observation Deck (a floor up): its consoles at the windows, a chest, a vent
-  ['Prop_Computer', 15.6, RISE, 3.15, 0], ['Prop_Computer', 16.1, RISE, 3.15, 0], ['Prop_Chest', 18.3, RISE, 3.3, Math.PI], ['Prop_AccessPoint', 15.2, RISE + 1.4, 3.1, -Math.PI / 2],
   // the Crew Quarters: lockers along the north wall, footlockers, crates
   ['Prop_ItemHolder', 13.3, 0, 9.22, 0], ['Prop_ItemHolder', 13.8, 0, 9.22, 0], ['Prop_ItemHolder', 14.3, 0, 9.22, 0], ['Prop_ItemHolder', 14.8, 0, 9.22, 0],
   ['Prop_Chest', 14.6, 0, 11.05, 0], ['Prop_Chest', 15.6, 0, 11.05, 0], ['Prop_Crate4', 16.9, 0.56, 9.5, 0.3], ['Prop_Crate3', 17.0, 0.56, 10.1, 0.9], ['Prop_Barrel_Large', 13.4, 0, 11.7, 0],
@@ -267,12 +266,6 @@ export async function buildStation(scene) {
       place('BottomMetal_Straight', cx, base, cz, yaw);
     }
   }
-  // Out of the deck's windows: the Moon, and the Earth up over it (a painted sky behind the glass; the kit's windows look onto rock otherwise).
-  {
-    const sky = new THREE.Mesh(new THREE.PlaneGeometry(260, 95), new THREE.MeshBasicMaterial({ map: moonTexture(), toneMapped: false, fog: false }));
-    sky.position.set(16.5 * CELL, 14, 3 * CELL - BACK - 125); scene.add(sky);
-    moonOutside(scene);
-  }
   // The bunks (the Crew Quarters): a frame of posts, two tiers, a blanket on each.
   {
     const steel = new THREE.MeshStandardMaterial({ color: 0x5a5c62, metalness: 0.75, roughness: 0.45 }), blanket = new THREE.MeshStandardMaterial({ map: blanketTexture(), roughness: 0.95 });
@@ -317,7 +310,10 @@ export async function buildStation(scene) {
     for (const half of [-1, 1]) {
       const panel = pieces.Door_Metal.clone(true);
       panel.position.copy(d.at);
-      panel.rotation.y = d.across ? (half < 0 ? 0 : Math.PI) : (half < 0 ? Math.PI / 2 : -Math.PI / 2);
+      // (each half turned so that it covers the half of the doorway it slides out of: in a north-south wall the two had it
+      // the other way round, so "open" slid each across the other's half and the doorway stayed shut to look at, though
+      // it was open to walk through: the Med Bay's and the Crew Quarters')
+      panel.rotation.y = d.across ? (half < 0 ? 0 : Math.PI) : (half < 0 ? -Math.PI / 2 : Math.PI / 2);
       panel.userData.half = half;
       panel.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
       group.add(panel);
@@ -333,7 +329,7 @@ export async function buildStation(scene) {
     for (const half of [-1, 1]) {
       const panel = pieces.Door_Metal.clone(true);
       panel.position.copy(at3);
-      panel.rotation.y = di ? (half < 0 ? Math.PI / 2 : -Math.PI / 2) : (half < 0 ? 0 : Math.PI);
+      panel.rotation.y = di ? (half < 0 ? -Math.PI / 2 : Math.PI / 2) : (half < 0 ? 0 : Math.PI);   // (as the doors' halves, above)
       panel.userData.half = half; panel.userData.across = !di;
       panel.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
       group.add(panel); panels.push(panel);
@@ -376,8 +372,11 @@ export async function buildStation(scene) {
     {
       const dark = new THREE.MeshStandardMaterial({ color: 0x2c2d31, metalness: 0.55, roughness: 0.7 });
       const len = DUCT.to.z - DUCT.from.z + 1.4, zc = (DUCT.from.z + DUCT.to.z) / 2, half = DUCT.w / 2, top = DUCT.h;
+      // (lined with riveted sheet: seams across it every 40 cm, rivets along them, rust and grime run down from them)
+      const lining = (along, across) => { const t = ductTexture(); t.repeat.set(along, across); return new THREE.MeshStandardMaterial({ map: t, color: 0xb8bcc4, metalness: 0.55, roughness: 0.62 }); };
       for (const [x, y, w, h] of [[-half - 0.05, top / 2, 0.1, top], [half + 0.05, top / 2, 0.1, top], [0, top + 0.05, DUCT.w + 0.2, 0.1], [0, -0.05, DUCT.w + 0.2, 0.1]]) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, len), dark); m.position.set(DUCT.from.x + x, y, zc); m.receiveShadow = true; scene.add(m);
+        const sideFace = w < h;   // (a wall: its face is the box's x side; the roof and floor: its y side)
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, len), lining(len / 0.8, (sideFace ? h : w) / 0.8)); m.position.set(DUCT.from.x + x, y, zc); m.receiveShadow = true; scene.add(m);
       }
       for (let k = 0; k < 5; k++) { const rib = new THREE.Mesh(new THREE.BoxGeometry(DUCT.w + 0.1, 0.04, 0.06), dark); rib.position.set(DUCT.from.x, top - 0.02, DUCT.from.z + 0.6 + k * (len - 1.5) / 4); scene.add(rib); }
       const lamp = new THREE.PointLight(0xff2a14, 1.4, 4, 1.6); lamp.position.set(DUCT.from.x, top - 0.15, zc); scene.add(lamp);
@@ -388,8 +387,16 @@ export async function buildStation(scene) {
         const amber = new THREE.PointLight(0xffb347, 1.6, 5, 1.6); amber.position.set(DUCT.from.x, 1.9, z + into * 0.6); scene.add(amber);
         ductLamps.push(amber);
       }
-      const vent = pieces.Prop_Vent_Big;
-      if (vent) for (const [z, rx] of [[DUCT.from.z - 0.02, Math.PI / 2], [DUCT.to.z + 0.02, -Math.PI / 2]]) { const v = vent.clone(true); v.position.set(DUCT.from.x, 0.55, z); v.rotation.x = rx; v.scale.setScalar(0.9); v.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(v); }
+      // (each hatch: a frame round the hole in the wall, and its grille, louvred, hinged at the top and swung up open over it)
+      const steel = new THREE.MeshStandardMaterial({ color: 0x3c3f45, metalness: 0.7, roughness: 0.45 });
+      for (const [z, into] of [[DUCT.from.z, -1], [DUCT.to.z, 1]]) {
+        const fz = z + into * 0.04, W = DUCT.w + 0.16, Hh = DUCT.h + 0.12;
+        for (const [x, y, w, h] of [[0, Hh, W + 0.1, 0.08], [0, 0.02, W + 0.1, 0.06], [-W / 2, Hh / 2, 0.08, Hh], [W / 2, Hh / 2, 0.08, Hh]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), steel); b.position.set(DUCT.from.x + x, y, fz); b.castShadow = true; scene.add(b); }
+        const flap = new THREE.Group(); flap.position.set(DUCT.from.x, Hh, fz + into * 0.03); flap.rotation.x = into * -1.25; scene.add(flap);   // (hinged along the frame's top, swung out and up)
+        for (const [x, y, w, h] of [[0, -0.03, W - 0.04, 0.05], [0, -Hh + 0.08, W - 0.04, 0.05], [-W / 2 + 0.03, -Hh / 2, 0.05, Hh - 0.08], [W / 2 - 0.03, -Hh / 2, 0.05, Hh - 0.08]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), steel); b.position.set(x, y, 0); b.castShadow = true; flap.add(b); }
+        for (let n = 0; n < 7; n++) { const slat = new THREE.Mesh(new THREE.BoxGeometry(W - 0.1, 0.11, 0.012), steel); slat.position.set(0, -0.13 - n * ((Hh - 0.2) / 7), 0); slat.rotation.x = 0.55; flap.add(slat); }
+        for (const x of [-W / 2 + 0.12, W / 2 - 0.12]) { const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.12, 8), steel); hinge.rotation.z = Math.PI / 2; hinge.position.set(DUCT.from.x + x, Hh, fz + into * 0.03); scene.add(hinge); }
+      }
     }
     // (the crank: a post and a wheel, by the dish's cable run)
     {
@@ -400,14 +407,23 @@ export async function buildStation(scene) {
       station_crank = wheel;
       const tag = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.55), new THREE.MeshBasicMaterial({ map: signTexture('DISH', 'MANUAL  ·  CRANK', '#9ae6ff', '#ffd27a'), transparent: true, side: THREE.DoubleSide, toneMapped: false })); tag.position.set(CRANK.x - 0.2, 1.7, CRANK.z); tag.rotation.y = -Math.PI / 2; scene.add(tag);
     }
-    // (the safe: two plates a cell apart on the Lab's south wall, the safe between them, and the shutter that slides up)
+    // (the two keys' terminals; the safe on Lab 2's south wall by KEY B, and the shutter that slides up)
     {
       const dark = new THREE.MeshStandardMaterial({ color: 0x3a3b3f, metalness: 0.5, roughness: 0.6 });
-      for (const P of [SAFE.a, SAFE.b]) { const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.06), dark); plate.position.set(P.x, 1.25, P.z - 0.03); scene.add(plate); const led = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a14, toneMapped: false })); led.position.set(P.x, 1.42, P.z - 0.07); scene.add(led); P.led = led; }
+      // (each key: a terminal against the wall, its screen saying which key it is and what it opens, a lamp on it)
+      for (const P of [SAFE.a, SAFE.b]) {
+        const out = new THREE.Vector3(Math.sin(P.face), 0, Math.cos(P.face));   // (from the wall into the room)
+        const pc = pieces.Prop_Computer?.clone(true);
+        if (pc) { pc.position.set(P.x, 0, P.z + out.z * 0.42); pc.rotation.y = P.face; pc.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } }); scene.add(pc); }
+        const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.34), new THREE.MeshBasicMaterial({ map: keyScreen(P.name, false), toneMapped: false }));
+        scr.position.set(P.x, 1.62, P.z + out.z * 0.05); scr.rotation.y = P.face; scene.add(scr); P.screen = scr;
+        const glow = new THREE.PointLight(0xffd27a, 0.9, 3.2, 1.6); glow.position.set(P.x, 1.5, P.z + out.z * 0.6); scene.add(glow); P.glow = glow;
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a14, toneMapped: false })); led.position.set(P.x + 0.42 * Math.cos(P.face), 1.62, P.z + out.z * 0.06); scene.add(led); P.led = led;
+      }
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.5), dark); box.position.set(SAFE.at.x, 1.1, SAFE.at.z - 0.25); scene.add(box);
       const door = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.66, 0.05), new THREE.MeshStandardMaterial({ color: 0x55575c, metalness: 0.7, roughness: 0.4 })); door.position.set(SAFE.at.x, 1.1, SAFE.at.z - 0.53); scene.add(door);
       SAFE.door = door;
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: signTexture('TWO KEYS', 'BOTH PLATES  ·  ONE SECOND', '#ffd27a', '#ff5040'), transparent: true, toneMapped: false })); sign.position.set(SAFE.at.x, 1.95, SAFE.at.z - 0.02); sign.rotation.y = Math.PI; scene.add(sign);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: signTexture('TWO KEYS', 'KEY A IN THE BAY  ·  KEY B HERE', '#ffd27a', '#ff5040'), transparent: true, toneMapped: false })); sign.position.set(SAFE.at.x, 1.95, SAFE.at.z - 0.02); sign.rotation.y = Math.PI; scene.add(sign);
     }
     // (the writing: her words, each on a plane just off the wall, the paint run)
     for (const [k, [i, j, side, along, height, text]] of WRITING.entries()) {
@@ -690,6 +706,34 @@ function gashTexture() {
 }
 
 // A lit sign: a title and a line under it, in a colour each.
+// A key terminal's screen: which key, what it opens, and (turned) that it is.
+export function keyScreen(name, on, left = 0) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 140;
+  const g = c.getContext('2d');
+  g.fillStyle = on ? '#062012' : '#1a0806'; g.fillRect(0, 0, 256, 140);
+  for (let y = 0; y < 140; y += 3) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, y, 256, 1); }
+  g.textAlign = 'center'; g.fillStyle = on ? '#7dffb0' : '#ff5040';
+  g.font = '700 56px Anton, Impact, sans-serif'; g.fillText(name, 128, 62);
+  g.font = '600 20px "Barlow Condensed", sans-serif'; g.fillStyle = on ? '#bfffd8' : '#ffd27a';
+  g.fillText(on ? `TURNED  ·  THE OTHER, ${Math.ceil(left)} S` : 'TWO KEYS OPEN THE REACTOR', 128, 96);
+  g.fillText(on ? '' : 'E  ·  TURN THIS, THEN THE OTHER', 128, 122);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// The crawlspace's lining: riveted steel sheet (seams across it, rivets along them, rust and grime run from them).
+function ductTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#4a4d53'; g.fillRect(0, 0, 256, 256);
+  for (let n = 0; n < 2600; n++) { const v = 60 + Math.random() * 40; g.fillStyle = `rgba(${v},${v + 2},${v + 6},0.25)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 4, 1 + Math.random() * 2); }
+  for (const y of [0, 128]) {
+    g.fillStyle = '#26282c'; g.fillRect(0, y, 256, 5); g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(0, y + 5, 256, 1);
+    for (let x = 8; x < 256; x += 22) { g.fillStyle = '#2a2c30'; g.beginPath(); g.arc(x, y + 11, 3.2, 0, 7); g.fill(); g.fillStyle = 'rgba(255,255,255,0.28)'; g.beginPath(); g.arc(x - 1, y + 10, 1.2, 0, 7); g.fill(); }
+    for (let n = 0; n < 9; n++) { const x = Math.random() * 256, h = 20 + Math.random() * 70; const grd = g.createLinearGradient(0, y + 12, 0, y + 12 + h); grd.addColorStop(0, 'rgba(92,46,20,0.55)'); grd.addColorStop(1, 'rgba(92,46,20,0)'); g.fillStyle = grd; g.fillRect(x, y + 12, 2 + Math.random() * 5, h); }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
 // Words on a wall in blood: a hand that shook, and the paint that ran.
 export function writingTexture(text) {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 280;
@@ -715,39 +759,6 @@ export function writingTexture(text) {
   for (let i = 0; i < 6; i++) { g.fillStyle = `rgba(90,6,8,${0.15 + Math.random() * 0.2})`; g.fillRect(Math.random() * 900, 60 + Math.random() * 120, 60 + Math.random() * 200, 8 + Math.random() * 20); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
-}
-// The Moon itself out of the deck's windows: the station stands on a crater wall, and the ground (the Free Ride level's
-// own, moonHeight and the regolith) lies twenty-odd metres below the deck and runs off to the painted horizon. A ledge
-// of it just under the sill; the Sun low from the east.
-function moonOutside(scene) {
-  const W = 180, D = 130, nx = 90, nz = 65, x0 = 16.5 * CELL, z0 = 3 * CELL - BACK - 2 - D / 2;
-  const geo = new THREE.PlaneGeometry(W, D, nx, nz);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position, uv = geo.attributes.uv;
-  const base = -16;
-  for (let i = 0; i < pos.count; i++) {
-    const lx = pos.getX(i), lz = pos.getZ(i);
-    let h = base + (moonHeight(MOON.x + lx * 0.8, MOON.z + lz * 0.8 - 60, true) - moonHeight(MOON.x, MOON.z - 60, true)) * 0.8 + Math.max(0, -lz - 20) * 0.1;   // (and rising toward the horizon, so that there is ground in the window and not only sky)
-    const wz = z0 + lz;
-    if (wz > -3) h = Math.min(h, -7);   // (under the station's own rooms: well below their floors)
-    pos.setY(i, h);
-    uv.setXY(i, lx / 9, lz / 9);
-  }
-  geo.computeVertexNormals();
-  // (the Sun, low from the east, baked into the vertices: an unlit material, so that the station's own lamps and the Sun
-  // never touch each other's side of the glass)
-  const nrm = geo.attributes.normal, L = new THREE.Vector3(0.62, 0.5, -0.6).normalize(), col = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) { const d = Math.max(0, nrm.getX(i) * L.x + nrm.getY(i) * L.y + nrm.getZ(i) * L.z), sh = 0.22 + 0.9 * d; col[i * 3] = sh; col[i * 3 + 1] = sh; col[i * 3 + 2] = sh * 1.02; }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const tex = regolithTexture(); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-  const ground = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, fog: false }));
-  ground.position.set(x0, 0, z0);
-  scene.add(ground);
-  // (the ledge under the windows: the top of the crater wall the station is set into, and its face going down)
-  const ledge = new THREE.Mesh(new THREE.BoxGeometry(26, 1.2, 3.2), new THREE.MeshBasicMaterial({ map: tex, color: 0xa8a8ab, fog: false }));
-  ledge.position.set(x0, RISE - 0.6, 3 * CELL - BACK - 1.6); scene.add(ledge);
-  const face = new THREE.Mesh(new THREE.BoxGeometry(26, 30, 1.0), new THREE.MeshBasicMaterial({ color: 0x2a2a2e, fog: false }));
-  face.position.set(x0, RISE - 15.5, 3 * CELL - BACK - 3.6); scene.add(face);
 }
 // The painted sky behind it: the horizon's hills, the Earth up over them, the stars.
 export function moonTexture() {

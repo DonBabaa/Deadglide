@@ -41,7 +41,7 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
   const steam = STEAM.map(([x, z, dx, dz]) => ({ p: new THREE.Vector3(x, 1.1, z), dir: new THREE.Vector3(dx, 0, dz), due: 12 + Math.random() * 20, going: 0 }));
   const puffTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 2, 32, 32, 30); r.addColorStop(0, 'rgba(230,232,236,0.55)'); r.addColorStop(0.5, 'rgba(210,214,220,0.22)'); r.addColorStop(1, 'rgba(200,204,210,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const puffs = Array.from({ length: 48 }, () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, opacity: 0, depthWrite: false })); s.visible = false; s.userData = { life: 0, v: new THREE.Vector3() }; scene.add(s); return s; });
-  let nextPuff = 0, hangCables = [], ankleWait = 0, knockT = 0, knockDoor = null;
+  let nextPuff = 0, hangCables = [], ankleWait = 0, knockT = 0;
   // ---- The cheap ones, by place (each once a run): something passes the deck's windows; a hand over the parapet, and
   // the one it belongs to coming down into the Med Bay; steps on the deck over your head; a body under a blanket in
   // the quarters that moves, and then gets up; one sitting at the top of the stairs with its back to you; blood dripping
@@ -137,7 +137,7 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
       return true;
     },
     overhead(me) {
-      sound.overhead?.(new THREE.Vector3(me.pos.x, RISE + 0.6, Math.min(PARAPET_Z - 0.6, me.pos.z)));
+      sound.overhead?.(new THREE.Vector3(me.pos.x, HEIGHT + 0.6, me.pos.z));   // (on the roof)
       api.events.push({ kind: 'overhead' });
       return true;
     },
@@ -150,8 +150,8 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
     },
     sitter(me, host) {
       if (!host || sitter) return false;
-      const z = dead.spawn('walker', 15 * CELL - 1.0, DECK_Z + 0.2, Math.PI / 2, 'walk', dead.hpNow || 300);   // (at the top of the stairs, its back to them)
-      z.state = 'stand'; z.standFor = 1e9; z.watch = false; z.t = 0; z.y = RISE; z.sitter = true;
+      const z = dead.spawn('walker', 16 * CELL, 4 * CELL - FACE + 0.55, Math.PI, 'walk', dead.hpNow || 300);   // (stood at the Med Bay's north wall, its back to the room)
+      z.state = 'stand'; z.standFor = 1e9; z.watch = false; z.t = 0; z.y = 0; z.sitter = true;
       sitter = z; sitterT = 0; api.spawned++;
       return true;
     },
@@ -277,9 +277,8 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
         const zone = station.zoneAt(me.pos), live = playing && !me.safe && !me.downed;
         // (chest, wheel, bunk and the missing body happen for everyone: whoever sets one off tells the others: 'net' events)
         const once = (id, when) => { if (live && !placeDone[id] && when()) { if (placeFire[id](me, host)) { placeDone[id] = true; api.fired[id] = (api.fired[id] || 0) + 1; if (NETTED.has(id)) api.events.push({ kind: 'net', id, x: id === 'gone' && gone ? gone.p.x : 0, z: id === 'gone' && gone ? gone.p.z : 0 }); } } };
-        once('window', () => (zone === 'o' || zone === 's') && round >= 1 && Math.cos(walker.yaw) < -0.2 && me.pos.z < DECK_Z + 1.6);
-        once('parapet', () => zone === 'm' && round >= 2 && me.pos.z < PARAPET_Z + 2.6 && me.pos.x > 15 * CELL - 2 && me.pos.x < 17 * CELL + 2 && quietAround(me.pos, 6));
-        once('overhead', () => zone === 'm' && round >= 1 && me.pos.z < 5 * CELL + 1 && !placeDone.window);
+        // (the deck's two, the window and the parapet, went with it; the steps are on the roof now)
+        once('overhead', () => zone === 'm' && round >= 1 && me.pos.z < 5 * CELL + 1);
         once('bunk', () => zone === 'q' && Math.hypot(me.pos.x - BUNKS[1][0], me.pos.z - BUNKS[1][1]) < 2.0);
         once('sitter', () => zone === 'm' && round >= 1);
         once('chest', () => zone === 'q' && Math.hypot(me.pos.x - CHEST.x, me.pos.z - CHEST.z) < 2.3);
@@ -307,7 +306,7 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
         if (sitter && (sitter.hp <= 0 || sitter.state !== 'stand')) sitter = null;
         if (sitter) {
           sitterT += dt;
-          const near = live && Math.hypot(sitter.pos.x - me.pos.x, sitter.pos.z - me.pos.z) < 3.6 && (walker.y > 0.4 || zone === 's' || zone === 'o');
+          const near = live && Math.hypot(sitter.pos.x - me.pos.x, sitter.pos.z - me.pos.z) < 3.6 && zone === 'm';
           // (and it does not keep a round open: the last one standing, or long enough, it comes down on its own)
           if (near || dead.alive <= 1 || sitterT > 75) { sitter.state = 'scream'; sitter.t = 0; sitter.standFor = 0; if (near) { api.events.push({ kind: 'sitter', z: sitter }); api.fired.sitterUp = 1; } sitter = null; }
         }
@@ -323,10 +322,10 @@ export function createScares({ station, dead, walker, sound, pieces, scene }) {
           }
           else if (!bunkT_done) { bunkT_done = true; if (host) { const z = dead.spawn('walker', BUNKS[1][0] + 0.1, BUNKS[1][1] - 1.0, Math.atan2(me.pos.x - BUNKS[1][0], me.pos.z - BUNKS[1][1] + 1.0), 'rise', dead.hpNow || 300); z.watch = false; api.spawned++; api.events.push({ kind: 'bunkUp', z }); } }
         }
-        // (the drip: off the parapet's edge, onto the plates, while you are in the Med Bay)
+        // (the drip: from the ceiling, onto the plates, while you are in the Med Bay)
         if (zone === 'm') for (const s of drips) {
           const u = s.userData;
-          if (!s.visible) { u.wait -= dt; if (u.wait <= 0) { s.visible = true; s.position.set(15 * CELL - 1 + Math.random() * (2 * CELL + 2), RISE + 0.02, PARAPET_Z - 0.12 + Math.random() * 0.15); u.vy = 0; } continue; }
+          if (!s.visible) { u.wait -= dt; if (u.wait <= 0) { s.visible = true; s.position.set(15 * CELL - 1 + Math.random() * (2 * CELL + 2), HEIGHT - 0.25, PARAPET_Z + 0.6 + Math.random() * 0.3); u.vy = 0; } continue; }
           u.vy -= 9.8 * dt; s.position.y += u.vy * dt;
           if (s.position.y <= 0.02) { s.visible = false; u.wait = 0.5 + Math.random() * 1.4; sound.drip?.(s.position.clone()); }
         } else for (const s of drips) s.visible = false;

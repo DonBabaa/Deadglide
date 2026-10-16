@@ -14,7 +14,7 @@
 // they can get you up).
 import * as THREE from 'three';
 import { syncAudioControls } from '../ui/audioControls.js';
-import { buildStation, CELL, START, HEIGHT, OPENINGS, FEEDERS, WALL_GUNS, ZONES, CRATE, CORE, LOUNGE, UPLINK, CORPSES, LOG_SPOTS, BAY_CRATE, ceilOf, levelOf, RISE } from './station.js';
+import { buildStation, CELL, START, HEIGHT, OPENINGS, FEEDERS, WALL_GUNS, ZONES, CRATE, CORE, LOUNGE, UPLINK, CORPSES, LOG_SPOTS, BAY_CRATE, ceilOf, levelOf, RISE, keyScreen } from './station.js';
 import { createLogs } from './logs.js';
 import { createLift } from './lift.js';
 import { DUCT, CRANK, SAFE, BUNKS, crankWheel, ductLights } from './station.js';
@@ -152,7 +152,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   }
   // One of them has you: { id, z, hold } while it does (hold: how near you are to throwing it off).
   let grab = null, grabCut = null;
-  let lift = null, exiting = false, debris = null;
+  let lift = null, exiting = false, debris = null, cutFill = null;
   let lastZone = null, seenZones = new Set();   // (a banner with the room's name the first time you walk into it)   // the lift (lift.js); the way out playing; what a decompression blows up the shaft   // grabCut: { kind: 'on' | 'off' | 'bite', t, z }: a cut-in of it, a few frames long
   function startGrab(id, z) {
     if (grab || me.downed || me.out || game.over || me.safe || me.shield) return;
@@ -244,16 +244,34 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       else { const f = c.face || 0; walker.pos.set(c.pos.x - Math.sin(f) * 0.35, 0, c.pos.z - Math.cos(f) * 0.35); walker.vel.set(0, 0, 0); me.bleed = Math.min(RULES.bleed, me.bleed + dt * 0.5); }
     }
   }
-  // THE CRANK (with friends): A and D, one after the other, at the wheel: the dish turns while you do.
-  let crankLast = 0, crankKey = '', crankT = 0;
-  function runCrank(dt, aKey, dKey) {
+  // THE CRANK (with friends): at the wheel, the mouse turned round and round: the dish turns while you do.
+  let crankT = 0;
+  // THE CRANK: turn the mouse round in circles, either way, as if it were the handle. Which way the mouse is travelling is
+  // followed from one frame to the next; a steady turn one way (not a scribble) winds the wheel round with it.
+  let crankDir = null, crankTurn = 0, crankSense = 0;
+  function runCrank(dt, mouse) {
     const near = Math.hypot(me.pos.x - CRANK.x, me.pos.z - CRANK.z) < 1.7, busy = game.story?.busy === 'signal';
     crankT = Math.max(0, crankT - dt);
     if (near && busy) {
-      const key = aKey && crankKey !== 'a' ? 'a' : dKey && crankKey !== 'd' ? 'd' : '';
-      if (key) { crankKey = key; crankT = 0.7; crankLast += 1; const w = crankWheel(); if (w) w.rotateZ(0.6); sound.clatter?.('mag', V3(CRANK.x, 1, CRANK.z), 0.5); }
-      hud.qte('A / D', 'CRANK THE DISH', game.story?.k ?? 0, crankT > 0 ? '#7dffb0' : '#ff3a2a', null, crankT > 0 ? 'keep it turning' : 'A, then D, then A...');
-    } else if (crankShown) hud.qte(null);
+      let [mx, my] = mouse || [0, 0];
+      if (testing?.crank) { const a = time * 9; mx = Math.cos(a) * 14; my = Math.sin(a) * 14; }   // (the tests: the mouse going round)
+      if (Math.hypot(mx, my) > 2.5) {
+        const dir = Math.atan2(my, mx);
+        if (crankDir !== null) {
+          const turn = Math.atan2(Math.sin(dir - crankDir), Math.cos(dir - crankDir));
+          if (Math.abs(turn) < 1.2) {   // (a turn, not a reversal)
+            crankSense = crankSense * 0.8 + Math.sign(turn) * 0.2;   // (which way it is going round, steadied)
+            if (Math.abs(crankSense) > 0.5 && Math.sign(turn) === Math.sign(crankSense)) {
+              crankTurn += Math.abs(turn);
+              const w = crankWheel(); if (w) w.rotateZ(turn * 0.8);
+              if (crankTurn > 1.6) { crankTurn = 0; crankT = 0.7; sound.clatter?.('mag', V3(CRANK.x, 1, CRANK.z), 0.45); }
+            }
+          }
+        }
+        crankDir = dir;
+      }
+      hud.qte('MOUSE', 'CRANK THE DISH', game.story?.k ?? 0, crankT > 0 ? '#7dffb0' : '#ff3a2a', null, crankT > 0 ? 'keep it turning' : 'turn the mouse round in circles, like the handle');
+    } else { if (crankShown) hud.qte(null); crankDir = null; crankSense = 0; }
     crankShown = near && busy;
     me.cranking = near && busy && crankT > 0;
   }
@@ -273,29 +291,49 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     arms.bonus = mate ? 1.25 : 1;
     if (mate && time - b2bSaid > 40) { b2bSaid = time; hud.banner('BACK TO BACK', 0x9ae6ff); const here = me.pos.clone().setY(1.3), sd = sideOf(f); playCut([{ for: 1.1, cam: (s) => ({ cam: here.clone().addScaledVector(sd, 2.6 - 0.4 * s).setY(1.35), at: here.clone().lerp(mate.pos.clone().setY(1.3), 0.5), from: here, fov: 46, lines: s < 0.2 ? 1 : 0, flash: s < 0.05 ? 0.5 : 0, title: 'BACK TO BACK', sub: '+25 % damage while you hold it', kk: Math.min(1, s * 3) }) }]); }
   }
-  // THE DEAD-MAN SAFE: E on one plate arms it for a second; E on the other within that second opens it (two of you, or one at a sprint).
+  // THE TWO KEYS: E at one terminal turns its key for SAFE_WINDOW seconds; E at the other within that opens the Reactor's door and the safe (two of you, or one at a run from one end of the station to the other).
   let safeOpen = false;
   function runSafe(dt, useDown) {
     if (safeOpen || !station.isOpenZone('l')) return;
+    const was = safeArm;
     safeArm = Math.max(0, safeArm - dt);
+    if (was > 0 && safeArm <= 0 && !safeMissed) { safeMissed = true; hud.banner('TOO SLOW', 0xff5040); story.line('Kirky', 'Too slow. Again: one plate, then the other.'); }   // (and it can be tried again at once)
     SAFE.a.led && (SAFE.a.led.material.color.set(safeArm > 0 && safeArmed === 'a' ? 0x7dffb0 : 0xff2a14));
     SAFE.b.led && (SAFE.b.led.material.color.set(safeArm > 0 && safeArmed === 'b' ? 0x7dffb0 : 0xff2a14));
     const atA = Math.hypot(me.pos.x - SAFE.a.x, me.pos.z - SAFE.a.z) < 1.7, atB = Math.hypot(me.pos.x - SAFE.b.x, me.pos.z - SAFE.b.z) < 1.7;
     if (useDown && (atA || atB)) {
       const which = atA ? 'a' : 'b';
       if (safeArm > 0 && safeArmed !== which) openSafe();
-      else { safeArmed = which; safeArm = 1.2; sound.thud(V3(which === 'a' ? SAFE.a.x : SAFE.b.x, 1.2, SAFE.a.z)); (hosting() ? tell : say)({ da: 'qte', k: 'plate', w: which }); }
+      else { safeArmed = which; safeArm = SAFE_WINDOW(); safeMissed = false; sound.thud(V3(which === 'a' ? SAFE.a.x : SAFE.b.x, 1.2, SAFE.a.z)); (hosting() ? tell : say)({ da: 'qte', k: 'plate', w: which }); }
     }
-    if (atA || atB) hud.qte('E', safeArm > 0 ? 'THE OTHER PLATE' : 'TWO KEYS', safeArm / 1.2, '#ffd27a', null, safeArm > 0 ? 'the other plate, now' : 'this plate, then the other within a second');
+    // (done this very frame: openSafe has cleared the prompt, and it must not be put straight back up below. It was:
+    // standing at the second key, "KEY B: turn this..." went back on, and nothing ever took it off again)
+    if (safeOpen) return;
+    showKey('a', safeArm > 0 && safeArmed === 'a', safeArm); showKey('b', safeArm > 0 && safeArmed === 'b', safeArm);
+    const other = safeArmed === 'a' ? SAFE.b : SAFE.a, win = SAFE_WINDOW();
+    if (safeArm > 0) hud.qte('E', `${other.name}: THE OTHER TERMINAL`, safeArm / win, '#7dffb0', null, `${other.where}  ·  ${Math.ceil(safeArm)} s`);   // (wherever you are, while it is turned)
+    else if (atA || atB) hud.qte('E', atA ? 'KEY A' : 'KEY B', 0, '#ffd27a', null, `turn this, then ${atA ? 'KEY B (Lab 2, by the Reactor door)' : 'KEY A (the Arrival Bay)'} within ${win} s  ·  it opens the Reactor`);
     else if (safeShown) hud.qte(null);
-    safeShown = atA || atB;
+    safeShown = atA || atB || safeArm > 0;
   }
-  let safeArmed = '', safeShown = false;
+  let safeArmed = '', safeShown = false, safeMissed = true;
+  // (seconds the first key stays turned: with friends, a moment, both turned together; alone, the run from one end of the
+  // station to the other at a sprint, and a little over)
+  const SAFE_WINDOW = () => (coop() ? 3 : 14);
+  let keyShown = { a: -1, b: -1 };
+  const showKey = (w, on, left) => { const P = SAFE[w]; if (!P?.screen) return; const n = on ? Math.ceil(left) : -1; if (keyShown[w] === n) return; keyShown[w] = n; P.screen.material.map?.dispose(); P.screen.material.map = keyScreen(P.name, on || safeOpen, safeOpen ? 0 : left); if (safeOpen) P.screen.material.map = keyScreen(P.name, true, 0); P.screen.material.needsUpdate = true; if (P.glow) P.glow.color.set(on || safeOpen ? 0x7dffb0 : 0xffd27a); };
+  // The keys done (here, or by a friend): the prompt off for good, both terminals' screens and lights to UNLOCKED.
+  function safeDone() {
+    safeArm = 0; safeShown = false; hud.qte(null);
+    keyShown.a = keyShown.b = -2; showKey('a', true, 0); showKey('b', true, 0);
+    for (const P of [SAFE.a, SAFE.b]) P.led?.material.color.set(0x7dffb0);
+  }
   function openSafe() {
     if (safeOpen) return;
-    safeOpen = true; safeArm = 0; hud.qte(null);
+    safeOpen = true; safeDone();
     if (SAFE.door) SAFE.door.position.y = 1.72;
     sound.door(V3(SAFE.at.x, 1.2, SAFE.at.z)); sound.sting(0.6);
+    { const ri = station.doors.findIndex((d) => d.name === 'the Reactor'); if (ri >= 0 && !station.doors[ri].open) openDoor(ri); }   // (the two keys open the Reactor's door too: it is theirs)
     hud.banner('THE SAFE', 0xffd27a); addPoints(300);
     if (!logs.found.has(4)) setTimeout(() => { if (active) tookLog(4, true); }, 700);
     const here = me.pos.clone().setY(1.3);
@@ -318,11 +356,17 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   function holdHit(good) { if (!holdQ) return; if (good) { holdQ.fill = Math.min(1, holdQ.fill + 0.3); holdQ.hits++; holdQ.good = 0.25; sound.thud(holdQ.d.at.clone().setY(1.2)); } else { holdQ.fill = Math.max(0, holdQ.fill - 0.1); holdQ.miss = 0.25; } }
   function runHold(dt, useDown) {
     const h = holdQ; if (!h) return;
-    if (h.d.open) { holdQ = null; hud.qte(null); h.d.jolt = 0; return; }   // (opened by someone: nothing to hold)
+    if (h.d.open) { holdQ = null; hud.qte(null); hud.letterbox(false); h.d.jolt = 0; return; }   // (opened by someone: nothing to hold)
     h.t += dt; h.bang -= dt; h.good -= dt; h.miss -= dt;
     const at = 0.5 + 0.5 * Math.sin(h.t * 3.4), zone = [0.4, 0.6], near = h.d.at.distanceTo(me.pos) < 3.2;
     if (h.bang <= 0) { h.bang = 0.55 + Math.random() * 0.4; sound.bang(0.9, h.d.at.clone().setY(1.4)); walker.shake = Math.max(walker.shake, 0.03); }
-    if (useDown && near) { const good = at >= zone[0] && at <= zone[1]; if (hosting() || !coop()) holdHit(good); else say({ da: 'qte', k: 'holdhit', g: good ? 1 : 0 }); }
+    // (at the door, it is a cut-in: he is put with his shoulder to it and held there, the camera off to the side of him
+    // along the wall, the letterbox down; every good hit is his shoulder slammed into it)
+    h.cam = near && !game.over;
+    if (h.cam && !h.braced) { h.braced = true; const n = h.d.across ? V3(0, 0, 1) : V3(1, 0, 0); if (n.dot(me.pos.clone().sub(h.d.at)) < 0) n.negate(); h.n = n; const p = h.d.at.clone().addScaledVector(n, 0.62); walker.spawn(p.x, p.z, Math.atan2(-n.x, -n.z)); walker.yaw = Math.atan2(-n.x, -n.z); me.pos.copy(walker.pos); }
+    if (h.cam) walker.held = Math.max(walker.held, 0.15);
+    hud.letterbox(h.cam);
+    if (useDown && near) { const good = at >= zone[0] && at <= zone[1]; if (good) { walker.meleeT = 0; walker.shake = Math.max(walker.shake, 0.04); } if (hosting() || !coop()) holdHit(good); else say({ da: 'qte', k: 'holdhit', g: good ? 1 : 0 }); }
     if (hosting() || !coop()) h.fill = Math.max(0, h.fill - dt * 0.05);
     hud.qte('E', 'HOLD IT SHUT', h.fill, h.miss > 0 ? '#ff3a2a' : h.good > 0 ? '#7dffb0' : '#9ae6ff', { at, zone }, near ? `${h.hits} of 3 good hits` : 'get to the door');
     if (!(hosting() || !coop())) return;
@@ -331,7 +375,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   }
   function endHold(held) {
     const h = holdQ; if (!h) return;
-    holdQ = null; hud.qte(null); h.d.jolt = 0;
+    holdQ = null; hud.qte(null); h.d.jolt = 0; hud.letterbox(false);
     if (held) { sound.sting(0.5); hud.banner('HELD', 0x7dffb0); for (const p of everyone()) if (p.pos.distanceTo(h.d.at) < 6) { if (p === me) addPoints(150); } hud.tip('It held. For now.'); }
     else {
       station.open(h.d); dead.doorsChanged(); sound.door(h.d.at.clone().setY(2)); sound.sting(1.2);
@@ -352,14 +396,26 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     sound.siren?.(10); sound.sting(1.0);
     hud.banner('DECOMPRESSION', 0xff5040); hud.tip('The shaft hatch failed: hold a rail (E, by a wall), or shut it from the panel by the lift gate (mash F)');
     const c = lift.at.clone();
-    playCut([{ for: 2.0, cam: (s) => ({ cam: V3(c.x + 1.3, 1.0 + 0.3 * s, c.z + 1.7), at: V3(c.x, HEIGHT + 16 + 18 * s, c.z), from: V3(c.x, 1.5, c.z), fov: 56 - 10 * s, lines: 1, flash: s < 0.08 ? 0.9 : 0, title: 'DECOMPRESSION', sub: 'the shaft hatch failed  ·  hold a rail (E), or shut it from the panel (F)', kk: Math.min(1, s * 3) }) }]);
+    // (and some of them go: two or three of the dead in the bay, dragged across the floor to the lift and up its shaft,
+    // the first thing you see of it; the host puts them there if there are not enough)
+    if (hosting() || !coop()) {
+      const loose = dead.list.filter((z) => z.hp > 0 && station.zoneAt(z.pos) === 'b' && z.state !== 'dead').length;
+      for (let i = loose; i < 3; i++) { const z = dead.spawn('walker', c.x + 6.5 + i * 1.3, c.z - 1.6 + i * 1.6, -Math.PI / 2, 'walk', hpOf(Math.max(1, game.round))); z.state = 'chase'; game.left += 1; }
+    }
+    sound.wind?.(10.5);
+    playCut([
+      // from the bay floor, low, by the wall: the dead skidding past across the plates, toward the lift, the scraps with them
+      { for: 1.7, cam: (s) => ({ cam: V3(c.x + 9.0 - 0.6 * s, 0.55, c.z + 3.4), at: V3(c.x + 2.5, 0.9, c.z), from: V3(c.x + 7.5, 1.0, c.z + 2.0), fov: 54, lines: 1, flash: s < 0.06 ? 0.8 : 0, title: s > 0.25 ? 'DECOMPRESSION' : '', sub: s > 0.25 ? 'the hatch has failed  ·  the air is going up the shaft' : '', kk: Math.min(1, s * 3) }) },
+      // up the shaft: them going up it, past us, into the stars
+      { for: 2.2, cam: (s) => ({ cam: V3(c.x + 1.3, 1.0 + 0.3 * s, c.z + 1.7), at: V3(c.x, HEIGHT + 16 + 18 * s, c.z), from: V3(c.x, 1.5, c.z), fov: 56 - 10 * s, lines: 1, flash: s < 0.08 ? 0.9 : 0, title: 'DECOMPRESSION', sub: 'the shaft hatch failed  ·  hold a rail (E), or shut it from the panel (F)', kk: Math.min(1, s * 3) }) }
+    ]);
     if (hosting()) tell({ da: 'qte', k: 'decomp' });
   }
   const nearWall = (() => { const dirs = Array.from({ length: 8 }, (_, i) => new THREE.Vector3(Math.sin(i * Math.PI / 4), 0, Math.cos(i * Math.PI / 4))); return (p) => dirs.some((d) => station.ray(p.clone().setY(1), d, 1.5) < 1.35); })();
   // (what the air takes with it: dust and scraps, up the shaft)
   function makeDebris() {
     const tex = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.fillStyle = 'rgba(200,196,180,0.9)'; g.fillRect(10, 12, 12, 8); g.fillStyle = 'rgba(120,116,100,0.8)'; g.fillRect(14, 8, 6, 16); return new THREE.CanvasTexture(c); })();
-    const list = Array.from({ length: 40 }, () => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })); sp.visible = false; sp.scale.setScalar(0.12 + Math.random() * 0.12); sp.userData = { v: new THREE.Vector3(), life: 0 }; scene.add(sp); return sp; });
+    const list = Array.from({ length: 170 }, () => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })); sp.visible = false; sp.scale.setScalar(0.12 + Math.random() * 0.12); sp.userData = { v: new THREE.Vector3(), life: 0 }; scene.add(sp); return sp; });
     return list;
   }
   function runDebris(dt, on) {
@@ -367,10 +423,10 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const c = lift.at;
     for (const sp of debris) {
       const u = sp.userData;
-      if (!sp.visible) { if (on && Math.random() < dt * 1.2) { sp.visible = true; sp.position.set(c.x + 2 + Math.random() * 18, 0.1 + Math.random() * 0.6, c.z - 8 + Math.random() * 16); u.v.set(0, 0, 0); u.life = 0; } continue; }
+      if (!sp.visible) { if (on && Math.random() < dt * 9) { sp.visible = true; sp.position.set(c.x + 1.5 + Math.random() * 20, 0.05 + Math.random() * 1.6, c.z - 9 + Math.random() * 18); u.v.set(-2 - Math.random() * 3, 0, 0); u.life = 0; } continue; }
       u.life += dt;
       const to = c.clone().sub(sp.position).setY(0), d = to.length();
-      if (d > 1.2) { to.multiplyScalar(1 / d); u.v.addScaledVector(to, dt * 9); u.v.y += dt * 1.5; } else u.v.y += dt * 16;
+      if (d > 1.2) { to.multiplyScalar(1 / d); u.v.addScaledVector(to, dt * 22); u.v.y += dt * 1.2; } else u.v.y += dt * 30;   // (fast: a gale of it)
       sp.position.addScaledVector(u.v, dt);
       sp.material.rotation += dt * 6;
       if (sp.position.y > HEIGHT + 20 || u.life > 9 || (!on && sp.position.y > 0.5)) sp.visible = false;
@@ -400,11 +456,12 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (z.hp <= 0 || z.state === 'dead' || z.state === 'feed' || station.zoneAt(z.pos) !== 'b') continue;
       const to = c.clone().sub(z.pos).setY(0), d = to.length();
       if (d > 0.05) to.multiplyScalar(1 / d);
-      z.vel.addScaledVector(to, dt * 34);   // (they have nothing to hold: far more prone to it than you)
+      z.vel.addScaledVector(to, dt * (q.t < 0.35 ? 5 : 30 * Math.min(1, (q.t - 0.35) / 0.9)));   // (they have nothing to hold: far more prone to it than you; a moment's stagger first, so the cut-in sees them go)
       if (d < 1.6) { dead.kill(z, 'body', V3(0, 1, 0)); z.flung = 0; q.flung.push(z); game.left = Math.max(0, game.left - 1); if (coop()) tell({ da: 'kill', id: z.id, by: '', part: 'body', dx: 0, dz: 0 }); }
     }
     for (const z of q.flung) { z.flung += dt; z.y = (z.y || 0) + dt * (5 + 12 * z.flung); z.sink = z.y > HEIGHT + 30 ? 2 : 0; }
     runDebris(dt, q.left > 0.5);
+    if (q.left > 0.5 && station.zoneAt(me.pos) === 'b') walker.shake = Math.max(walker.shake, 0.018 + 0.012 * Math.sin(q.t * 9));   // (the gale through the bay)
     if (q.left <= 0) endDecomp();
   }
   function endDecomp() {
@@ -466,26 +523,30 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const c = lift.at.clone(), H = lift.half;
     const inCage = (dx, dz, y) => V3(c.x + dx, lift.y + y, c.z + dz);
     // (the dead at the gate, reaching in; the ones that had you are left behind)
-    for (let i = 0; i < 3; i++) { const z = dead.spawn('runner', c.x + H + 0.7 + (i % 2) * 0.5, c.z - 0.9 + i * 0.9, -Math.PI / 2, 'walk', 9999); z.state = 'attack'; z.swing = 0.15 + i * 0.1; z.yaw = -Math.PI / 2; z.gateStuck = true; }
+    // (held where they stand, outside the gate, clawing at it: they never come in)
+    for (let i = 0; i < 3; i++) { const z = dead.spawn('runner', c.x + H + 0.9 + (i % 2) * 0.5, c.z - 0.9 + i * 0.9, -Math.PI / 2, 'walk', 9999); z.state = 'skit'; z.t = 0; z.yaw = -Math.PI / 2; z.gateStuck = true; z.skit = { clip: 'zattack', rate: 1.1 + i * 0.15, face: V3(c.x, 0, z.pos.z), t: 0 }; }
     lift.gate(1); lift.light(1);
-    sound.sting(1.2);
-    setTimeout(() => { if (active) { lift.leave(11); sound.deadAir?.(1.6, 'bang'); } }, 2300);
-    const him = () => V3(me.pos.x, lift.y + 1.25, me.pos.z);
+    if (!sound.music.ready('cue_way_out')) sound.sting(1.2);   // (his cue has its own hit)
+    let gone = false;
+    const him = () => V3(me.pos.x, lift.y + 1.25, me.pos.z), TOP = HEIGHT + 34 - 0.8;
+    // (cut to his cue for it: the gate slams on its first hit, the cage goes on the second, the surface's title on the
+    // fourth, and the white on the big one at 20.4)
     playCut([
-      // the lever down, the gate shutting on the arms coming through
-      { for: 2.3, cam: (s) => { lift.gate(1 - Math.min(1, s * 1.5)); const gate = inCage(H, 0, 1.0), h = him(), back = h.clone().sub(gate).setY(0).normalize(), sd = V3(back.z, 0, -back.x);   // (over his shoulder, at it; never out of the cage)
-        const cam = h.clone().addScaledVector(back, 1.4 - 0.3 * s).addScaledVector(sd, 0.5).setY(lift.y + 1.65), R = H - 0.3;
-        cam.x = Math.min(c.x + R, Math.max(c.x - R, cam.x)); cam.z = Math.min(c.z + R, Math.max(c.z - R, cam.z));
-        return { cam, at: gate, from: h, fov: 50, lines: s < 0.2 ? 1 : 0, flash: s < 0.05 ? 0.6 : 0, say: ['Kirky', 'Go. GO.'], free: true }; } },
-      // from the bay floor: the cage lifting away, the lamp going up, the dead under it
-      { for: 3.0, cam: (s) => ({ cam: V3(c.x + H + 3.4, 0.45, c.z + 1.1), at: inCage(0, 0, 1.0 + 0.4 * s), from: V3(c.x + H + 1.2, 1.0, c.z + 0.3), fov: 52 - 6 * s, lines: 0.4, say: s > 0.4 ? ['Dome control', 'Lift ascending. Hold on to something.'] : null }) },   // (low, out in the bay, the dead at the gate in front: the cage lifting off over them)
+      // the lever down, the doors sliding shut on the dead lunging at them: from out in the bay, behind them...
+      { for: 1.74, cam: (s) => { lift.gate(1 - s); return { cam: V3(c.x + H + 3.3, 1.65, c.z + 0.35), at: V3(c.x + H, 1.4, c.z), from: V3(c.x + H + 0.4, 1.4, c.z), fov: 52 - 4 * s, lines: s < 0.15 ? 1 : 0, flash: s < 0.06 ? 0.6 : 0, say: ['Kirky', 'Go. GO.'], free: true, fill: 5, fillAt: V3(c.x + H + 2.2, 2.4, c.z + 0.3) }; } },
+      // ...and they slam (the cue's first hit): the same, snapped in on the shut doors
+      { for: 1.86, cam: (s) => { lift.gate(0); const u = s * 1.86; return { cam: V3(c.x + H + 3.3, 1.6 - 0.05 * s, c.z + 0.35), at: V3(c.x + H, 1.38, c.z), from: V3(c.x + H + 0.4, 1.4, c.z), fov: u < 0.12 ? 48 - 110 * u : 34.8 - 1.5 * s, lines: u < 0.4 ? 1 : 0.3, flash: u < 0.1 ? 0.5 : 0, say: ['Kirky', 'Go. GO.'], free: true, fill: 5, fillAt: V3(c.x + H + 2.2, 2.4, c.z + 0.3) }; } },
+      { for: 3.0, cam: (s) => { if (!gone) { gone = true; lift.leave(12.5); sound.deadAir?.(1.6, 'bang'); } return { cam: V3(c.x + H + 3.4, 0.45, c.z + 1.1), at: inCage(0, 0, 1.0 + 0.4 * s), from: V3(c.x + H + 1.2, 1.0, c.z + 0.3), fov: 52 - 6 * s, lines: s < 0.1 ? 0.8 : 0.4, say: s > 0.4 ? ['Dome control', 'Lift ascending. Hold on to something.'] : null }; } },   // (low, out in the bay, the dead at the gate in front: the cage lifting off over them)
       // inside: him, holding the rail, the shaft's strips streaming down past the cage
-      { for: 3.4, cam: (s) => { const o = V3(c.x - me.pos.x, 0, c.z - me.pos.z); if (o.lengthSq() < 0.05) o.set(1, 0, 0); o.normalize(); return { cam: V3(me.pos.x + o.x * 2.2, lift.y + 1.45 + 0.1 * s, me.pos.z + o.z * 2.2), at: him(), from: V3(me.pos.x + o.x * 0.6, lift.y + 1.3, me.pos.z + o.z * 0.6), fov: 42, lines: 0.6, say: s > 0.3 ? ['Kirky', "...We're out. We're out."] : null }; } },
+      { for: 3.8, cam: (s) => { const o = V3(c.x - me.pos.x, 0, c.z - me.pos.z); if (o.lengthSq() < 0.05) o.set(1, 0, 0); o.normalize(); return { cam: V3(me.pos.x + o.x * 2.2, lift.y + 1.45 + 0.1 * s, me.pos.z + o.z * 2.2), at: him(), from: V3(me.pos.x + o.x * 0.6, lift.y + 1.3, me.pos.z + o.z * 0.6), fov: 42, lines: 0.6, say: s > 0.3 ? ['Kirky', "...We're out. We're out."] : null }; } },
+      // from up the shaft, straight down through the cage's grille of a roof: them at the rails, the red strips going by
+      { for: 3.5, cam: (s) => { const m = V3(c.x + (me.pos.x - c.x) * 0.6, 0, c.z + (me.pos.z - c.z) * 0.6); return { cam: V3(m.x + 0.35, Math.min(TOP, lift.y + 7.6 - 2.4 * s), m.z + 0.3), at: V3(m.x, lift.y + 0.9, m.z), from: V3(m.x, lift.y + 3.0, m.z), fov: 50 - 6 * s, lines: 0.45, free: true, say: s > 0.25 ? ['Kirky', 'Nobody look down.'] : null }; } },
       // looking up: the hatch opening, the stars
-      { for: 3.2, cam: (s) => { lift.hatch(Math.min(1, s * 1.4)); return { cam: inCage(0.4, -0.3, 0.6), at: V3(c.x, HEIGHT + 34, c.z), from: inCage(0, 0, 1.0), fov: 62 - 12 * s, lines: 1, title: s > 0.45 ? 'THE SURFACE' : '', sub: s > 0.45 ? 'nine days after the last transmission' : '', kk: Math.min(1, Math.max(0, (s - 0.45) * 3)) }; } },
-      // the white of it
-      { for: 1.5, cam: (s) => ({ cam: inCage(0, 0, 1.3), at: V3(c.x, HEIGHT + 40, c.z), from: inCage(0, 0, 1.3), fov: 40, flash: Math.min(1, s * 2.5) }) },
-    ], () => { lift.light(0); onWin(); });
+      { for: 4.0, cam: (s) => { lift.hatch(Math.min(1, s * 1.4)); return { cam: inCage(0.4, -0.3, 0.6), at: V3(c.x, HEIGHT + 34, c.z), from: inCage(0, 0, 1.0), fov: 62 - 12 * s, lines: s < 0.1 ? 1 : 0.5, flash: s < 0.04 ? 0.5 : 0, title: 'THE SURFACE', sub: 'nine days after the last transmission', kk: Math.min(1, s * 4) }; } },
+      // him, from low, looking up into it: the open hatch over his head, the sky's light coming down on his face, the white
+      // of it building; then all white on the big hit (20.36)
+      { for: 3.5, cam: (s) => { const o = V3(c.x - me.pos.x, 0, c.z - me.pos.z); if (o.lengthSq() < 0.05) o.set(1, 0, 0); o.normalize(); return { cam: V3(me.pos.x + o.x * (1.6 - 0.2 * s), lift.y + 1.05, me.pos.z + o.z * (1.6 - 0.2 * s)), at: V3(me.pos.x, lift.y + 1.72, me.pos.z), from: V3(me.pos.x + o.x * 0.4, lift.y + 1.2, me.pos.z + o.z * 0.4), fov: 44 - 6 * s, lines: s > 0.66 ? 1 : 0.2, flash: s < 0.7 ? s * 0.55 : 1, free: true }; } },
+    ], () => { lift.light(0); onWin(); }, 'cue_way_out');
   }
   function onQte(from, m, host) {
     if (m.k === 'hold' && !host) startHold(station.doors[+m.i]);
@@ -496,23 +557,24 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     else if (m.k === 'decompend' && !host) endDecomp();
     else if (m.k === 'hatch' && host && strap) { strap.hatch++; }
     else if (m.k === 'hatchshut' && !host) hatchShut();
-    else if (m.k === 'plate') { if (host) tell(m); if (safeArm > 0 && safeArmed !== m.w) openSafe(); else { safeArmed = m.w; safeArm = 1.2; } }
-    else if (m.k === 'safe') { if (!safeOpen) { safeOpen = true; if (SAFE.door) SAFE.door.position.y = 1.72; hud.banner('THE SAFE', 0xffd27a); if (!logs.found.has(4)) setTimeout(() => { if (active) tookLog(4, false); }, 700); } if (host) tell(m); }
+    else if (m.k === 'plate') { if (host) tell(m); if (safeArm > 0 && safeArmed !== m.w) openSafe(); else { safeArmed = m.w; safeArm = SAFE_WINDOW(); } }
+    else if (m.k === 'safe') { if (!safeOpen) { safeOpen = true; safeDone(); if (SAFE.door) SAFE.door.position.y = 1.72; hud.banner('THE SAFE', 0xffd27a); if (!logs.found.has(4)) setTimeout(() => { if (active) tookLog(4, false); }, 700); } if (host) tell(m); }
   }
 
   // ---- Cut-ins (Dave the Diver): a few seconds, the camera somewhere else, titles, lines, a flash; the world runs on
   // behind them (nothing can hurt you meanwhile: grace). shots: [{ for, cam: (s, into) => { cam, at, from?, fov, lines,
   // flash, title, sub, kk, say } }]. One at a time: a new one while one is up waits its turn (next).
   let cutIn = null, cutNext = [];
-  function playCut(shots, done = null) {
-    if (cutIn) { if (cutNext.length < 3) cutNext.push([shots, done]); return; }
-    cutIn = { t: 0, shots, done, total: shots.reduce((a, s) => a + s.for, 0) };
+  function playCut(shots, done = null, cue = null) {
+    if (cutIn) { if (cutNext.length < 3) cutNext.push([shots, done, cue]); return; }
+    cutIn = { t: 0, shots, done, total: shots.reduce((a, s) => a + s.for, 0), clock: cue ? sound.music.cue(cue) : null };   // (cue: his music for it, from its start, the shots kept in time with it)
     grace = Math.max(grace, cutIn.total + 0.3);
   }
   function runCut(dt) {
     const c = cutIn;
-    if (!c) { if (cutNext.length) { const [shots, done] = cutNext.shift(); playCut(shots, done); } return false; }
-    c.t += dt;
+    if (!c) { if (cutNext.length) { const [shots, done, cue] = cutNext.shift(); playCut(shots, done, cue); } return false; }
+    const k = c.clock ? c.clock() : -1;
+    if (k >= 0 && Math.abs(k - c.t) < 0.5) c.t = Math.max(c.t + dt * 0.5, k); else c.t += dt;
     let i = 0, t0 = 0;
     while (i < c.shots.length - 1 && c.t >= t0 + c.shots[i].for) { t0 += c.shots[i].for; i++; }
     const sh = c.shots[i], into = c.t - t0, v = sh.cam(Math.min(1, into / sh.for), into) || {};
@@ -526,8 +588,9 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       camera.position.copy(v.cam); camera.lookAt(v.at); camera.fov = v.fov || 48; camera.updateProjectionMatrix();
     }
     walker.model.root.visible = true; walker.view.visible = false;
+    if (cutFill) { cutFill.intensity = v.fill || 0; if (v.fill) cutFill.position.copy(v.fillAt || v.at); }
     hud.cine(true, v.lines || 0, v.flash || 0, v.title || '', v.kk ?? (v.title ? 1 : 0), v.sub || '', '', v.say || null);
-    if (c.t >= c.total) { cutIn = null; hud.cine(false); c.done?.(); }
+    if (c.t >= c.total) { cutIn = null; hud.cine(false); if (cutFill) cutFill.intensity = 0; c.done?.(); }
     return true;
   }
   const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -550,13 +613,13 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const DONE = { power: 'Lights. Great. Now I can see what has been eating the crew.', signal: 'They heard. ...They heard.' }[step.id] || '';
     if (kind === 'done') {
       // the place, lit: the title; then his face, and what he makes of it
-      shots.push({ for: 2.6, cam: (s) => ({ cam: w.clone().addScaledVector(toMe, 3.6 - 0.9 * s).addScaledVector(across, 1.3).setY(1.8 - 0.2 * s), at: w.clone().setY(1.1), from: wFrom, fov: 46 - 6 * s, flash: s < 0.08 ? 0.7 : 0, lines: s < 0.3 ? 1 : 0, title: doneTitle, kk: Math.min(1, s * 4) }) });
+      shots.push({ for: 2.6, cam: (s) => ({ cam: w.clone().addScaledVector(toMe, 3.6 - 0.9 * s).addScaledVector(across, 1.3).setY(1.8 - 0.2 * s), at: w.clone().setY(1.1), from: wFrom, fov: 46 - 6 * s, flash: s < 0.08 ? 0.7 : 0, lines: s < 0.3 ? 1 : 0, title: doneTitle, kk: Math.min(1, s * 4), fill: 9, fillAt: w.clone().addScaledVector(toMe, 1.6).setY(2.2) }) });
       shots.push({ for: 2.2, cam: (s) => ({ cam: face().addScaledVector(f, 1.3).addScaledVector(sd, 0.35 - 0.1 * s).setY(1.42), at: face(), from: face(), fov: 36, lines: 0, say: s > 0.15 && DONE ? ['Kirky', DONE] : null }) });
     } else {
       // his face: the word; the place, from your side of it, the title; the reverse: the lot of you, small, from where you have to get to
       shots.push({ for: 2.2, cam: (s) => ({ cam: face().addScaledVector(f, 1.3 - 0.15 * s).addScaledVector(sd, 0.4).setY(1.42), at: face(), from: face(), fov: 38, lines: s < 0.2 ? 1 : 0, flash: s < 0.06 ? 0.5 : 0, say: s > 0.1 ? ['Kirky', LINE[0]] : null }) });
       if (where) {
-        shots.push({ for: 3.2, cam: (s) => ({ cam: w.clone().addScaledVector(toMe, 4.6 - 1.6 * s).addScaledVector(across, 1.6 - 0.9 * s).setY(2.0 - 0.5 * s), at: w.clone().setY(1.2), from: wFrom, fov: 48 - 10 * s, lines: s < 0.2 ? 1 : 0, flash: s < 0.06 ? 0.6 : 0, title: step.title, sub: subOf, kk: Math.min(1, s * 3) }) });
+        shots.push({ for: 3.2, cam: (s) => ({ cam: w.clone().addScaledVector(toMe, 4.6 - 1.6 * s).addScaledVector(across, 1.6 - 0.9 * s).setY(2.0 - 0.5 * s), at: w.clone().setY(1.2), from: wFrom, fov: 48 - 10 * s, lines: s < 0.2 ? 1 : 0, flash: s < 0.06 ? 0.6 : 0, title: step.title, sub: subOf, kk: Math.min(1, s * 3), fill: 9, fillAt: w.clone().addScaledVector(toMe, 1.6).setY(2.2) }) });   // (lit: the place may be dark)
         shots.push({ for: 2.0, cam: (s) => ({ cam: here.clone().addScaledVector(f, -2.6 + 0.4 * s).addScaledVector(sd, -1.2).setY(2.2), at: here.clone().addScaledVector(f, 2.5).setY(1.1), from: here, fov: 52, lines: 0, say: s > 0.2 ? ['Kirky', LINE[1]] : null }) });
       } else {
         shots.push({ for: 2.6, cam: (s) => ({ cam: here.clone().addScaledVector(f, -2.4).addScaledVector(sd, -1.2).setY(2.3), at: here.clone().addScaledVector(f, 3).setY(1.2), from: here, fov: 50, lines: s < 0.2 ? 1 : 0, title: step.title, sub: subOf, kk: Math.min(1, s * 3) }) });
@@ -572,6 +635,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     if (lastStep < 0 || time < objQuiet) { lastStep = s; return; }
     if (s !== lastStep) {
       const was = lastStep; lastStep = s;
+      if (s > was && !game.over) { const tune = { power: 1, signal: 2, hold: 3 }[STEPS[was]?.id]; if (tune) sound.music.jingle(tune); }   // (his music box, for a thing done)
       if (s > was && !game.over) { if (STEPS[was]?.id !== 'escape' && STEPS[was]?.id !== 'hold') cutObjective('done', was); if (STEPS[s] && STEPS[s].id !== 'out' && STEPS[s].id !== 'escape') cutObjective('intro', s); }   // (the lift's arrival is its own cinematic)
     }
   }
@@ -615,7 +679,17 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     else if (K === 'ventDrop' && z) glanceAt(head, { k: 1.4, lines: 0.7 });
     else if (K === 'breath') { hud.glance(0.35); setTimeout(() => hud.glance(0), 700); }
     else if (K === 'sleeper' && z) glanceAt(head, { k: 1.3, say: ['Kirky', 'It was dead. It was dead!'] });
-    else if (K === 'doorstep' && z) glanceAt(head, { k: 1.5, lines: 0.7 });
+    else if (K === 'doorstep' && z) {
+      // (his ask: a short cutscene, the one on the doorstep waving at you: hello. Then it screams, and comes)
+      z.state = 'skit'; z.t = 0; z.vel.set(0, 0, 0); z.skit = { clip: 'cheer', loop: true, rate: 0.8, wgt: 1, face: me.pos.clone(), t: 0 };
+      const here = me.pos.clone().setY(1.4), to = z.pos.clone().sub(me.pos).setY(0).normalize(), sd = sideOf(to);
+      playCut([
+        // over his shoulder as he comes out: it, right there, arms up, waving
+        { for: 1.3, cam: (s) => ({ cam: here.clone().addScaledVector(to, -1.1 + 0.2 * s).addScaledVector(sd, 0.45).setY(1.6), at: z.pos.clone().setY(1.45), from: here, fov: 46 - 4 * s, lines: s < 0.15 ? 1 : 0, flash: s < 0.05 ? 0.5 : 0 }) },
+        // its face, close, still waving; his line
+        { for: 1.5, cam: (s) => ({ cam: z.pos.clone().addScaledVector(to, -1.25).addScaledVector(sd, -0.35).setY(1.55), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : z.pos.clone().setY(1.6)), from: z.pos.clone().addScaledVector(to, -0.6).setY(1.5), fov: 38, lines: 0, say: s > 0.2 ? ['Kirky', '...Hi.'] : null }) },
+      ], () => { if (z.hp > 0 && z.state === 'skit') { z.state = 'scream'; z.t = 0; z.skit = null; } });
+    }
     else if (K === 'watcher' && z) glanceAt(head, { for: 1.4, say: ['Kirky', "...Don't look away."] });
     else if (K === 'steam' && e.p) glanceAt(e.p.clone(), { for: 0.9, k: 0.8 });
     else if (K === 'hanging' && z) glanceAt(head, { k: 1.4, lines: 0.7 });
@@ -629,7 +703,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     else if (K === 'riseAll') { const r = dead.list.find((o) => o.state === 'rise' && o.hp > 0); glanceAt(r ? () => (r.head ? r.head.clone() : r.pos.clone().setY(1.4)) : null, { for: 1.6, k: 1.2, lines: 0.8, title: "THEY'RE ALL GETTING UP", say: ['Kirky', 'All of them. All of them at once.'] }); }
     else if (K === 'window' && z) glanceAt(() => z.pos.clone().setY(RISE + 1.4), { for: 1.5, k: 0.9, say: ['Kirky', "...That's outside."] });
     else if (K === 'parapet' && z) glanceAt(() => z.pos.clone().setY(RISE + 1.9), { for: 1.3, k: 1.3, lines: 0.7 });
-    else if (K === 'overhead') glanceAt(V3(me.pos.x, RISE + 0.9, 4 * CELL - 1.56), { for: 1.2, k: 0.9, say: ['Kirky', '...Upstairs.'] });
+    else if (K === 'overhead') glanceAt(V3(me.pos.x, HEIGHT - 0.2, me.pos.z + 1.5), { for: 1.2, k: 0.9, say: ['Kirky', "...Something's on the roof."] });
     else if (K === 'bunk' && e.p) glanceAt(e.p.clone().setY(0.75), { for: 1.3, k: 1.2 });
     else if (K === 'bunkUp' && z) glanceAt(head, { k: 1.4, lines: 0.7, say: ['Kirky', '...Nope.'] });
     else if (K === 'sitter' && z) glanceAt(head, { k: 1.3, say: ['Kirky', '...Hey.'] });
@@ -750,6 +824,10 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     scares = createScares({ station, dead, walker, sound, pieces: station.pieces, scene });
     scares.logs = logs;
     lift = createLift({ scene, pieces: station.pieces, boxes: station.boxes });
+    // (a fill light for the cut-ins that show a place: aimed at it, so that a dark room's objective can be seen; never
+    // hidden, only dark, since a light coming and going recompiles every material)
+    cutFill = new THREE.PointLight(0xdbe6ff, 0, 11, 1.5); scene.add(cutFill);
+    buildTable();
     crate = createCrate({ scene, at: CRATE, price: CRATE.price, pieces: station.pieces, guns: walker.model.guns, sound });
     // The reactor's core: a column of cold blue light in the middle of the Reactor, humming (dim until it is opened up).
     core = new THREE.Group();
@@ -808,7 +886,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     Object.assign(game, fresh(), kept);
     logs?.place();
     game.woke = false; wokeAt = 0; game.hatchShut = false; me.seat = false; me.holdingRail = false; me.cranking = false;
-    holdQ = null; decomp = null; strap = null; decompDone = false; hud.qte(null); lift?.reset(); exiting = false; if (debris) for (const sp of debris) sp.visible = false;
+    holdQ = null; decomp = null; strap = null; decompDone = false; hud.qte(null); hud.letterbox?.(false); lift?.reset(); exiting = false; if (debris) for (const sp of debris) sp.visible = false;
     lastZone = null; seenZones = new Set(); endDrill(false);
     safeOpen = false; safeArm = 0; me.carrying = null; me.carriedBy = null; me.reviving = false; if (SAFE.door) SAFE.door.position.y = 1.1; if (SAFE.glow) SAFE.glow.intensity = 0;
     if (skit) endSkit(false);
@@ -863,6 +941,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const up = everyone().filter((p) => p.alive && !p.safe), near = up.length ? up : [me];
     for (const o of OPENINGS) {
       if (!station.isOpenZone(o.zone)) continue;
+      if (o.zone === 'b' && !game.woke) continue;   // (the Arrival Bay's holes: the safe room's, until the station is awake)
       const far = Math.min(...near.map((p) => Math.hypot(o.x - p.pos.x, o.z - p.pos.z)));
       if (far < 4.5) continue;
       // (how far it has to come, in cells, to the nearest of you: never the far end of the station)
@@ -889,7 +968,8 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (game.round >= 2) setTimeout(() => { if (active && !game.over) scares.hangOne(); }, 1500 + Math.random() * 4000);   // (one on a cable in the Reactor, most rounds)
       if (game.round === (game.hard ? 4 : 6)) setTimeout(() => { if (active && !game.over) { const n = scares.riseAll(); if (n) tell({ da: 'riseAll' }); } }, 2500);   // (the sleepers' round)
     }
-    if (game.round === 10 && !trophyDone && (hosting() || !coop())) { trophyDone = true; setTimeout(() => { if (active && !game.over) trophyCall(); }, 9000); }
+    // (the Mastre of the Month is no longer given here, at round ten: it is given at the end, out on the Moon, to the worst
+    // of you: freeride/outcard.js. The editor's stage still plays the old one.)
     dead.hpNow = hpOf(game.round);   // (for the scares: what one of this round takes)
     if (me.downed || me.out) getUp(1);   // (whoever bled out is back for the next one)
     game.party = Math.max(1, everyone().filter((p) => p.alive || p.downed).length);
@@ -1072,14 +1152,18 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   }
 
   // ---- The way in: a cut-in the first time you arrive (click or any key skips it) ----
-  let intro = -1;
+  let intro = -1, introCue = null;
   function runIntro(dt) {
-    intro += dt;
+    // (in time with his cue for it: the scene was cut to its hits. A frame that hitched catches up with the music; music
+    // that came in late, or woke late, is started from where the scene has got to)
+    const c = introCue ? introCue() : -1;
+    if (c >= 0 && Math.abs(c - intro) < 0.5) { const t = Math.max(intro + dt * 0.5, c); dt = t - intro; intro = t; }
+    else { intro += dt; if (intro < story.ENTRANCE - 1 && sound.music.ready('cue_way_in')) introCue = sound.music.cue('cue_way_in', 1, intro); }
     story.dt = dt;
     walker.update(dt, {}, [0, 0], false, false, true);
     if (!story.entrance(intro, dt)) endIntro();
   }
-  function endIntro() { intro = -1; walker.power = 1; story.entranceDone(); startDrill(); lift?.light(0); if (lift && lift.state === 'down') setTimeout(() => { if (active && lift.state === 'down') lift.leave(9); }, 600); hud.hint('Click to begin'); askDifficulty(); if (!introducedPower && !testing) { introducedPower = true; setTimeout(() => { if (active && game.story?.step === 0 && !game.over) cutObjective('intro', 0); }, 1500); } }
+  function endIntro() { if (intro < story.ENTRANCE - 0.5) sound.music.endCue(1.5); intro = -1; introCue = null; walker.power = 1; story.entranceDone(); startDrill(); lift?.light(0); if (lift && lift.state === 'down') setTimeout(() => { if (active && lift.state === 'down' && STEPS[game.story?.step ?? 0]?.id !== 'escape' && !exiting) lift.leave(9); }, 600); hud.hint('Click to begin'); askDifficulty(); if (!introducedPower && !testing) { introducedPower = true; setTimeout(() => { if (active && game.story?.step === 0 && !game.over) cutObjective('intro', 0); }, 1500); } }
   // Normal or Nightmare: the host's call, before the first round (Nightmare once you have got out once in this browser).
   function askDifficulty() {
     setTimeout(() => { if (active) lounge.prepare().catch((error) => console.warn('DEAD AIR: the lounge could not be got ready.', error)); }, 300);   // (a lot to build: now, while the card is up and nothing moves)
@@ -1169,7 +1253,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (Math.hypot(me.pos.x - a.x, me.pos.z - a.z) < 1.7 && !walker.crawl) return { text: 'Press E  ·  the crawlspace  ·  on your belly, no gun; W on, S back', price: 0, act: () => { story.tip('duct'); walker.enterDuct(a, b); } };
     }
     // (the chicken, under its bunk)
-    if (chicken && !chickenTaken && chickenHome && station.isOpenZone('q') && me.pos.distanceTo(chickenHome) < 1.8) return { text: 'Press E  ·  a rubber chicken, under the bunk  ·  ...why not', price: 0, act: takeChicken };
+    if (chicken && !chickenTaken && chickenHome && station.isOpenZone('q') && me.pos.distanceTo(chickenHome) < 1.8) return { text: 'Press E  ·  a rubber chicken, on the table  ·  ...why not', price: 0, act: takeChicken };
     // (a recorder, if you are standing by one)
     const lo = logs?.offer(me.pos);
     if (lo) return { text: lo.text, price: 0, act: () => tookLog(lo.log) };
@@ -1190,6 +1274,8 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (d.open || d.at.distanceTo(me.pos) > 2.4) continue;
       if (holdQ && holdQ.d === d) continue;   // (being held shut: E is the hold's, not the door's price)
       const i = station.doors.indexOf(d);
+      // (the Reactor's door is the safe's: its two keys are the plates on this wall, and nothing else opens it)
+      if (d.name === 'the Reactor' && !safeOpen) return { text: `The Reactor door is locked: TWO KEYS  ·  KEY B is on this wall, KEY A in the Arrival Bay  ·  turn both within ${SAFE_WINDOW()} s`, price: 0, act: () => {} };
       story.tip('door');
       return { text: `Press E to open ${d.name}  [${d.price}]`, price: d.price, act: () => { openDoor(i); if (!hosting()) say({ da: 'door', i }); } };
     }
@@ -1365,7 +1451,9 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     setTimeout(() => { if (game.over) story.line('Kirky', n === 1 ? '...One.' : `...${['', '', 'Two', 'Three', 'Four'][n] || n}.`); }, 2000);
     setTimeout(() => { if (game.over && logs.count > 0) story.speak('kept'); }, 3900);
     setTimeout(() => { if (game.over) story.speak('out'); }, logs.count > 0 ? 5900 : 3900);
-    setTimeout(() => { if (game.over && game.won) showCard(); }, logs.count > 0 ? 7600 : 5600);
+    // (out on the Moon first, and then the card: the surface's scene plays, and main.js puts the card up after it)
+    if (onOut) setTimeout(() => { if (game.over && game.won && active) mode.out(results()); }, 900);
+    else setTimeout(() => { if (game.over && game.won) showCard(); }, logs.count > 0 ? 7600 : 5600);
   }
 
   function gameOver() {
@@ -1377,6 +1465,19 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     if (!me.downed) sound.down();
     hud.down(coop() ? 'EVERYONE IS DOWN' : 'YOU ARE DOWN');
     tell({ da: 'over' });
+  }
+  // What the card says, for the Moon to show (a win: the card comes up out there, after the scene at the surface).
+  // The crew's scores: points to each (kills, heads, friends got up, less for going down): the worst of them is the
+  // Mastre of the Month (main.js puts his name on the statue).
+  function results() {
+    tallyOf(myId());   // (you are on the card even with nothing to your name)
+    let best = { round: 0, kills: 0 };
+    try { best = { ...best, ...JSON.parse(load('deadair.best') || '{}') }; } catch {}
+    if (game.round > best.round || (game.round === best.round && game.kills > best.kills)) store('deadair.best', JSON.stringify({ round: game.round, kills: game.kills }));
+    const crew = Object.values(game.tally).map((t) => ({ ...t, score: Math.round((t.kills || 0) * 100 + (t.heads || t.headshots || 0) * 50 + (t.revives || 0) * 200 - (t.downs || 0) * 150) })).sort((a, b) => b.score - a.score);
+    const name = getName();
+    if (name && game.round > 0) fetch('/api/leaderboard', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ board: 'deadair', name, score: game.round * 100000 + Math.min(99999, game.kills) + 50000000 }) }).catch(() => {});
+    return { title: 'YOU GOT OUT' + (game.hard ? '  ·  NIGHTMARE' : ''), line: `Kirky: "Next time, we take the stairs."  ·  Round ${game.round}  ·  ${game.kills} killed  ·  ${game.headshots} through the head  ·  ${game.points.toLocaleString()} points`, crew, worst: crew.length ? crew[crew.length - 1] : null };
   }
   function showCard() {
     hud.down('');
@@ -1509,12 +1610,11 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     }
   }
 
-  const FAR = new THREE.Vector3(1e5, 0, 1e5);
-  const NO_DIR = new THREE.Vector3();   // (a friend's eye counts for being seen; only yours for the Watcher)   // (somewhere no coin will ever fly to)
+  const FAR = new THREE.Vector3(1e5, 0, 1e5);   // (somewhere no coin will ever fly to)
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   let input0 = { trickPressed: false };
 
-  // ---- THE RELOAD SKIT: one reload in ten, the fresh magazine slips out of his hand. One of them walks over, picks it up,
+  // ---- THE RELOAD SKIT: one reload in twenty-five, the fresh magazine slips out of his hand. One of them walks over, picks it up,
   // brings it, holds it out. He takes it. "...Thanks." It stands there a second. Then it is what it was.
   let skit = null, fumbleNext = false;
   function magMesh() {
@@ -1527,7 +1627,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   function maybeFumble() {
     const rl = arms.rl;
     if (skit || !rl || rl.kind !== 'mag' || rl.hold || cutIn || grab || game.over || me.downed || me.safe || walker.crawl || holdQ || decomp || strap) return;
-    if (!(fumbleNext || testing?.fumble || Math.random() < 0.1)) return;
+    if (!(fumbleNext || Math.random() < 1 / 25)) return;   // (one reload in twenty-five; fumbleNext: the editor's stage)
     const eye = walker.camera.position;
     const z = dead.list.filter((z) => z.hp > 0 && (z.state === 'chase' || z.state === 'attack' || z.state === 'stand') && z.kind !== 'warden' && !z.K.stalk && !z.watch && z.pos.distanceTo(me.pos) > 1.6 && z.pos.distanceTo(me.pos) < 14 && station.see(eye, z.head)).sort((a, b) => a.pos.distanceTo(me.pos) - b.pos.distanceTo(me.pos))[0];
     if (!z) return;
@@ -1611,7 +1711,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
   function startDud() {
     walker.model.applyLook(walker.look);
     game.boof = Math.round(RULES.golden.kills * 0.5);
-    hud.banner('DUD', 0xff5040); hud.tip('One boof in ten is a dud. Half the charge back. ...Shoot something.');
+    hud.banner('PORRO TROP CHARGÉ', 0xff5040); hud.tip('One boof in ten is a porro trop chargé. Half the charge back. ...Shoot something.');
     const f = fwd(), sd = sideOf(f), here = me.pos.clone().setY(1.3);
     const near = dead.list.filter((z) => z.hp > 0 && (z.state === 'chase' || z.state === 'attack' || z.state === 'stand') && z.kind !== 'warden' && !z.K.stalk && !z.watch && z.pos.distanceTo(me.pos) > 1.2 && z.pos.distanceTo(me.pos) < 13).sort((a, b) => a.pos.distanceTo(me.pos) - b.pos.distanceTo(me.pos)).slice(0, 3);
     const spots = [me.pos.clone().addScaledVector(f, -1.25), me.pos.clone().addScaledVector(sd, 1.5).addScaledVector(f, 0.3), me.pos.clone().addScaledVector(sd, -1.5).addScaledVector(f, 0.3)];
@@ -1621,11 +1721,11 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     const face = () => me.pos.clone().setY(1.45);
     playCut([
       // his face, front: the drag that goes wrong
-      { for: 1.6, cam: (s) => ({ cam: face().addScaledVector(f, 1.25).addScaledVector(sd, 0.3).setY(1.4), at: face(), from: face(), fov: 36, lines: s < 0.2 ? 1 : 0, flash: s < 0.05 ? 0.4 : 0, title: s > 0.1 ? 'DUD' : null, sub: s > 0.1 ? 'one boof in ten' : null, kk: Math.min(1, s * 4) }) },
+      { for: 1.6, cam: (s) => ({ cam: face().addScaledVector(f, 1.25).addScaledVector(sd, 0.3).setY(1.4), at: face(), from: face(), fov: 36, lines: s < 0.2 ? 1 : 0, flash: s < 0.05 ? 0.4 : 0, title: s > 0.1 ? 'PORRO TROP CHARGÉ' : null, sub: s > 0.1 ? 'one boof in ten' : null, kk: Math.min(1, s * 4) }) },
       // wide, from behind and above him: the dead walking up, and stopping, to watch
       { for: 2.4, cam: (s) => ({ cam: here.clone().addScaledVector(f, -2.8).addScaledVector(sd, 1.6).setY(2.5), at: here.clone().addScaledVector(f, 1.0).setY(1.1), from: here, fov: 50, lines: s < 0.15 ? 1 : 0 }) },
-      // the pat, in profile: him doubled over, the hand on his back
-      { for: 1.6, cam: () => ({ cam: here.clone().addScaledVector(sd, 2.6).addScaledVector(f, -0.3).setY(1.3), at: here.clone().lerp(pat(), 0.4).setY(1.15), from: here, fov: 40, lines: 0.4, flash: dud && dud.patted ? 0.25 : 0 }) },
+      // the hit: from behind and beside, him doubled over coughing, the one behind him winding up and SMACK, on his back
+      { for: 2.6, cam: () => ({ cam: here.clone().addScaledVector(f, -3.1).addScaledVector(sd, 1.5).setY(1.65), at: here.clone().lerp(pat(), 0.45).setY(1.15), from: here, fov: 42, lines: dud && dud.patted ? 1 : 0.3, flash: dud && dud.patted && dud.t - dud.hitAt < 0.12 ? 0.5 : 0 }) },
       // his face again: the line
       { for: 1.4, cam: (s) => ({ cam: face().addScaledVector(f, 1.2).addScaledVector(sd, -0.3).setY(1.42), at: face(), from: face(), fov: 36, lines: 0, say: s > 0.15 ? ['Kirky', "...I'm fine. Shoot something."] : null }) },
     ], () => endDud());
@@ -1640,24 +1740,24 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     if (game.over || me.downed || grab || me.safe) { endDud(); return; }
     d.t += dt;
     walker.held = Math.max(walker.held, 0.3);
-    if (Math.random() < dt * 2.2) walker.model.exhale?.(0.3, 0.5);
-    if (d.t >= 4.2 && !d.patted && d.patter && d.patter.hp > 0 && d.patter.state === 'skit') { d.patted = true; d.patter.skit = { clip: 'throw', rate: 0.7, freeze: 0.55, face: me.pos, t: 0 }; sound.thud(me.pos.clone().setY(1.2)); }
+    // (he coughs, and coughs, hard, over and over, until somebody hits him on the back)
+    if (!d.patted) {
+      d.coughT = (d.coughT ?? 0.2) - dt;
+      if (d.coughT <= 0) { d.coughT = 0.42 + Math.random() * 0.22; sound.cough?.(me.pos.clone().setY(1.5), 0.8 + Math.random() * 0.4); walker.model.exhale?.(0.35, 0.6); walker.shake = Math.max(walker.shake, 0.012); }
+    }
+    // (the one behind him winds up at 4.5 s; the smack lands at 4.9, in the middle of the shot from behind)
+    if (d.t >= 4.5 && !d.swung && d.patter && d.patter.hp > 0 && d.patter.state === 'skit') { d.swung = true; d.patter.skit = { clip: 'zattack', rate: 1.0, freeze: 0.6, face: me.pos, t: 0 }; }
+    if (d.t >= 4.9 && !d.patted && d.swung) { d.patted = true; d.hitAt = d.t; sound.thud(me.pos.clone().setY(1.2)); sound.meat?.(me.pos.clone().setY(1.3), false); walker.shake = 0.05; walker.recoil?.(1.5); }
   }
 
   // ---- THE CONGA: dance (T) six seconds with the dead about, and the nearest five line up behind you, on the beat, until
   // something breaks it: a shot, a swing, a claw from one not in the line, the lounge, half a minute.
   let conga = null, danceT = 0, congaBroken = false, congaArm = 0;   // (congaArm: the editor's stage: the next dance counts as six seconds in)
-  const trail = [], lastTrail = new THREE.Vector3();
-  function trailPoint(back) {
-    let left = back;
-    for (let i = 0; i < trail.length - 1; i++) { const a = trail[i], b = trail[i + 1], seg = a.distanceTo(b); if (seg >= left) return a.clone().lerp(b, seg > 1e-6 ? left / seg : 0); left -= seg; }
-    const last = trail[trail.length - 1] || me.pos, f = fwd();
-    return last.clone().addScaledVector(f, -Math.max(0, left));
-  }
+
   function startConga(picks) {
     picks.forEach((z) => { z.state = 'skit'; z.t = 0; z.swing = 0; z.vel.set(0, 0, 0); z.skit = { to: me.pos.clone().setY(0), speed: 2.0, face: me.pos, t: 0 }; z.hop = 0; });
     conga = { t: 0, z: picks };
-    trail.length = 0; trail.push(me.pos.clone()); lastTrail.copy(me.pos); congaBroken = false;
+    congaBroken = false;
     sound.crowd?.('cheer', me.pos.clone().setY(1.4)); sound.sting(0.3);
     hud.banner('CONGA', 0xffd27a); hud.tip('They are in a line behind you. Keep going: it holds until something breaks it.'); for (const z of picks) sound.moan?.('groan', z.pos.clone().setY(1.4), { level: 0.6, rate: 1.3 });
     const here = me.pos.clone().setY(1.3), f = fwd(), sd = sideOf(f);
@@ -1680,19 +1780,26 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     }
     const c = conga; if (!c) return;
     c.t += dt;
-    if (me.pos.distanceTo(lastTrail) > 0.3) { trail.unshift(me.pos.clone()); if (trail.length > 80) trail.length = 80; lastTrail.copy(me.pos); }
+    // (a row of them behind you, an arm's length and more apart, the way the open mic's dancers stand behind the singer:
+    // each walks to its place in the row and breakdances there, facing the way you face; the row goes where you go)
+    const f = fwd(), sd = sideOf(f), n = c.z.length;
     c.z.forEach((z, i) => {
       if (!z.skit) return;
-      z.skit.to = trailPoint(0.95 * (i + 1)).setY(0); z.skit.speed = 2.1; z.skit.face = i === 0 ? me.pos : c.z[i - 1].pos; z.skit.clip = 'rally'; z.skit.loop = true; z.skit.wgt = 0.6; z.skit.rate = 1.1;   // (arms up, rallying, over the walk)
-      z.hop = c.t > 2.6 ? Math.max(0, Math.sin(c.t * 7.2 + i * 0.9) * 0.2 - 0.04) : 0;
+      const slot = me.pos.clone().addScaledVector(f, -2.3).addScaledVector(sd, (i - (n - 1) / 2) * 1.5).setY(0);
+      const there = Math.hypot(z.pos.x - slot.x, z.pos.z - slot.z) < 0.7;
+      z.skit.to = slot; z.skit.speed = 2.8; z.skit.face = slot.clone().addScaledVector(f, 6);
+      if (there) { z.skit.clip = 'breakdance'; z.skit.loop = true; z.skit.wgt = 1; z.skit.rate = 1.0; z.skit.from = (i * 0.37) % 1.5; }
+      else { z.skit.clip = null; }
+      z.hop = 0;
     });
     if (congaBroken) endConga('...and that was the conga.');
     else if (c.t > 30 || me.safe || me.downed || grab || game.over || c.z.some((z) => z.hp <= 0 || z.state !== 'skit')) endConga(c.t > 30 ? 'The line broke up. They had a good time.' : '');
   }
 
-  // ---- THE TROPHY: round ten, the PA: Mastre of the Month. A gold Kirky comes down out of the ceiling onto the nearest of
-  // them, and stays. "...Great."
-  let trophy = null, statue = null, trophyDone = false, trophyBox = null, goldMat = null;
+  // ---- THE TROPHY: the PA: Mastre of the Month. A gold Kirky comes down out of the ceiling onto the nearest of them, and
+  // stays. "...Great." (No longer at round ten: the Mastre of the Month is out on the Moon now, a statue by the lift with
+  // the worst of you on its plate (freeride/outcard.js). This one is the editor's stage only.)
+  let trophy = null, statue = null, trophyBox = null, goldMat = null;
   function trophyCall() {
     const secs = sound.mastre();
     hud.tip('The PA: Mastre of the Month. ...Collect your trophy.');
@@ -1749,23 +1856,44 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     }
   }
   function resetTrophy() {
-    trophy = null; trophyDone = false;
+    trophy = null;
     if (statue) { statue.root.visible = false; if (statue.pedestal) statue.pedestal.visible = false; }
     if (trophyBox) { const i = station.boxes.indexOf(trophyBox); if (i >= 0) station.boxes.splice(i, 1); trophyBox = null; }
   }
 
   // ---- THE RUBBER CHICKEN: under a bunk in the Crew Quarters. Taken, it goes on the end of his gun; F is a chicken from then on.
   let chicken = null, chickenHome = null, chickenTaken = false, chickenDirty = false, lastSqueak = -9;
+  // The bunk room's table: where the crew played cards (the chicken stands on it). A steel top on four legs, a stretcher
+  // between them; on it a hand of cards face down, a fanned spread, a tin mug, an ashtray full of ends.
+  const TABLE = { x: 60, z: 40.2, top: 0.78, w: 1.7, d: 0.95 };
+  function buildTable() {
+    const steel = new THREE.MeshStandardMaterial({ color: 0x3a3e44, metalness: 0.6, roughness: 0.5 }), top = new THREE.MeshStandardMaterial({ color: 0x4b4f47, metalness: 0.35, roughness: 0.7 });
+    const g = new THREE.Group(); g.position.set(TABLE.x, 0, TABLE.z);
+    const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+    add(new THREE.BoxGeometry(TABLE.w, 0.05, TABLE.d), top, 0, TABLE.top - 0.025, 0);
+    add(new THREE.BoxGeometry(TABLE.w + 0.04, 0.035, TABLE.d + 0.04), steel, 0, TABLE.top - 0.06, 0);   // (its rim)
+    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) add(new THREE.BoxGeometry(0.05, TABLE.top - 0.07, 0.05), steel, x * (TABLE.w / 2 - 0.08), (TABLE.top - 0.07) / 2, z * (TABLE.d / 2 - 0.08));
+    add(new THREE.BoxGeometry(TABLE.w - 0.2, 0.03, 0.03), steel, 0, 0.18, 0);
+    const card = new THREE.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.85 }), back = new THREE.MeshStandardMaterial({ color: 0x7a1c22, roughness: 0.8 });
+    for (let n = 0; n < 5; n++) add(new THREE.BoxGeometry(0.064, 0.002, 0.09), n % 2 ? card : back, -0.45 + n * 0.035, TABLE.top + 0.002 + n * 0.0015, 0.12, 0, -0.5 + n * 0.25, 0);
+    for (let n = 0; n < 6; n++) add(new THREE.BoxGeometry(0.064, 0.0025, 0.09), back, -0.1 + (n % 2) * 0.004, TABLE.top + 0.002 + n * 0.0025, -0.25, 0, 0.3, 0);   // (the deck)
+    add(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 14), steel, 0.55, TABLE.top + 0.05, 0.22);   // (a tin mug)
+    add(new THREE.TorusGeometry(0.035, 0.008, 6, 10, Math.PI), steel, 0.6, TABLE.top + 0.05, 0.22, 0, Math.PI / 2, -Math.PI / 2);
+    add(new THREE.CylinderGeometry(0.07, 0.06, 0.025, 14), steel, -0.62, TABLE.top + 0.012, -0.22);   // (an ashtray, and its ends)
+    for (let n = 0; n < 4; n++) add(new THREE.CylinderGeometry(0.005, 0.005, 0.03, 6), card, -0.62 + Math.cos(n * 1.7) * 0.03, TABLE.top + 0.03, -0.22 + Math.sin(n * 1.7) * 0.03, 0, 0, Math.PI / 2.3);
+    scene.add(g);
+    station.boxes?.push({ x0: TABLE.x - TABLE.w / 2, x1: TABLE.x + TABLE.w / 2, z0: TABLE.z - TABLE.d / 2, z1: TABLE.z + TABLE.d / 2, top: TABLE.top });
+  }
   loadModel('chicken.glb').then((gltf) => {
     chicken = gltf.scene;
     chicken.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-    chickenHome = new THREE.Vector3(BUNKS[0][0] + 0.35, 0.03, BUNKS[0][1] + 0.05);
+    chickenHome = new THREE.Vector3(TABLE.x + 0.25, TABLE.top + 0.01, TABLE.z - 0.1);   // (on the bunk room's table, among the cards)
     homeChicken();
   }, () => {});
   function homeChicken() {
     if (!chicken) return;
     chicken.removeFromParent();
-    chicken.scale.setScalar(7.0); chicken.position.copy(chickenHome); chicken.rotation.set(0, 0.6, Math.PI / 2);
+    chicken.scale.setScalar(7.0); chicken.position.copy(chickenHome); chicken.rotation.set(0, 0.6, 0);   // (stood up on the table)
     scene.add(chicken);
   }
   function mountChicken() {
@@ -1826,7 +1954,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     if (dead.remote) {   // (a guest: the host's, drawn; their steps are heard here too)
       events.length = 0;
       dead.follow(dt, events);
-      for (const e of events) if (e.type === 'zstep' && !me.safe && e.z.pos.distanceTo(me.pos) < 16) sound.zstep(e.z.pos.clone().setY(0.1), e.z.kind !== 'walker');
+      for (const e of events) if (e.type === 'zstep' && !me.safe && e.z.pos.distanceTo(me.pos) < 22) sound.zstep(e.z.pos.clone().setY(0.1), e.z.kind !== 'walker');
       voices(dt);
       return;
     }
@@ -1846,7 +1974,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
         dead.heard(e.at.clone().setY(1.2));
         for (let i = 0; i < 2; i++) { const at = pickSpawn(); if (at) { dead.spawn('runner', at.x, at.z, at.yaw ?? 0, 'drop', hpOf(game.round)); game.left += 1; } }
       }
-      else if (e.type === 'zstep') { if (!me.safe && e.z.pos.distanceTo(me.pos) < 16) sound.zstep(e.z.pos.clone().setY(0.1), e.z.kind !== 'walker'); }
+      else if (e.type === 'zstep') { if (!me.safe && e.z.pos.distanceTo(me.pos) < 22) sound.zstep(e.z.pos.clone().setY(0.1), e.z.kind !== 'walker'); }
       else if (e.type === 'lost') {   // (wandering far off for too long: it comes up out of the floor again, nearer)
         const at = pickSpawn(true);
         if (at) { e.z.pos.set(at.x, 0, at.z); e.z.vel.set(0, 0, 0); e.z.state = 'drop'; e.z.y = 1.45; e.z.vy = 0; e.z.yaw = at.yaw ?? e.z.yaw; e.z.t = 0; e.z.farFor = 0; }   // (back in through a hole in a wall, out of your sight)
@@ -1894,7 +2022,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       c.z = z; game.left += 1;
       sound.sting(0.9); sound.clatter?.('mag', c.to.clone().setY(0.5), 0.8);
       const eye = walker.camera.position.clone(), ahead = c.axis.clone();
-      playCut([{ for: 1.4, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, 0.2), at: eye.clone().addScaledVector(ahead, 3 - 1.2 * s).setY(0.45), from: eye, fov: 46 - 12 * s, lines: s > 0.3 ? 1 : 0, flash: s < 0.05 ? 0.3 : 0, say: ['Kirky', 'Something is in here with me.'] }) }]);
+      playCut([{ for: 1.4, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, 0.2), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : z.pos.clone().setY(0.45)), from: eye, free: true, fill: 1.4, fillAt: z.pos.clone().addScaledVector(ahead, -1.2).setY(0.8), fov: 46 - 12 * s, lines: s > 0.3 ? 1 : 0, flash: s < 0.05 ? 0.3 : 0, say: ['Kirky', 'Something is in here with me.'] }) }]);
     }
     const z = c.z;
     if (z && z.state === 'duct' && !c.bitten) {
@@ -1903,10 +2031,24 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
         c.bitten = true;
         clawed(25, z);
         const eye = walker.camera.position.clone(), ahead = c.axis.clone();
-        playCut([{ for: 0.9, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, -0.15), at: eye.clone().addScaledVector(ahead, 0.5).setY(0.4), from: eye, fov: 40, lines: 1, flash: s < 0.1 ? 0.9 : 0, say: ['Kirky', 'OFF— it is going over— it is going over me—'] }) }]);
+        playCut([{ for: 0.9, cam: (s) => ({ cam: eye.clone().addScaledVector(ahead, -0.15), at: (z.head && Number.isFinite(z.head.x) ? z.head.clone() : eye.clone().addScaledVector(ahead, 0.5).setY(0.4)), from: eye, free: true, fill: 0.9, fillAt: eye.clone().addScaledVector(ahead, -0.35).setY(0.8), fov: 40, lines: 1, flash: s < 0.1 ? 0.9 : 0, say: ['Kirky', 'OFF— it is going over— it is going over me—'] }) }]);
         sound.meat(z.head, true);
       }
     }
+  }
+  // The safe room's walls: while the bay is yours (the station not yet awake), something is on the other side of the red
+  // gashes where they will come through: fists on the plate, three and four at a time, and the grunting behind it.
+  let bayKnockT = 4;
+  function runBayKnocks(dt) {
+    if (game.woke || intro >= 0 || game.over || station.zoneAt(me.pos) !== 'b') return;
+    if ((bayKnockT -= dt) > 0) return;
+    bayKnockT = 3.2 + Math.random() * 4;
+    const holes = OPENINGS.filter((o) => o.zone === 'b');
+    const o = holes[Math.floor(Math.random() * holes.length)];
+    if (!o) return;
+    const p = V3(o.wx, 1.4, o.wz), n = 2 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < n; k++) setTimeout(() => { if (active && !game.woke) { sound.thud(p); sound.bang?.(0.35, p); } }, k * (160 + Math.random() * 120));
+    setTimeout(() => { if (active && !game.woke) sound.moan?.('groan', p, { level: 0.75, rate: 0.85 + Math.random() * 0.3 }); }, 250 + Math.random() * 500);
   }
   function runRounds(dt) {
     if (game.over || dead.remote || testing?.calm) return;   // (a guest: the host keeps the rounds; calm: a test wants the station to itself)
@@ -1936,10 +2078,48 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (at) {
         const kind = kindBy(N()) || ROUND.kind(game.round);
         dead.spawn(kind, at.x, at.z, at.yaw ?? 0, 'drop', hpOf(game.round) * (1 + RULES.party.tougher * ((game.party || 1) - 1)) * (kind === 'crawler' ? 0.6 : 1));
-        if (!me.safe && at.distanceTo(me.pos) < 22) sound.thud(at.clone().setY(1.8));
+        if (!me.safe) spawnNoise(at);
         game.spawned++;
       }
       game.spawnIn = ROUND.every(game.round) * (N().every || 1) * (0.6 + Math.random() * 0.8);
+    }
+  }
+  // One of them coming through (his ask: a sudden noise and a bang as they come): the grille kicked out of the ceiling and
+  // clattering down; and now and then, when it is close, one of his stingers on top (not every time: it would stop meaning
+  // anything).
+  let stingAt = -99, bangAt = -99;
+  function spawnNoise(at) {
+    const d = at.distanceTo(me.pos);
+    if (d > 26 || time - bangAt < 0.7) return;
+    bangAt = time;
+    const p = at.clone().setY(2.6);
+    sound.burst(p, d < 12 ? 1.2 : 0.85);
+    if (d < 16 && time - stingAt > 9 && Math.random() < 0.6) { stingAt = time; sound.music.sting(p, d < 9 ? 1 : 0.7); }
+  }
+  // ---- His music: which of the loops is playing. Before they wake and between rounds, the dread; in a round, the hunt,
+  // and the swarm when they are on you (in on a quick count of them close, out only once it has been calm a while, so it
+  // does not flap); the lounge's own in the lounge (none while the band is on). The ways in and out play their cues.
+  // In the quiet, now and then, one of them laughing, somewhere off in the dark.
+  let heat = 0, calmFor = 0, musicIs = null, laughIn = 45;
+  function runMusic(dt) {
+    const M = sound.music;
+    if (intro >= 0 || exiting) return;
+    if (game.over) { M.want(null); musicIs = null; return; }
+    if (lounge?.inside) { M.want(lounge.band ? null : 'lounge'); musicIs = null; return; }
+    let close = 0, near = Infinity;
+    for (const z of dead.list) if (z.hp > 0 && z.state !== 'feed') { const d = z.pos.distanceTo(me.pos); near = Math.min(near, d); if (d < 11) close++; }
+    const fighting = game.round > 0 && game.breakFor <= 0 && game.woke;
+    const want = Math.min(1, close / 5 + (holdQ || decomp ? 0.7 : 0) + (grab ? 0.5 : 0));
+    heat += (want - heat) * Math.min(1, dt * (want > heat ? 2 : 0.3));
+    if (!fighting) { musicIs = 'dread'; calmFor = 0; }
+    else if (musicIs === 'swarm') { calmFor = heat < 0.3 ? calmFor + dt : 0; if (calmFor > 9) musicIs = 'hunt'; }
+    else { musicIs = heat > 0.62 ? 'swarm' : 'hunt'; calmFor = 0; }
+    M.want(musicIs);
+    laughIn -= dt * (fighting ? 1 : 1.6);
+    if (laughIn <= 0 && near > 10 && game.woke && !me.safe && !cutIn) {
+      laughIn = 35 + Math.random() * 55;
+      const a = Math.random() * Math.PI * 2, r = 9 + Math.random() * 10, W = station.width * CELL - 2, D = station.depth * CELL - 2;
+      M.laugh(V3(Math.max(2, Math.min(W, me.pos.x + Math.cos(a) * r)), 1.2 + Math.random() * 1.6, Math.max(2, Math.min(D, me.pos.z + Math.sin(a) * r))));
     }
   }
   // The lights: the emergency reds pulse and stutter; the strips hold, blink or are dying.
@@ -2010,6 +2190,8 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     get skit() { return skit; },
     get drill() { return drill ? { id: drill.step?.id, i: drill.i, k: +drill.k.toFixed(2) } : null; },
     get introT() { return intro; },
+    get music() { const M = sound.music; return { playing: M.playing, wanted: M.wanted, cue: M.cueName, cueT: +M.cueTime().toFixed(2), is: musicIs, heat: +heat.toFixed(2), ctx: sound.state().ctx, log: M.log.join(' ') }; },
+    fill: (x, y, z, k) => { if (cutFill) { cutFill.position.set(x, y, z); cutFill.intensity = k; } return 1; },   // (the tests: a light to see by)
     cutObjective: (kind, i) => cutObjective(kind, i),
     get lift() { return lift; },
     get exiting() { return exiting; },
@@ -2074,14 +2256,14 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       onLeave?.();
     },
     // Out, the way you came: the lift up to the Moon (main.js plays the arrival at the surface).
-    out() {
+    out(results = null) {
       setPaused(false);
       active = false;
       hud.show(false);
       sound.open(false);
       holdMusic(null);
       document.exitPointerLock?.();
-      (onOut || onLeave)?.();
+      (onOut || onLeave)?.(results);   // (results: what the card says once you are out on the Moon: main.js)
     },
     update(dt, input, mouse) {
       if (!active) return;
@@ -2117,6 +2299,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
         runLights(dt);
         story.update(dt);
         sound.update(dt, camera, { danger: Math.min(1, waiting / 4), dark: game.dark, hard: game.hard });
+        runMusic(dt);
         return;
       }
       refreshFolk();
@@ -2133,7 +2316,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       if (dud) walker.emote = 'drunkidle';   // (the dud: doubled over, coughing)
       if (walker.emote && !walker.moving) story.tip('dance');
       if (grab) runGrab(dt, meleeKey && !wasMelee);
-      walker.update(playing || held || me.downed ? dt : 0, keys, playing || grab ? mouse : [0, 0], (aiming && !held) || !!grab, fireNow && !held, !playing || held);
+      walker.update(playing || held || me.downed ? dt : 0, keys, (playing || grab) && !crankShown ? mouse : [0, 0], (aiming && !held) || !!grab, fireNow && !held, !playing || held);
       walker.focus = dead.hit(camera.position, walker.lookDir, 30, true)?.t ?? Infinity;
       dead.eye.copy(camera.position);
       me.pos.copy(walker.pos);
@@ -2241,6 +2424,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       for (const z of dead.list) if (z.hp > 0 && z.state !== 'feed') near = Math.min(near, z.pos.distanceTo(me.pos));
       const danger = Math.max(0, Math.min(1, 1 - (near - 2) / 14)), hurt = 1 - game.health / game.maxHealth;
       sound.update(dt, camera, { danger, hurt: game.over ? 1 : hurt, dark: game.dark, signal: game.story?.busy === 'signal', hard: game.hard });
+      runMusic(dt);
       hitMark = Math.max(0, hitMark - dt);
       if (hurtDir.k > 0) { hurtDir.k = Math.max(0, hurtDir.k - dt * 1.4); hud.hurtFrom(hurtDir.b, hurtDir.k); }
       const slot = arms.slot;
@@ -2255,12 +2439,17 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       runCrateMark();
       logs?.update(dt, time);
       runDuct();
+      runBayKnocks(dt);
       {
         const useNow = input0?.down?.('KeyE') || !!testing?.use, melNow = input0?.down?.('KeyF') || !!testing?.melee;
         const useDown = useNow && !wasQteUse, melDown = melNow && !wasQteMel; wasQteUse = useNow; wasQteMel = melNow;
         lift?.update(dt);
         walker.carriedY = exiting && lift ? lift.y : null;   // (up the shaft with the cage)
-        if (exiting && lift) { walker.y = lift.y; walker.vy = 0; walker.model.root.position.y = lift.y; }
+        if (exiting && lift) {
+          walker.y = lift.y; walker.vy = 0; walker.model.root.position.y = lift.y;
+          // (nothing of theirs rides up with you: any of them in the cage's square is put back out past its gate)
+          for (const z of dead.list) if (z.hp > 0 && !z.gateStuck && Math.abs(z.pos.x - lift.at.x) < lift.half + 0.2 && Math.abs(z.pos.z - lift.at.z) < lift.half + 0.2) { z.pos.x = lift.at.x + lift.half + 1.1; z.vel?.set(0, 0, 0); }
+        }
         runDrill(dt, drillEv); drillEv = {};
         me.shield = !!(cutIn || skit || dud || conga || (trophy && trophy.t < 4.5) || game.cut >= 0 || exiting);   // (the trophy stays as a prop: only its fall shields you)
         runGlance(dt);
@@ -2273,7 +2462,7 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
         if (decomp) runDecomp(dt, useNow, melDown);
         if (active && !me.safe) runStrap(dt, useDown, melDown);
         if (coop()) runCarry(dt, melDown);
-        if (coop()) runCrank(dt, input0?.down?.('KeyA') || !!testing?.a, input0?.down?.('KeyD') || !!testing?.d);
+        if (coop()) runCrank(dt, mouse);
         runEye();
         runBackToBack();
         if (!me.safe && !me.downed) runSafe(dt, useDown);
@@ -2284,6 +2473,14 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
       sound.crateHum?.(crateAt);
       if (grabCut) runGrabCut(dt);
       else runCut(dt);
+      // (holding a door shut: the cut-in's camera, from the side of him along the wall, the door jolting in front of him)
+      if (holdQ?.cam && holdQ.n && !cutIn) {
+        const d = holdQ.d, n = holdQ.n, along = V3(n.z, 0, -n.x), from = d.at.clone().addScaledVector(n, 0.7).setY(1.45);
+        const want = d.at.clone().addScaledVector(n, 2.0).addScaledVector(along, 1.6).setY(1.6), dir = want.clone().sub(from), len = dir.length(); dir.divideScalar(len);
+        const room = station.ray(from, dir, len + 0.3) - 0.3; if (room < len) want.copy(from).addScaledVector(dir, Math.max(0.6, room));
+        camera.position.copy(want).add(V3((Math.random() - 0.5) * walker.shake, (Math.random() - 0.5) * walker.shake, 0)); camera.lookAt(d.at.x + n.x * 0.4, 1.25, d.at.z + n.z * 0.4); camera.fov = 50; camera.updateProjectionMatrix();
+        walker.model.root.visible = true; walker.view.visible = false;
+      }
       if (testing?.freeCam) { const [x, y, z, tx, ty, tz] = testing.freeCam; camera.position.set(x, y, z); camera.lookAt(tx, ty, tz); camera.updateProjectionMatrix(); }
       // (the tests: a camera of their own, to look at him from wherever)
       if (testing?.cam) { camera.position.fromArray(testing.cam.pos); camera.lookAt(...testing.cam.at); camera.fov = testing.cam.fov || 50; camera.updateProjectionMatrix(); walker.model.root.visible = true; walker.view.visible = false; }
@@ -2324,33 +2521,29 @@ export function createDeadAir({ renderer, onLeave, onOut = null, openCasino, par
     { id: 'vent', group: 'The scares', name: 'The vent', blurb: 'something along the ceiling over your head, out behind you', run: () => { allDoors(); at(7 * CELL, 2 * CELL + 1.0, Math.PI); scares.vent(); } },
     { id: 'breath', group: 'The scares', name: 'The breath', blurb: 'right behind your ear; nothing there', run: () => { setTimeout(() => active && scares.breath(me), 800); } },
     { id: 'doorstep', group: 'The scares', name: 'The doorstep', blurb: 'coming out of the lounge, one waiting just outside', run: () => { allDoors(); rich(); toRound(2); game.loungeOpen = true; at(station.lounge.outside.x, station.lounge.outside.z, station.lounge.facing); scares.doorstep(station.lounge.outside, station.lounge.facing, hpOf(2), true); } },
-    { id: 'deck', group: 'The station', name: 'The Observation Deck', blurb: 'a floor up, over the Med Bay: the parapet, the windows, the Moon', run: () => { allDoors(); rich(); at(16 * CELL, 3 * CELL, Math.PI); } },
-    { id: 'stairs', group: 'The station', name: 'The stairs', blurb: 'from the Med Bay\'s north arm, up to the deck', run: () => { allDoors(); rich(); at(13 * CELL + 0.3, 3 * CELL, Math.PI / 2); } },
     { id: 'quarters', group: 'The station', name: 'The Crew Quarters', blurb: 'through the Reactor\'s east door: the bunks, the lockers, what they wrote', run: () => { allDoors(); rich(); at(13 * CELL, 10 * CELL, Math.PI / 2); } },
     { id: 'medbay', group: 'The station', name: 'The Med Bay', blurb: 'the tall room, the deck over its north side', run: () => { allDoors(); rich(); at(16 * CELL, 6 * CELL, Math.PI + 0.3); } },
-    { id: 'skit', group: 'The laughs', name: 'The reload skit', blurb: 'one reload in ten: the fresh mag slips; one of them picks it up and hands it back (press R here)', run: () => { allDoors(); rich(); at(15 * CELL, 5 * CELL, 0); const z = dead.spawn('walker', 15 * CELL + 2.6, 5 * CELL + 4.2, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; fumbleNext = true; const s = arms.slot; if (s) s.mag = Math.min(s.mag, 2); } },
-    { id: 'dud', group: 'The laughs', name: 'The boof dud', blurb: 'one Golden BOOF in ten: no hour, a coughing fit, the dead stop to watch, one pats his back (press G here)', run: () => { allDoors(); rich(); game.boofFree = true; game.boof = RULES.golden.kills; at(15 * CELL, 5 * CELL, 0); for (const [dx, dz] of [[2.2, 4.5], [-3.5, 3.2], [3.6, 2.6]]) { const z = dead.spawn('walker', 15 * CELL + dx, 5 * CELL + dz, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; } dudNext = true; } },
+    { id: 'skit', group: 'The laughs', name: 'The reload skit', blurb: 'one reload in twenty-five: the fresh mag slips; one of them picks it up and hands it back (press R here)', run: () => { allDoors(); rich(); at(15 * CELL, 5 * CELL, 0); const z = dead.spawn('walker', 15 * CELL + 2.6, 5 * CELL + 4.2, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; fumbleNext = true; const s = arms.slot; if (s) s.mag = Math.min(s.mag, 2); } },
+    { id: 'dud', group: 'The laughs', name: 'Porro trop chargé', blurb: 'one Golden BOOF in ten: no hour, a coughing fit, the dead stop to watch, one smacks him on the back (press G here)', run: () => { allDoors(); rich(); game.boofFree = true; game.boof = RULES.golden.kills; at(15 * CELL, 5 * CELL, 0); for (const [dx, dz] of [[2.2, 4.5], [-3.5, 3.2], [3.6, 2.6]]) { const z = dead.spawn('walker', 15 * CELL + dx, 5 * CELL + dz, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; } dudNext = true; } },
     { id: 'conga', group: 'The laughs', name: 'The conga', blurb: 'dance (T) a few seconds with the dead about: the nearest five line up behind you, rallying, until something breaks it', run: () => { allDoors(); rich(); at(15 * CELL, 5 * CELL, 0); for (const [dx, dz] of [[1.5, 4.5], [-2.5, 4.2], [3.2, 3.0], [-3.8, 2.4], [0.4, 6.2]]) { const z = dead.spawn('walker', 15 * CELL + dx, 5 * CELL + dz, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; } congaArm = 2.3; } },
-    { id: 'trophy', group: 'The laughs', name: 'The Mastre trophy', blurb: 'round ten: the PA, and a gold Kirky out of the ceiling onto the nearest of them', run: () => { allDoors(); rich(); at(15 * CELL, 5 * CELL, 0); const z = dead.spawn('walker', 15 * CELL + 0.6, 5 * CELL + 4.4, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; trophyDone = true; trophyCall(); } },
+    { id: 'trophy', group: 'The laughs', name: 'The Mastre trophy', blurb: 'off in the game (the Mastre of the Month is on the Moon now): the PA, and a gold Kirky out of the ceiling onto the nearest of them', run: () => { allDoors(); rich(); at(15 * CELL, 5 * CELL, 0); const z = dead.spawn('walker', 15 * CELL + 0.6, 5 * CELL + 4.4, Math.PI, 'walk', 400); z.state = 'stand'; z.standFor = 99; z.watch = false; trophyCall(); } },
     { id: 'chicken', group: 'The laughs', name: 'The rubber chicken', blurb: 'under a bunk in the Crew Quarters: E, and F is a chicken from then on', run: () => { allDoors(); rich(); at(BUNKS[0][0] + 1.3, BUNKS[0][1] - 1.3, -Math.PI / 4); } },
-    { id: 'safe', group: 'Co-op', name: 'The dead-man safe', blurb: 'the Lab: E on one plate, then the other within a second (two of you, or one at a sprint)', run: () => { allDoors(); rich(); at(SAFE.a.x, SAFE.a.z - 1.2, 0); } },
-    { id: 'crank', group: 'Co-op', name: 'The crank (uplink)', blurb: 'the wheel in the Med Bay: with friends the dish turns only while one of you cranks (A / D)', run: () => { allDoors(); rich(); story.apply([1, 0, 0, '']); at(CRANK.x - 1.6, CRANK.z, Math.PI / 2); } },
+    { id: 'safe', group: 'Co-op', name: 'The two keys', blurb: 'KEY A in the Arrival Bay, KEY B in Lab 2 by the Reactor door: E on one, then the other in time (14 s alone): the Reactor opens', run: () => { station.doors.forEach((d, i) => { if (d.name !== 'the Reactor') openDoor(i); }); rich(); at(SAFE.b.x, SAFE.b.z - 1.3, Math.PI); } },
+    { id: 'crank', group: 'Co-op', name: 'The crank (uplink)', blurb: 'the wheel in the Med Bay: with friends the dish turns only while one of you cranks (turn the mouse round in circles)', run: () => { allDoors(); rich(); story.apply([1, 0, 0, '']); at(CRANK.x - 1.6, CRANK.z, Math.PI / 2); } },
     { id: 'holdit', group: 'Co-op', name: 'Hold it shut', blurb: 'the Lab door, hammered on: E as the marker crosses the green, three good hits (alone it is just you)', run: () => { rich(); toRound(2); const d = station.doors[0]; at(d.at.x - (d.across ? 0 : 1.8), d.at.z - (d.across ? 1.8 : 0), Math.atan2(d.across ? 0 : 1, d.across ? 1 : 0)); setTimeout(() => startHold(d), 800); } },
     { id: 'decomp', group: 'Co-op', name: 'Decompression', blurb: 'the outer door lets go: hold a rail (E by a wall) or shut it from the panel (mash F)', run: () => { rich(); toRound(3); holdQ = null; strap = null; hud.qte(null); lift.setUp(); at(START.i * CELL + 2, START.j * CELL, Math.PI); setTimeout(() => startDecomp(), 800); } },
     { id: 'drill', group: 'The way in', name: 'The bay drill', blurb: 'the first time in: the controls, a step at a time, in the safe bay', run: () => { at(START.i * CELL, START.j * CELL, START.yaw); game.woke = false; setTimeout(() => startDrill(true), 300); } },
     { id: 'board', group: 'Co-op', name: 'Into the lift', blurb: 'the lift is down: E by a rail inside it, then mash F on the lever: the way out', run: () => { allDoors(); rich(); lift.setDown(); lift.runway(true); story.apply([3, 0, 0, '']); if (!game.power) onPower(); at(lift.at.x + 3.6, lift.at.z, -Math.PI / 2); } },   // (by then the power is on: it was the first thing done)
     { id: 'crawl', group: 'The scares', name: 'The crawlspace', blurb: 'the duct from the Spine to the Lab: in on your belly; halfway, something is coming the other way', run: () => { allDoors(); rich(); toRound(2); at(DUCT.from.x, DUCT.from.z - 1.3, 0); setTimeout(() => walker.enterDuct(DUCT.from, DUCT.to), 2200); } },
     { id: 'lift', group: 'The scares', name: "The Warden's hand", blurb: 'he does not claw: he lifts you off the floor by the throat; mash F', run: () => { rich(); toRound(2); const z = nearOne('warden'); setTimeout(() => { if (active && z.hp > 0) { dead.grab(z, me); startGrab(z.id, z); } }, 900); } },
-    { id: 'window', group: 'The scares', name: 'The window', blurb: 'on the deck, looking out: something walks past the glass', run: () => { allDoors(); rich(); at(16 * CELL, 3 * CELL, Math.PI); setTimeout(() => scares.force('window', me), 600); } },
-    { id: 'parapet', group: 'The scares', name: 'The parapet', blurb: 'in the Med Bay under the deck: a hand over the edge, and the rest of it comes down', run: () => { allDoors(); rich(); at(16 * CELL, 4 * CELL + 0.4, Math.PI); setTimeout(() => scares.force('parapet', me), 600); } },
-    { id: 'overhead', group: 'The scares', name: 'Steps overhead', blurb: 'in the Med Bay: six slow steps on the deck over your head', run: () => { allDoors(); rich(); at(16 * CELL, 5 * CELL, Math.PI); setTimeout(() => scares.force('overhead', me), 600); } },
+    { id: 'overhead', group: 'The scares', name: 'Steps overhead', blurb: 'in the Med Bay: six slow steps on the roof over your head', run: () => { allDoors(); rich(); at(16 * CELL, 5 * CELL, Math.PI); setTimeout(() => scares.force('overhead', me), 600); } },
     { id: 'bunk', group: 'The scares', name: 'The bunk', blurb: 'the quarters: the blanket on the second bunk moves; what is under it gets up', run: () => { allDoors(); rich(); at(BUNKS[1][0] - 1.3, BUNKS[1][1] - 1.5, Math.PI / 5); setTimeout(() => scares.force('bunk', me), 600); } },
-    { id: 'sitter', group: 'The scares', name: 'The one on the stairs', blurb: 'sitting at the top of the stairs with its back to you: walk up (W)', run: () => { allDoors(); rich(); toRound(1); at(13 * CELL, 3 * CELL, Math.PI / 2); scares.force('sitter', me); } },
+    { id: 'sitter', group: 'The scares', name: 'The one at the wall', blurb: 'stood at the north wall of the Med Bay, its back to you: walk up (W)', run: () => { allDoors(); rich(); toRound(1); at(16 * CELL, 6 * CELL, Math.PI); scares.force('sitter', me); } },
     { id: 'chest', group: 'The scares', name: 'The footlocker', blurb: 'the quarters: its lid flies open as you pass; off and not looking, it slams shut', run: () => { allDoors(); rich(); at(14.6 * CELL - CELL / 2, 11.05 * CELL - CELL / 2 - 1.7, 0); setTimeout(() => scares.force('chest', me), 600); } },
     { id: 'wheel', group: 'The scares', name: 'The wheel', blurb: 'the Med Bay, alone: the crank turns by itself', run: () => { allDoors(); rich(); at(CRANK.x - 2.6, CRANK.z + 0.4, Math.PI / 2); setTimeout(() => scares.force('wheel', me), 600); } },
     { id: 'gone', group: 'The scares', name: 'The missing body', blurb: 'a body gone from where it lay (the Spine\'s): go back to it', run: () => { allDoors(); rich(); toRound(2); at(13 * CELL, 2 * CELL, -Math.PI / 2); setTimeout(() => scares.force('gone', me), 600); } },
     { id: 'recorder', group: 'The scares', name: 'The recorder', blurb: 'one of Jun\'s recorders playing by itself, somewhere else', run: () => { allDoors(); rich(); at(4 * CELL, 2 * CELL, Math.PI / 2); setTimeout(() => scares.force('recorder', me), 600); } },
-    { id: 'drip', group: 'The scares', name: 'The drip', blurb: 'the Med Bay: blood off the parapet edge onto the plates', run: () => { allDoors(); rich(); at(16 * CELL, 5 * CELL - 2, Math.PI); } },
+    { id: 'drip', group: 'The scares', name: 'The drip', blurb: 'the Med Bay: blood from the ceiling onto the plates', run: () => { allDoors(); rich(); at(16 * CELL, 5 * CELL - 2, Math.PI); } },
     { id: 'steam', group: 'The scares', name: 'Steam', blurb: 'a pipe lets go beside you in the Spine; sometimes something is in it', run: () => { allDoors(); at(22, 8.6, -Math.PI / 2); setTimeout(() => scares.steamNow(me.pos), 400); } },
     { id: 'hanging', group: 'The scares', name: 'The hanging one', blurb: 'one on a cable in the Reactor; it lets go as you pass under', run: () => { allDoors(); rich(); toRound(2); at(34, 31.5, 0); setTimeout(() => { const h = scares.hangOne(); if (h) at(h.pos.x - 1.4, h.pos.z - 1.2, Math.atan2(1.4, 1.2)); }, 1200); } },
     { id: 'knock', group: 'The scares', name: 'The knock', blurb: 'stand by a shut door: something on the other side wants through', run: () => { rich(); const d = station.doors[0]; at(d.at.x - (d.across ? 0 : 1.5), d.at.z - (d.across ? 1.5 : 0), Math.atan2(d.across ? 0 : 1, d.across ? 1 : 0)); setTimeout(() => scares.knockNow(me.pos), 900); } },

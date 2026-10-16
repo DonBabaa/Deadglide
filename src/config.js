@@ -204,6 +204,13 @@ export const config = {
     baseSpawnRate: 3,     // monsters per second while topping up
     spawnRatePerWave: 1,
     hpGrowth: 0.15,       // extra monster health per wave (0.15 = +15%)
+    // ...and with you: per level of yours above the first, more health, harder hits, more of them at once. (His: the
+    // game must not get too easy with the new power-ups. Measured, da/power.mjs, at the Cemetery's wave 6 standing still:
+    // a chosen build at level 14 killed twice as fast as the old game's stacked gun and took a third of the damage, and one
+    // at level 20 took none. With these it is back in line: see DEAD_AIR_NEXT.md.)
+    hpPerLevel: 0.05,     // at level 14: +65% health (so that a ring of fire is not a wall: it takes three touches, not two)
+    damagePerLevel: 0.07, // ...+91% to their hits (the danger is what had gone: the dead got close, and froze or burned first)
+    crowdPerLevel: 0.025, // ...and a third more of them, coming a third faster
     damageGrowth: 0.05,   // extra monster damage per wave
     eliteDamage: 2.5,     // elites hit this many times harder
     spawnDistance: 48,    // how far away they claw out of the ground
@@ -239,8 +246,11 @@ export const config = {
 
   xp: {
     firstLevel: 5,        // XP needed for level 2...
-    perLevel: 4,          // ...and this much more for each level after
-    maxLevel: 20,         // the level cap; after it, gems are worth points instead
+    perLevel: 4,          // ...and this much more for each level after...
+    growth: 0.8,          // ...and this times the square of the levels gone (the balance pass, 2026-10-16: on a straight line a
+                          // bot hit the cap of 20 at 2:40 into the Cemetery, the first of four levels, and nothing grew after.
+                          // Now: about level 14 by the end of the Cemetery, 20 through the Catacombs, and more in the House)
+    maxLevel: 40,         // the level cap; after it, gems are worth points instead
     cappedGemPoints: 15,  // ...this many per XP
     pickupRadius: 7,      // gems this close fly to you
     pullSpeed: 32,
@@ -311,7 +321,7 @@ export const config = {
     heartHeal: 10,        // HP a heart restores
     heartLifetime: 60,    // seconds before an uncollected heart fades
     heartPull: 5,         // hearts this close drift toward you
-    weaponWeight: 1.5,    // how often each unowned gun turns up in a chest (ordinary items are 1 to 4)
+    weaponWeight: 2.5,    // how often each unowned gun turns up in a chest (ordinary items are 1 to 4): a gun is half a build
     pickupRadius: 2.4,    // ride this close to open one
     chestLifetime: 100,    // seconds before an unopened chest disappears
     chestHeartChance: 0.45, // how often a chest has hearts in it as well as what it holds...

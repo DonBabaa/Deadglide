@@ -162,6 +162,9 @@ function mark(e, parts, i) {
   }
 }
 
+// What their hits do to you, by how far you have come (config.horde.damagePerLevel).
+const hitsYou = () => 1 + (config.horde.damagePerLevel || 0) * Math.max(0, (stats.xpLevel || 1) - 1);
+
 export class Horde {
   constructor(scene) {
     this.enemies = [];
@@ -322,7 +325,7 @@ export class Horde {
     const y = heightAt(x, z);
     if (y - groundAt(x, z) > 2.5) return;
     if (name === 'shambler') name = ZOMBIES[Math.floor(Math.random() * ZOMBIES.length)];   // (a zombie is any of the zombies)
-    const T = ENEMY_TYPES[name], tough = 1 + config.horde.hpGrowth * (this.wave - 1);
+    const T = ENEMY_TYPES[name], tough = (1 + config.horde.hpGrowth * (this.wave - 1)) * (1 + (config.horde.hpPerLevel || 0) * Math.max(0, (stats.xpLevel || 1) - 1));   // (by the wave, and by how far you have come)
     this.enemies.push({
       name, T, x, y, z, elite,
       scale: (elite ? 1.9 : 0.92 + Math.random() * 0.18) * config.horde.mobScale,
@@ -404,8 +407,9 @@ export class Horde {
     }
 
     // Top the crowd up toward this wave's size, a few per second (a thinner crowd while the boss is up).
-    const want = Math.min(H.maxAlive, (H.baseAlive + H.alivePerWave * (wave - 1)) * difficulty.crowd) * (this.boss ? H.bossCrowd : 1);
-    if (this.enemies.length < want) this.spawnDebt += (H.baseSpawnRate + H.spawnRatePerWave * (wave - 1)) * difficulty.crowd * dt;
+    const yours = 1 + (H.crowdPerLevel || 0) * Math.max(0, (stats.xpLevel || 1) - 1);   // (more of them, as you grow)
+    const want = Math.min(H.maxAlive, (H.baseAlive + H.alivePerWave * (wave - 1)) * difficulty.crowd * yours) * (this.boss ? H.bossCrowd : 1);
+    if (this.enemies.length < want) this.spawnDebt += (H.baseSpawnRate + H.spawnRatePerWave * (wave - 1)) * difficulty.crowd * yours * dt;
     else this.spawnDebt = 0;
     // Moving fast? They come up ahead of you. Standing still? From all around.
     const heading = Math.atan2(player.vel.x, player.vel.z), fast = Math.min(1, player.speed / 15);
@@ -568,7 +572,7 @@ export class Horde {
       if (dist < reach && Math.abs(player.pos.y - e.y) < e.T.height * e.scale) {
         // Deck Spikes: at speed, you run them down instead. (Elites and the boss take the hit and still hurt you.)
         const ramming = stats.ramDamage > 0 && player.speed > ramSpeed(stats.taken.spikes);
-        if (!ramming || e.elite || e.T.boss) damage = Math.max(damage, e.T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)));
+        if (!ramming || e.elite || e.T.boss) damage = Math.max(damage, e.T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)) * hitsYou());
         if (ramming && e.ramWait <= 0) {
           e.ramWait = 0.3;
           this.damage(e, stats.ramDamage, -dx, -dz);
@@ -609,7 +613,7 @@ export class Horde {
       // Deck Spikes: at speed, you run them down instead. (Elites still hurt you.)
       const ramming = stats.ramDamage > 0 && player.speed > ramSpeed(stats.taken.spikes);
       if (ramming && e.ramWait <= 0) { e.ramWait = 0.3; this.damage(e, stats.ramDamage, e.x - px, e.z - pz); }
-      return ramming && !e.elite ? 0 : T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1));
+      return ramming && !e.elite ? 0 : T.damage * (e.elite ? H.eliteDamage : 1) * (1 + H.damageGrowth * (this.wave - 1)) * hitsYou();
     };
     e.ramWait -= dt;
 
@@ -985,7 +989,7 @@ export class Horde {
   chill(e, seconds, slow) {
     if (e.dead || e.T.boss) return;
     if (!(e.chill > 0)) e.baseSpeed = e.speed;
-    e.speed = e.baseSpeed * (e.T.miniboss ? Math.max(slow, 0.75) : slow);
+    e.speed = e.baseSpeed * (e.T.miniboss || e.elite ? Math.max(slow, 0.75) : slow);   // (an elite, like the mini-boss, only a little)
     e.chill = Math.max(e.chill || 0, seconds);
   }
 
@@ -998,8 +1002,18 @@ export class Horde {
   }
 
   // quiet: don't report non-lethal hits (for damage that ticks many times a second).
-  damage(e, amount, dirX, dirZ, headshot = false, knock = 1, quiet = false) {
+  // kind: what dealt it (the gun's own shots: 'gun'; a power-up: its id; a blast: 'blast'), for the synergies (stats.combo).
+  damage(e, amount, dirX, dirZ, headshot = false, knock = 1, quiet = false, kind = null) {
     if (e.dead) return;   // (died with the boss, but something still had hold of it)
+    const C = stats.combo;
+    if (C && kind) {
+      // (trimmed after measuring: see config.horde.hpPerLevel)
+      if (C.thermal && ((kind === 'fire' && e.chill > 0) || (kind === 'frost' && e.fire > 0))) amount *= 1.3;    // Thermal Shock
+      if (C.conductor && kind === 'lightning' && e.chill > 0) amount *= 1.4;                                     // Superconductor
+      if (C.combust && kind === 'gas' && e.fire > 0) amount *= 1.5;                                              // Combustion
+      if (C.spiked && kind === 'thorns' && stats.shieldUp) amount *= 1.6;                                        // Spiked Shell
+      if (C.wounds && kind === 'gun' && (e.fire > 0 || e.chill > 0 || e.sick > 0)) amount *= 1.25;              // Open Wounds
+    }
     if (e.T.house) {      // Babitus: nothing touches him between hands, no one shot takes him past the next, and spent he takes it double
       if (e.guard > 0) return;
       if (e.spent > 0) amount *= 2;
@@ -1109,11 +1123,11 @@ export class Horde {
   }
 
   // Damages every monster within `radius` of a point (Shockwave Landing).
-  shockwave(pos, radius, amount) {
+  shockwave(pos, radius, amount, kind = 'blast') {
     for (const e of [...this.enemies]) {
       const dx = e.x - pos.x, dz = e.z - pos.z, d = Math.hypot(dx, dz);
       const girth = e.T.boss ? e.T.radius * e.scale : 0;   // the boss is hit at his edge, not his middle
-      if (d < radius + girth && Math.abs(e.y - pos.y) < 4 + girth) this.damage(e, amount, dx / (d || 1), dz / (d || 1));
+      if (d < radius + girth && Math.abs(e.y - pos.y) < 4 + girth) this.damage(e, amount, dx / (d || 1), dz / (d || 1), false, 1, false, kind);
     }
     this.ring.position.set(pos.x, pos.y + 0.3, pos.z);
     this.ring.userData.radius = radius;

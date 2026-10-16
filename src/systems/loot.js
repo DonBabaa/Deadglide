@@ -25,7 +25,7 @@ export const ITEMS = [
   { name: 'Holy Water', description: 'blasts everything nearby', weight: 3, use: (g) => g.blast(28, 250) },
   { name: 'Energy Drink', description: 'double fire rate for 10 s', weight: 3, use: (g) => g.frenzy(10) },
   { name: 'Lucky Charm', description: 'nothing can hurt you for 8 s', weight: 2, use: (g) => g.shield(8) },
-  { name: 'Old Tome', description: 'a free upgrade', weight: 1, use: (g) => g.freeUpgrade() },
+  { name: 'Old Tome', description: 'a free upgrade, for your build', weight: 3, use: (g) => g.freeUpgrade() },   // (three times as often: what you find should shape what you are)
 ];
 
 // The weapons category: one entry per gun (except the pistol you start with).

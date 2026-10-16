@@ -1,6 +1,6 @@
 // The lift: the industrial cage the party came down in, and the only way back out. It stands in the lift cell at the
 // west end of the Arrival Bay, under a shaft that goes up thirty-four metres to the Moon. Down, its gate open, it is a
-// room you walk into (its rails are solid); up, the cell is open floor under the dark square of the shaft. The story
+// room you walk into (its walls are solid); up, the cell is open floor under the dark square of the shaft. The story
 // moves it: it leaves without you at the end of the way in, comes back down when the signal is answered, and takes
 // everyone up at the end. The shaft's top hatch is what fails in a decompression: open, the stars show through it.
 //
@@ -15,6 +15,7 @@
 //   lift.inside(pos), lift.runway(on), lift.lamp(colour), lift.update(dt)
 import * as THREE from 'three';
 import { CELL, HEIGHT, signTexture, LIFT_CELL } from './station.js';
+import { buildFreightCage } from './freight.js';
 
 export const LIFT_BAY = { i: LIFT_CELL.i, j: LIFT_CELL.j, x: LIFT_CELL.i * CELL, z: LIFT_CELL.j * CELL, half: 1.95, shaft: 34 };
 const SHAFT_TOP = HEIGHT + LIFT_BAY.shaft;   // (the hatch)
@@ -32,28 +33,23 @@ export function createLift({ scene, pieces, boxes }) {
     return c;
   };
 
-  // ---- The cage (as on the Moon: the kit's plate, rails on three sides, posts and a frame, a lamp; its gate on the east, toward the bay)
+  // ---- The cage: the Moon's freight lift (deadair/freight.js), the very one you came down in, its doors on the east,
+  // toward the bay. (It was the kit's plate with rails, posts and a pair of steel doors: not the lift of the way down.)
   const cage = new THREE.Group(); cage.position.copy(at); scene.add(cage);
-  put(cage, 'Platform_Metal', 0, 0.02, 0, 0);
-  for (const [x, z, yaw] of [[-(H - 0.2), 0, Math.PI / 2], [0, -(H - 0.2), 0], [0, H - 0.2, Math.PI]]) put(cage, 'Platform_Rails_4', x, 0.02, z, yaw);
-  for (const [x, z] of [[-H, -H], [H, -H], [-H, H], [H, H]]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.2, 0.16), dark); post.position.set(x, 1.6, z); post.castShadow = true; cage.add(post); }
-  for (const [x, z, w, d] of [[0, -H, H * 2 + 0.16, 0.16], [0, H, H * 2 + 0.16, 0.16], [-H, 0, 0.16, H * 2], [H, 0, 0.16, H * 2]]) { const beam = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), dark); beam.position.set(x, 3.2, z); cage.add(beam); }
-  for (let x = -H + 0.45; x < H - 0.3; x += 0.55) { const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, H * 2 - 0.2), dark); bar.position.set(x, 3.26, 0); cage.add(bar); }   // (a grille of a roof: the shaft shows through it)
+  const body = new THREE.Group(); body.rotation.y = -Math.PI / 2; cage.add(body);   // (built with its doors toward -z: turned to the east)
+  const F = buildFreightCage(body, pieces, { half: H, height: 3.3 });
   const cutLight = new THREE.PointLight(0xffd9a0, 0, 7, 1.6); cutLight.position.set(0, 2.4, 0); cage.add(cutLight);   // (for the cinematics: the cage lit from inside)
-  const lampLight = new THREE.PointLight(0xffb347, 2.4, 8, 1.6); lampLight.position.set(0, 3.0, 0); cage.add(lampLight);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, toneMapped: false })); bulb.position.set(0, 3.05, 0); cage.add(bulb);
-  put(cage, 'Prop_AccessPoint', -(H - 0.35), 1.2, 0.6, -Math.PI / 2);   // (the panel on the back rail)
-  // (the lever: a box on the back rail with a handle standing up; pulled, it lies back)
+  const lampLight = F.lamp, bulb = F.bulb;   // (its caged work lamp, up on the front of the roof: amber down here, flashing on the way)
+  lampLight.intensity = 2.4;
+  put(cage, 'Prop_AccessPoint', -(H - 0.35), 1.2, 0.6, -Math.PI / 2);   // (the panel on the back wall)
+  // (the lever: a box on the back wall with a handle standing up; pulled, it lies back)
   const leverBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.2), steel); leverBox.position.set(-(H - 0.3), 1.15, -0.7); cage.add(leverBox);
   const handle = new THREE.Group(); handle.position.set(-(H - 0.3), 1.28, -0.7); cage.add(handle);
   const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.5, 8), steel); stick.position.y = 0.25; handle.add(stick);
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8291c, roughness: 0.4 })); knob.position.y = 0.5; handle.add(knob);
-  const over = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.3), new THREE.MeshBasicMaterial({ map: signTexture('LIFT', 'SHACKLETON STATION  ·  TO THE SURFACE', '#9ae6ff', '#ffd27a'), transparent: true, toneMapped: false }));
-  over.position.set(H + 0.12, 2.55, 0); over.rotation.y = Math.PI / 2; cage.add(over);
-  // The gate: two door halves on the east side, sliding apart along it.
-  const halves = [-1, 1].map((side) => { const h = put(cage, 'Door_Metal', H - 0.1, 0.02, 0, side < 0 ? Math.PI / 2 : -Math.PI / 2); if (h) h.userData.side = side; return h; }).filter(Boolean);
+  // The gate: its two mesh doors (0 shut .. 1 open: the freight cage's own run the other way).
   let gateK = 1;
-  const gate = (k) => { gateK = Math.max(0, Math.min(1, k)); for (const h of halves) h.position.z = 2.05 * gateK * h.userData.side; };
+  const gate = (k) => { gateK = Math.max(0, Math.min(1, k)); F.placeLeaves(1 - gateK); };
   gate(1);
 
   // ---- The shaft: four walls up from the bay's ceiling, a red strip every two metres, the hatch at the top and the stars behind it
@@ -88,13 +84,13 @@ export function createLift({ scene, pieces, boxes }) {
   for (let i = 0; i < 7; i++) { const l = put(scene, 'Prop_Light_Floor', at.x + H + 1.2 + i * 2.4, 0.02, at.z + (i % 2 ? 1.1 : -1.1), 0); if (l) { l.visible = false; runway.push(l); } }
   const runwayLights = runway.map((l) => { const p = new THREE.PointLight(0x9ae6ff, 0, 3.5, 1.8); p.position.copy(l.position).setY(0.4); scene.add(p); return p; });
 
-  // ---- Solid: the rails when the cage is down (you walk in through the gate)
+  // ---- Solid: its walls when the cage is down (you walk in through the doors)
   const railBoxes = [
-    { x0: at.x - H - 0.1, x1: at.x - H + 0.25, z0: at.z - H, z1: at.z + H, top: 1.5, lift: null },
-    { x0: at.x - H, x1: at.x + H, z0: at.z - H - 0.1, z1: at.z - H + 0.25, top: 1.5, lift: null },
-    { x0: at.x - H, x1: at.x + H, z0: at.z + H - 0.25, z1: at.z + H + 0.1, top: 1.5, lift: null },
-    { x0: at.x + H - 0.25, x1: at.x + H + 0.1, z0: at.z - H, z1: at.z - 0.9, top: 1.5, lift: null },   // (the gate posts either side of the opening)
-    { x0: at.x + H - 0.25, x1: at.x + H + 0.1, z0: at.z + 0.9, z1: at.z + H, top: 1.5, lift: null },
+    { x0: at.x - H - 0.1, x1: at.x - H + 0.25, z0: at.z - H, z1: at.z + H, top: 3.3, lift: null },   // (the back, the sides: mesh, to the roof)
+    { x0: at.x - H, x1: at.x + H, z0: at.z - H - 0.1, z1: at.z - H + 0.25, top: 3.3, lift: null },
+    { x0: at.x - H, x1: at.x + H, z0: at.z + H - 0.25, z1: at.z + H + 0.1, top: 3.3, lift: null },
+    { x0: at.x + H - 0.25, x1: at.x + H + 0.1, z0: at.z - H, z1: at.z - H + 0.3, top: 3.3, lift: null },   // (the corner posts either side of the doorway)
+    { x0: at.x + H - 0.25, x1: at.x + H + 0.1, z0: at.z + H - 0.3, z1: at.z + H, top: 3.3, lift: null },
   ];
   const api = {
     at, half: H, state: 'down', y: 0, gateK: 1, hatchK: 0, group: cage, shaft, hatch,

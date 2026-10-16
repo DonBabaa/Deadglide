@@ -386,10 +386,59 @@ d. Verify: `da/run.mjs` with a "nine zombies close" step (like `lod.json`) + the
 - The arrival (story.js): before the slam, from under the shaft up at the cage coming (from the bay the ceiling hid it);
   NINE DAYS from 3.4 m so both words read.
 
+## Done 2026-10-16 night: his music, and the housekeeping run
+- **His Suno audio** (dl/Audio) is in: `tools/master_audio.py` cuts, fades and levels; the browser decodes (Blender reads
+  neither mp4 nor webm) and WebCodecs encodes AAC. DEAD AIR's `sound.music` (sound.js): loops dread / hunt / swarm / lounge
+  with 4 s crossfades, chosen by `runMusic` (index.js); cues with a clock that the way in (`runIntro`) and the way out
+  (`exitCinematic` + `playCut(..., 'cue_way_out')`) follow, measured drift under 0.02 s; jingles on power / signal / the lift
+  down; stingers and a grille bang on spawns (`spawnNoise`); laughs in the quiet; ducking under the PA. The Moon's lift
+  scenes play `cue_moon_down` / `cue_moon_up` (fx/score.js). Reverb down (1.5 s tail, 0.28), zombies louder and drier, their
+  steps recorded; his steps get kit foley. `music_paranoid.mp3` retired to dl/retired.
+- **The way in** got a quiet shot (a second drag, the smoke in his beam) in the cue's silence, so DEAD AIR lands on its hit
+  at 36.3; 39.3 s in all. **The way out** is 21.4 s, cut to its cue: the dead at the doors from the bay with a snap in on the
+  slam (1.74), the cage lifting, inside, down through the cage's grille roof ("Nobody look down"), THE SURFACE on its hit,
+  a low shot on him under the open hatch, the white on the big hit (20.36).
+- **Housekeeping (19:30 run):** node --check clean on every deadair file, airlock, cutscenes, main; the error sweep clean;
+  build fine (deadair chunk 323.3 kB, 114.3 kB gzip). The 3-minute bot soak found a runner wedged for good in the Arrival
+  Bay's corner: the (1,1) hole opened into a pocket between the west wall, a crate and an offset stack too tall to vault.
+  The crates now stand off the wall as one block, and a zombie that means to move and has not for 1.6 s steps aside along
+  what it is against (dead.js `aside`). After: rounds 2→3, ~26 kills, no teleports (him or them), nothing wedged but the
+  scripted hangers in the Reactor. The scare director fired the lamp (twice), a flicker and the vent in 110 s. The open mic
+  holds 60 fps in headless (one 5 s window at 55 in one run; a single 446 ms frame once, not seen again; no shader compiled
+  mid-show), so the fans keep their detail. Dead code out (the old crank's key state, `NO_DIR`, `knockDoor`, the airlock's
+  unused material, `trophyDone`, the unused `testing.fumble`); stale comments brought up to date; the editor's stage list
+  shows each group once; all 60 stages run clean (stagesall.mjs). Not committed.
+
+## Done 2026-10-16, last thing: the lock, his tracks, the sound budget, the balance pass
+- **The Moon lift's lock** (src/freeride/lockout.js): a lockout over its call button (a hinged hazard cover, a laminated
+  padlock through its hasp, a DANGER tag), shot off: it snaps, drops to the dust, the cover swings up, the lamp goes green. The
+  shot is tested along the camera's line (main.js `lockAim`): the sniper's beam leaves the muzzle half a metre off it and
+  passed the lock by however true the aim (his "the lock cannot be shot"). The "lift is locked" line is gone.
+- **His seven tracks** (title, Cemetery, Catacombs, Free Ride, House, Long Way Down, boss): tools/master_loops.py, fx/music.js
+  TRACKS; the menu plays the title. Loop joins scored by rhythm and tone (0.46 to 0.81).
+- **DEAD AIR's sound budget, v2** (his: still cutting out with a crowd; very conservative, music first, then the nearest dead,
+  then the station): sound.js `admit` / `admitOwn`: 4 voices, 3 steps, 3 hits, 2 hit layers, 6 others, 2 of the station's own
+  (none while one is close), 12 placed at once, 26 one-shots at once in all, 5 new a tenth of a second, HRTF for the 3 nearest
+  within 9 m; their feet one source a step; no reverb send for the dry; every api call can never throw into the game.
+  Under a crowd with the machine gun (da/stress.mjs): sources alive at once 98 -> 34 -> 27 (one-shots ≤ 24), panners made a
+  second 140 -> 14-35, errors 0.
+- **Balance pass on the normal levels: applied, with the synergies, at his word** (see GAME_SPEC.md, Builds; after he had
+  it stopped once, and asked for it back). Checked in the game (da/synergy.mjs): with nothing held no build card is dealt; with
+  Ring of Fire every hand has one, Open Wounds in a quarter of them; with Fire and Frost, Thermal Shock in a fifth; Thermal
+  Shock taken (as first made: since trimmed to +30%) fire did 17.5 against 10; a HotBox capture brings up its pick of three.
+  Then tuned so it is not too easy (his ask): da/power.mjs, see GAME_SPEC.md Builds for the numbers. Not yet played
+  through a whole level with it (the bot's run was stopped). What the bot found before it, in one run of the Cemetery
+  (da/balance.mjs, `game.testGod`): the XP cap of 20 reached at 2:40, before the boss; the gun's DPS 9.6x against monsters
+  1.9x tougher; 23 chests a level, almost all consumables.
+
 ## 4. Still waiting on him
 - Gun models (`dl/deadair/guns/`) and Mixamo reload / stab / rifle-butt clips (`dl/DOWNLOAD_LIST.md`), then 2 h to wire.
 - His FPS number for a deeper performance pass (the strip lights are already pooled 9→4).
 - Kirky's voice: ElevenLabs refused his account's free tier; the PA speaks with Windows' Zira. He can upgrade or record.
+- His Suno tracks for the title screen and each level (prompts: dl/Audio/SUNO_LEVEL_PROMPTS.md and the title prompt in the
+  chat): to be cut into loops and put in place of fx/music.js's generated styles, level by level.
+- His ear on the new mix (the headless browser is muted: the timing and the triggers are checked, the levels are not).
+- The mouse crank is still unverified headless (`testing.crank` drives it; he said skip it).
 - The commit, when he says.
 
 ## How to verify anything (scratchpad drivers, `…\scratchpad\da\`)
@@ -407,6 +456,11 @@ game's clock (dt is clamped to 0.05 s) and timers such as the 90-s bay wake neve
 `{ eval, wait, shot }` steps; evals must be single expressions. Hooks on `window.deadAir`: `test({ god, aim, fire, melee,
 dance, golden, g, keys, cam })`, `openDoor(i)`, `story.begin('power'|'signal')`, `story.pa(i)`, `watcher()`, `grabMe()`,
 `grabWho(id)`, `chip()`, `offer()`, `pickHard(h)`, `ask()`, `goIn()`, `loungeShow()`, `lounge.room`, `lounge.prompt`.
+Added 2026-10-16 night: `music.mjs` (the way in on its cue, the loops by state), `mu_in2.mjs` / `mu_out.mjs` (stills of
+the retimed way in and way out by their clocks), `mu_ev.mjs` (laughs, jingles, bangs, stingers: `deadAir.music.log`),
+`mu_moon.mjs` (the Moon cues load), `run.mjs soak2_tp.json` (the soak with a teleport / wedge / progress watcher; it wakes
+the station first: the bot never leaves the bay), `wedge.mjs` (the bay corner), `perf_mic.mjs` / `perf_mic2.mjs` (fps
+through the open mic; hitches and new shader programs).
 `coop2.mjs` (two browsers through the Moon hatch, the whole story), `coop3.mjs` (the grab), `soak2.json` (3-minute bot),
 `errs.mjs` (console errors on the main page + entry), `decode.mjs` (every sound file decodes). Never edit `src/` while a
 driver runs (Vite reloads the test browsers).

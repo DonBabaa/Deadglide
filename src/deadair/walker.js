@@ -41,6 +41,7 @@ export const CUTS = {
   fall: 1.98,             // down: Fall Over to the floor, where it holds (the clip is 2.03 s)
 };
 const LIFTED = { lifted: true };   // (a jump, a vault: how high he is is the game's, not the clip's)
+const SQUARE = { upright: 1 };     // (a long gun's walk and run: his back squared to where he is going)
 const READY = 1.1;        // seconds his gun stays up after he last aimed or fired
 const JUMP = { up: 4.4, climb: 5.6, push: 1.6, gravity: 13 };   // m/s up for a jump, for one up onto a crate; forward for that; m/s^2 down
 // Over a crate (Space at one, moving at it): seconds it takes, how far past its far side he lands, the part of the clip
@@ -186,6 +187,7 @@ export class Walker {
     k.twoHanded = !!this.gun.twoHanded;
     k.supportArm.visible = k.supportHand.visible = k.twoHanded;
     for (const piece of k.offArm) piece.visible = !k.twoHanded;
+    k.hideFigure?.();   // (on his own body those are the old figure's pieces, never to be seen: his own arm does the reaching)
     this.handOn = false;
   }
   // Where his other hand goes, in the gun's own space, while he reloads (null: where it holds the gun anyway).
@@ -380,6 +382,13 @@ export class Walker {
       else if (long && within(CUTS.start, this.moveT)) { clip = 'riflestart'; at = CUTS.start[0] + this.moveT; }
       else if (long) { clip = 'riflerun'; rate = Math.max(0.7, speed / W.walk); }
       else { clip = 'walk'; rate = Math.max(0.55, pace) * (ahead < 0 ? -1 : 1); }
+      // A pistol he is not using: the clip has his arm too (its swing as he walks and runs, at his side as he stands, in
+      // the air as he jumps), with the gun in that hand (carryInClip: kirkyBody keeps a copy of it there). Posed by hand,
+      // the arm was put where it hangs when he rides his board across it, and on his feet that is up behind his back:
+      // so too at a sprint just after a shot (the gun is not up at a sprint), and in a jump or a vault.
+      if (clip && !long && (clip === 'walk' || clip === 'sprint' || clip === 'idle' || clip === 'jump' || clip === 'vault') && (this.ready <= 0 || this.sprinting || how === LIFTED) && !aiming && !firing && !this.view.visible && !this.reloadPose) { whole = true; k.carryInClip = true; }
+      // (and a long gun's clips turn his chest well round from his hips: his back is brought round to face where he goes)
+      if (clip && long && !how && !whole) how = SQUARE;
       if (clip) k.play?.(clip, 1, rate, at, whole, how);
     }
     this.walkTime += dt * speed;
@@ -451,9 +460,11 @@ export class Walker {
         k.twoHanded = true;
         k.supportArm.visible = k.supportHand.visible = true;
         for (const piece of k.offArm) piece.visible = false;
+        k.hideFigure?.();   // (the old figure's arm, a red tube with a ball for a hand, came out of his back for every reload)
       }
       this.handAt.lerp(this.handTarget(this.rigK, P) || this.supportSaved, damp(16, dt));
       k.gun.support.copy(this.handAt);
+      k.pistolGrip = 0;   // (his other hand is on the reload)
       reAim.set(this.pos.x + Math.sin(this.face) * 0.85, 1.32 + 0.35 * (P.tip || 0), this.pos.z + Math.cos(this.face) * 0.85);
       k.updateArm(dt, reAim, true);
     } else {
@@ -468,7 +479,10 @@ export class Walker {
       const lowReady = long && !up && !thrust && !dancing;
       if (thrust) reAim.set(this.pos.x + Math.sin(this.face) * 2, 1.25 + this.y, this.pos.z + Math.cos(this.face) * 2);
       else if (lowReady) reAim.set(this.pos.x + Math.sin(this.face) * 2.2, (this.sprinting ? 0.2 : 0.35) + this.y, this.pos.z + Math.cos(this.face) * 2.2);
-      k.updateArm(dt, thrust || lowReady ? reAim : this.aimPoint, !dancing && this.gunUp && (lowReady || thrust || (up && !this.sprinting)));
+      const gunUp = !dancing && this.gunUp && (lowReady || thrust || (up && !this.sprinting));
+      // (a pistol up: both hands on it: kirkyBody's pistolGrip)
+      k.pistolGrip = lerp(k.pistolGrip || 0, gunUp && !long && !thrust && !k.carryInClip ? 1 : 0, damp(14, dt));
+      k.updateArm(dt, thrust || lowReady ? reAim : this.aimPoint, gunUp);
     }
 
     // The lamp: from his chest, where he looks (from the camera itself in first person, so its circle is on the sights).

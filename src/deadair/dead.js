@@ -401,7 +401,7 @@ export class Dead {
       }
       z.target = target;
       z.groan -= dt;
-      if (z.groan < 0 && !z.K.quiet) { z.groan = (z.state === 'chase' ? 2.5 : 5) + Math.random() * 5; events.push({ type: 'groan', z }); }
+      if (z.groan < 0 && !z.K.quiet) { z.groan = (z.state === 'chase' ? 1.8 : 4.5) + Math.random() * 4; events.push({ type: 'groan', z }); }
       // Hanging (from a cable in the ceiling): it waits there until one of you is under it (scares.js lets it go).
       if (z.state === 'hang') { z.vel.set(0, 0, 0); continue; }
       // In the duct (the crawlspace): along it on its belly, from the far end toward whoever is in there; over them, and
@@ -564,8 +564,16 @@ export class Dead {
       } else { z.stuck = 0; if (seen) z.best = Math.min(z.best ?? Infinity, far); }
       if (z.farFor > 12 && z.kind !== 'warden' && !seen) { z.farFor = 0; events.push({ type: 'lost', z }); continue; }
       const speed = on ? 0 : Math.min(SPEED_CAP, z.speed * hurry) * (z.slow > 0 ? 0.35 : 1);
-      z.vel.x += ((dx / d) * speed - z.vel.x) * Math.min(1, dt * 5);
-      z.vel.z += ((dz / d) * speed - z.vel.z) * Math.min(1, dt * 5);
+      // (pressed into something it cannot get round, a corner of crates, a wall it meets square on: it means to move and
+      // has not, for a while; it steps aside along the face of it for a moment, and comes on again)
+      let sx = dx / d, sz = dz / d;
+      if (!on && z.state === 'chase') {
+        if (!z.pinAt || z.pos.distanceTo(z.pinAt) > 0.35) { z.pinAt = z.pos.clone(); z.pinT = 0; }
+        else if ((z.pinT = (z.pinT || 0) + dt) > 1.6 && !(z.aside > 0)) { z.aside = 0.9; z.asideK = Math.random() < 0.5 ? -1 : 1; z.pinT = 0; }
+      } else z.pinT = 0;
+      if (z.aside > 0) { z.aside -= dt; const k = z.asideK; [sx, sz] = [-sz * k * 0.9 - sx * 0.35, sx * k * 0.9 - sz * 0.35]; }
+      z.vel.x += (sx * speed - z.vel.x) * Math.min(1, dt * 5);
+      z.vel.z += (sz * speed - z.vel.z) * Math.min(1, dt * 5);
       const face = on || close ? Math.atan2(target.pos.x - z.pos.x, target.pos.z - z.pos.z) : Math.atan2(z.vel.x, z.vel.z);
       z.yaw = wrap(z.yaw + wrap(face - z.yaw) * Math.min(1, dt * z.K.turn));
       z.pos.addScaledVector(z.vel, dt);

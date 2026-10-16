@@ -129,14 +129,20 @@ export class Others {
         else if (s.air) k.play?.(long ? 'riflejump' : 'jump', 1, 1, (long ? 0.2 : 0.55) + Math.min(o.airT, 0.9), false);
         else {
           const clip = s.speed < 0.3 ? (long ? 'breathe' : 'pistolidle') : s.sprint ? 'sprint' : long ? 'riflewalk' : 'walk';
-          k.play?.(clip, 1, s.speed < 0.3 ? 1 : Math.max(0.55, s.speed / 4), undefined, false);
+          const carry = !long && s.sprint;   // (a pistol at a sprint: the clip has the arm, the gun in its hand, as with you: walker.js)
+          if (carry) k.carryInClip = true;
+          k.play?.(clip, 1, s.speed < 0.3 ? 1 : Math.max(0.55, s.speed / 4), undefined, carry, long ? { upright: 1 } : null);
         }
       }
       // Their gun: up at what they are looking at (down while they run or reload).
       const look = new THREE.Vector3(Math.sin(s.yaw) * Math.cos(s.pitch), Math.sin(s.pitch), Math.cos(s.yaw) * Math.cos(s.pitch));
       const aimAt = o.eye.clone().addScaledVector(look, 20);
       k.freeArm = !!s.sprint || o.melT < 0.75;
-      k.updateArm(dt, aimAt, !s.sprint && !s.rl && !s.down);
+      // (reloading: the gun brought in in front of the chest, not dropped to where it hangs on a board: behind the back)
+      if (s.rl && !s.sprint && !s.down) aimAt.set(o.eye.x + Math.sin(s.yaw) * 0.85, o.eye.y - 0.25, o.eye.z + Math.cos(s.yaw) * 0.85);
+      const up = !s.sprint && !s.down;
+      k.pistolGrip = (k.pistolGrip || 0) + ((up && !long && !s.rl ? 1 : 0) - (k.pistolGrip || 0)) * Math.min(1, dt * 14);   // (a pistol up: both hands on it)
+      k.updateArm(dt, aimAt, up);
       if (o.flash > 0) { o.flash -= dt; k.onShot(); }
       // Their lamp.
       if (li < this.lamps.length) {

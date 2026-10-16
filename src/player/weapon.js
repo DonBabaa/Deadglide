@@ -209,7 +209,7 @@ export class Weapon {
       if (!victim || hit.has(victim)) continue;
       hit.add(victim);
       const head = p.y > victim.y + victim.T.height * victim.scale * HEAD;
-      horde.damage(victim, damage * (head ? config.gun.headshotMult : 1), dir.x, dir.z, head, W.knock);
+      horde.damage(victim, damage * (head ? config.gun.headshotMult : 1), dir.x, dir.z, head, W.knock, false, 'gun');
       this.burst(p, tmp.copy(dir).multiplyScalar(120), 10);
     }
     this.shot.reach = travelled;
@@ -243,7 +243,7 @@ export class Weapon {
         if (W.flame) {   // fire goes through everything, burning each thing once and leaving it alight
           if (victim && !b.seen.has(victim)) {
             b.seen.add(victim);
-            horde.damage(victim, b.damage, b.vel.x / speed, b.vel.z / speed, false, 0, true);
+            horde.damage(victim, b.damage, b.vel.x / speed, b.vel.z / speed, false, 0, true, 'gun');
             horde.ignite(victim, W.burn.seconds, W.burn.dps * stats.damage);
           }
           if (solid) b.alive = false;
@@ -253,7 +253,7 @@ export class Weapon {
           if (victim || solid) this.explode(b, horde);
         } else if (victim && victim !== b.last) {
           const head = b.pos.y > victim.y + victim.T.height * victim.scale * HEAD;
-          horde.damage(victim, b.damage * (head ? config.gun.headshotMult : 1), b.vel.x / speed, b.vel.z / speed, head, W.knock);
+          horde.damage(victim, b.damage * (head ? config.gun.headshotMult : 1), b.vel.x / speed, b.vel.z / speed, head, W.knock, false, 'gun');
           this.burst(b.pos, b.vel, head ? 14 : 7);
           if (W.chill) horde.chill(victim, W.chill.seconds, W.chill.slow);
           b.last = victim;                       // piercing: carry on through, but never hit the same one twice
@@ -360,7 +360,7 @@ export class Weapon {
   }
 
   explode(b, horde) {
-    horde.shockwave(b.pos, b.def.blast, b.damage);
+    horde.shockwave(b.pos, b.def.blast, b.damage, 'gun');
     for (let k = 0; k < 4; k++) this.burst(b.pos, tmp.set(Math.random() - 0.5, -1, Math.random() - 0.5).multiplyScalar(60), 12);
     this.flash.position.copy(b.pos);
     this.flash.intensity = 220;

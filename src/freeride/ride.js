@@ -28,7 +28,7 @@ const SEND_EVERY = 1 / 12, GONE_AFTER = 12000;   // seconds between updates; mil
 // flip: front / back flip so far (radians).  speed.  ground, grind: 1 or 0.  trick: its place in TRICKS (-1 = none), tp: how far through.
 // charge: ollie charge.  steer.  ax ay az: where the gun is aimed.  gun: 1 if it's up.  line: the line being built.  best: best line this session.
 // safe: seconds of safety left after being shot off the board (they blink, and can't be shot again).
-const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe', 'emote', 'foot'];   // (foot: 1 while they are off their board, walking: player/afoot.js)
+const STATE = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz', 'flip', 'speed', 'ground', 'grind', 'trick', 'tp', 'charge', 'steer', 'ax', 'ay', 'az', 'gun', 'line', 'best', 'safe', 'emote', 'foot', 'ready'];   // (foot: 1 while they are off their board, walking: player/afoot.js)
 const clean = (raw) => { const s = {}; for (const k of STATE) s[k] = Number.isFinite(raw?.[k]) ? raw[k] : 0; return s; };
 
 // A name floating over a rider's head.
@@ -72,6 +72,7 @@ export function createRide({ scene, me, myName, myLook, onChange }) {
   // Messages for the game on top. toHost: a guest asks the host (the host, or a rider alone, just gets it back).
   // Where everyone else is (as drawn), for the lift: it waits until every one of you is aboard.
   ride.positions = () => [...ghosts.values()].map((g) => g.pos);
+  ride.readies = () => [...ghosts.values()].map((g) => !!g.last?.ready);   // (the lift's ready check: each, in the order of positions())
   // toAll: the host tells every guest (it does not come back to the host).
   ride.toHost = (m) => { if (role === 'guest') { ride.stats.sent++; net.send({ t: 'g', m }); } else ride.onGame?.(myId, m); };
   ride.toAll = (m) => { if (role === 'host') net.broadcast({ t: 'g', m }); };

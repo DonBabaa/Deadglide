@@ -181,7 +181,7 @@ export function createStory(ctx) {
     if (step.id === 'hold') detail = `${step.detail} ${s.until}  ·  this is round ${game.round}`;
     else if (step.at) {
       const d = Math.round(me.pos.distanceTo(step.at()));
-      if (step.id === 'power' && !station.isOpenZone('r')) detail += `  ·  the Reactor door is 1250`;
+      if (step.id === 'power' && !station.isOpenZone('r')) detail += `  ·  the Reactor door: two keys, KEY A in the bay, KEY B in Lab 2`;
       else if (step.id === 'signal' && !station.isOpenZone('m')) detail += `  ·  the Med Bay door is 1000`;
       detail += `  ·  ${d} m`;
     }
@@ -199,7 +199,7 @@ export function createStory(ctx) {
       if (hands < need) return { text: `The rod takes two hands  ·  ${hands} of 2 of you at the core`, price: 0, act: () => {} };
       return { text: need > 1 ? 'Press E to prime the core  ·  two of you: stay by it while it charges' : 'Press E to prime the core  ·  stay by it while it charges', price: 0, act: () => { if (ctx.hosting() || !ctx.coop()) begin('power'); else ctx.say({ da: 'begin', what: 'power' }); } };
     }
-    if (step.id === 'signal' && station.isOpenZone('m') && pos.distanceTo(step.at()) < 3.2 && !s.busy) return { text: ctx.coop() ? 'Press E to start the uplink  ·  45 seconds, and only while one of you cranks the dish (A / D at the wheel)' : 'Press E to start the uplink  ·  45 seconds of broadcast, and they will all hear it', price: 0, act: () => { if (ctx.hosting() || !ctx.coop()) begin('signal'); else ctx.say({ da: 'begin', what: 'signal' }); } };
+    if (step.id === 'signal' && station.isOpenZone('m') && pos.distanceTo(step.at()) < 3.2 && !s.busy) return { text: ctx.coop() ? 'Press E to start the uplink  ·  45 seconds, and only while one of you cranks the dish (at the wheel: the mouse round in circles)' : 'Press E to start the uplink  ·  45 seconds of broadcast, and they will all hear it', price: 0, act: () => { if (ctx.hosting() || !ctx.coop()) begin('signal'); else ctx.say({ da: 'begin', what: 'signal' }); } };
     return null;
   }
 
@@ -208,7 +208,10 @@ export function createStory(ctx) {
   // the dark, the lamps clicking on one by one, Kirky's lighter that will not catch, the PA, the name of the place.
   // It tells you where you are and what to do. Click skips it.
   const L = 7.6;              // the landing (the lift lands at 6.8)
-  const ENTRANCE = L + 19.0;
+  // ...and at the end of it (his ask): out of the lift and into the bay, a line of them, the torches on one by one, a
+  // puff each in the beams, and then the name of the place.
+  const OUT = L + 16.0, WALK = 3.6, TORCH = OUT + WALK + 0.3, PUFF = TORCH + 3.2, SMOKE = PUFF + 2.9, NAME = SMOKE + 2.7;   // (NAME: 36.3, on the cue's hit)
+  const ENTRANCE = NAME + 3.0;
   const cast = [];   // [{ k: SkaterModel, pos, face, drag, look, id, rail }]: him, and the friends who are here
   let lit = 0, board = null, welcomed = false, landed = false;
   function stage() {
@@ -219,8 +222,10 @@ export function createStory(ctx) {
     const lift = ctx.lift?.(), rails = lift ? lift.rails : [];
     folk.forEach(({ k, id }, i) => {
       const pos = c.clone().addScaledVector(side, (i - (n - 1) / 2) * 1.15).addScaledVector(front, (i % 2) * 0.35);
-      cast.push({ k, id, pos, face, drag: 1.2 + i * 0.9, look: 0.6 + i * 1.7, lamp: L + 5.4 + i * 0.7, rail: rails[i % Math.max(1, rails.length)] || pos });
+      const line = c.clone().addScaledVector(front, 5.2).addScaledVector(side, (i - (n - 1) / 2) * 1.45);   // (where each stops, in the line)
+      cast.push({ k, id, pos, from: pos.clone(), line, face, drag: 1.2 + i * 0.9, look: 0.6 + i * 1.7, lamp: TORCH + 0.35 + i * 0.7, puff: PUFF + i * 0.3, rail: rails[i % Math.max(1, rails.length)] || pos });
     });
+    cast.lineC = c.clone().addScaledVector(front, 5.2);
     lit = 0; welcomed = false; landed = false;
     ctx.liftIn?.();
     // (his board, come down with them: snapped across the deck by the landing, the two halves on the plates in front of him:
@@ -260,10 +265,19 @@ export function createStory(ctx) {
         // play() from here would always be a frame too late and never show)
         const at = Math.min(1.98, 0.9 + (t - 6.8) * 2.4), friend = c.id === 'me' ? null : others.map.get(c.id);
         if (heap) { if (c.id === 'me') walker.forceClip = { name: 'fallover', at }; else if (friend) friend.forceClip = { name: 'fallover', at }; else c.k.play?.('fallover', 1, 1, at, false); }
+        else if (t >= OUT) {   // (out of the lift and into the line: walking, then stood, square on)
+          const e = Math.min(1, (t - OUT) / WALK), w = e * e * (3 - 2 * e);
+          c.pos.lerpVectors(c.from, c.line, w);
+          const clip = e < 0.97 ? { name: 'walk' } : { name: 'idle' };
+          if (c.id === 'me') { walker.forceClip = clip; walker.pos.set(c.pos.x, walker.pos.y, c.pos.z); } else if (friend) friend.forceClip = clip; else c.k.play?.(clip.name, 1, 1, undefined, false);
+          c.k.root.position.copy(c.pos);
+        }
         else { if (c.id === 'me') walker.forceClip = null; else if (friend) friend.forceClip = null; c.k.play?.('pistolidle', 1, 1, undefined, false); }
       }
       const drag = Math.max(0, 1 - Math.abs(((t + 4 - c.drag) % 4.2) - 0.5) * 3);
-      c.k.inhale = t > L + 9.0 && t < L + 12.6 ? drag : 0;
+      const p2 = SMOKE + 0.1 + (c.puff - PUFF);   // (and a second drag, in the quiet after it)
+      c.k.inhale = t > L + 9.0 && t < L + 12.6 ? drag : t >= c.puff && t < c.puff + 0.9 ? Math.min(1, (t - c.puff) * 2.5) : t >= p2 && t < p2 + 0.7 ? Math.min(1, (t - p2) * 2.5) : 0;
+      if ((t >= c.puff + 0.9 && t < c.puff + 2.3) || (t >= p2 + 0.7 && t < p2 + 2.3)) c.k.exhale?.(dt, 1.1);   // (the puff: out into the torches' beams)
       const sweep = Math.sin(t * 0.9 + c.look) * 0.5, lookAt = c.pos.clone().addScaledVector(front, 8).addScaledVector(side, sweep * 5).setY(1.1);
       c.k.updateArm?.(dt, lookAt, false);
       c.k.updateSmoke?.(dt);
@@ -311,7 +325,7 @@ export function createStory(ctx) {
       cam = from.lerp(to, s); const who = cast[Math.min(n - 1, Math.max(0, Math.round(s * (n - 1))))]; at = (who ? who.pos.clone() : mid.clone()).addScaledVector(front, 0.1).setY(1.45); fov = 34;   // (on the face the camera is passing, from a little under it)
       if (!cast[0].lit) walker.power = 0;
       lines = s < 0.06 ? 0.6 : 0;
-      say = ['Kirky', s < 0.3 ? 'Everyone up.' : s < 0.6 ? 'Lamps.' : 'The lift is going back without us. ...Of course it is.'];
+      say = ['Kirky', s < 0.3 ? 'Everyone up.' : s < 0.6 ? '...Nobody broke anything. Nobody but the board.' : 'The lift is going back without us. ...Of course it is.'];
     } else if (t < L + 12.6) {   // his face: the lighter that will not catch; when it does, what it lights first is her hand on the wall
       const s = (t - L - 9.0) / 3.6;
       const click = [0.15, 0.3, 0.48];
@@ -324,8 +338,28 @@ export function createStory(ctx) {
       cam = mid.clone().addScaledVector(front, 9.0 - 1.0 * s).addScaledVector(side, 5.0).setY(3.8 - 0.3 * s); at = mid.clone().addScaledVector(front, -2.5).setY(1.0); fov = 50;   // (from across the bay, high: the four of them small, the lift behind them)
       if (!welcomed) { welcomed = true; sound.welcome?.(); }
       say = ['PA', 'Welcome to Shackleton Station. Current crew complement: zero.'];
+    } else if (t < TORCH) {      // out of the lift: from out in the bay, low, them walking at us and lining up
+      const s = (t - OUT) / (TORCH - OUT), lc = cast.lineC || mid;
+      cam = lc.clone().addScaledVector(front, 5.6 - 1.2 * s).addScaledVector(side, 0.9).setY(1.25); at = lc.clone().addScaledVector(front, -1.6 * (1 - s)).setY(1.2); fov = 50 - 4 * s;
+      lines = s < 0.08 ? 0.6 : 0; flash = s < 0.04 ? 0.4 : 0;
+      lift?.light?.(1);   // (the cage's lamp behind them: the light they walk out of)
+      say = s > 0.55 ? ['Kirky', 'Line up. Lamps on.'] : null;
+    } else if (t < PUFF) {       // the torches: along the line, each one clicking on in its turn
+      const s = (t - TORCH) / (PUFF - TORCH), lc = cast.lineC || mid, n = cast.length, spread = (n - 1) * 0.72 + 0.6;
+      // (from behind them and off the end of the line, along the way they face: each beam cutting out into the dark of the bay)
+      cam = lc.clone().addScaledVector(front, -2.2 + 0.4 * s).addScaledVector(side, spread + 1.9).setY(1.75); at = lc.clone().addScaledVector(front, 6.5).addScaledVector(side, -0.6).setY(0.9); fov = 52;
+      for (const c of cast) if (Math.abs(t - c.lamp) < 0.06) lines = 0.7;
+    } else if (t < SMOKE) {      // the puff: on him, close, the smoke rolling out into the beams
+      const s = (t - PUFF) / (SMOKE - PUFF), me = (cast.find((c) => c.id === 'me') || cast[0]).pos;
+      // (his profile: the ember, and the cloud rolling out of him into his own beam)
+      cam = me.clone().addScaledVector(side, 1.35 - 0.15 * s).addScaledVector(front, 0.45).setY(1.55); at = me.clone().addScaledVector(front, 0.55).setY(1.5); fov = 40;
+      say = s > 0.6 ? ['Kirky', '...Right.'] : null;
+    } else if (t < NAME) {       // the quiet (the music's held breath): a second drag, the smoke standing in his beam
+      // (his face three-quarters on, from out of his beam: the second cloud rolling out of him, lit from behind by it)
+      const s = (t - SMOKE) / (NAME - SMOKE), me = (cast.find((c) => c.id === 'me') || cast[0]).pos;
+      cam = me.clone().addScaledVector(front, 2.3 - 0.3 * s).addScaledVector(side, -1.4 + 0.2 * s).setY(1.15); at = me.clone().addScaledVector(front, 0.6).setY(1.5); fov = 44;
     } else {                     // the name of it
-      const s = (t - L - 16.0) / (ENTRANCE - L - 16.0);
+      const s = (t - NAME) / (ENTRANCE - NAME);
       cam = mid.clone().addScaledVector(front, -1.8 + 0.6 * s).addScaledVector(side, -0.7).setY(1.7); at = mid.clone().addScaledVector(front, 10).setY(1.3); fov = 56;
       lines = s < 0.1 ? 1 - s * 10 : 0;
       title = s < 0.62 ? 'DEAD AIR' : ''; sub = s < 0.62 ? 'Shackleton Station  ·  Deck C' : ''; kk = Math.min(1, s / 0.62);

@@ -18,6 +18,8 @@ const BASE = {
   shockwave: 0,       // damage of the ring released when you land a trick (0 = none)
   frenzy: 0,          // seconds of double fire rate left (from the Energy Drink chest item)
   gravity: 1,         // gravity multiplier (Moon Rocks lowers it)
+  xpLevel: 1,         // the level you are at (main.js keeps it: the crowd grows with you, config.horde.hpPerLevel)
+  shieldUp: 0,        // 1 while the HotBox shield holds (powerups.js keeps it: Spiked Shell)
 };
 
 // HotBox power-ups (see player/powerups.js). For each one:
@@ -26,10 +28,12 @@ const BASE = {
 export const POWER_IDS = ['shield', 'gas', 'fire', 'seekers', 'thorns', 'lightning', 'float', 'frost', 'rain', 'pact'];
 const freshPowers = () => Object.fromEntries(POWER_IDS.map((id) => [id, { level: 0, damage: 1, size: 1, rate: 1, count: 0 }]));
 
-export const stats = { ...BASE, taken: {}, power: freshPowers() };   // taken: upgrade id -> how many times picked
+// combo: the synergies taken (systems/upgrades.js: thermal, conductor, combust, spiked, barrage, wounds)
+export const stats = { ...BASE, taken: {}, power: freshPowers(), combo: {} };   // taken: upgrade id -> how many times picked
 
 export function resetStats() {
   Object.assign(stats, BASE);
   stats.taken = {};
   stats.power = freshPowers();
+  stats.combo = {};
 }

@@ -31,7 +31,7 @@ export class Xp {
   get maxed() { return this.level >= config.xp.maxLevel; }
 
   // XP needed to finish the current level.
-  get needed() { return Math.round(config.xp.firstLevel + config.xp.perLevel * (this.level - 1)); }
+  get needed() { const L = this.level - 1; return Math.round(config.xp.firstLevel + config.xp.perLevel * L + (config.xp.growth || 0) * L * L); }
 
   drop(x, y, z, amount) {
     if (this.gems.length >= MAX_GEMS) this.gems.shift();

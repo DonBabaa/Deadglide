@@ -3,7 +3,6 @@
 // the guests. Each is a few numbers the rest of the mode reads (index.js `N()`), not a mode of its own.
 export const NIGHTS = [
   { id: 'blackout', name: 'BLACKOUT NIGHT', blurb: 'the strips are dead all night; your lamps are all there is', dark: true, lampGap: 0.6 },
-  { id: 'lowgrav', name: 'LOW GRAVITY', blurb: 'the station lost its weight: jumps go high, the dead float when they are hit, and they come down slow', gravity: 0.55, knock: 1.8 },
   { id: 'quiet', name: 'THE QUIET', blurb: 'no runners, no screamers: only the slow ones, and every body on the floor is a sleeper', kinds: [['walker', 0.62], ['runner', 0.38]], sleepers: 'all', lampGap: 0.5, breath: 2 },
   { id: 'twins', name: "THE WARDEN'S TWINS", blurb: 'two of him at once, from the third round and every third', twins: true, wardenEvery: 3 },
   { id: 'steam', name: 'STEAM NIGHT', blurb: 'the air is thick with it: six metres of sight, no more, and the pipes let go', fog: 0.13, steam: 2 },

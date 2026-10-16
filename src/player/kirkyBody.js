@@ -755,6 +755,26 @@ export function attachBody(model) {
     const lighting = lit && lit.raised > 0.01 && performance.now() - lit.at < 300 ? lit : null;
     if (lighter) lighter.visible = false;
     if (lighting && lighter && model.ember) return holdLighter(lighting);
+    // A pistol up (aimed, or fired from the hip): both hands on it, his other hand cupped under the one on its grip,
+    // that elbow down and out. (Left to the clip, that hand hung out in front of his belly holding nothing: the clip's
+    // two-handed hold is round a gun somewhere else.) model.pistolGrip: 0..1, eased by whoever poses him.
+    const cup = model.pistolGrip || 0;
+    if (!model.twoHanded && cup > 0.01 && model.gun && !(mocap && mocap.away)) {
+      model.foreArm.updateWorldMatrix(true, false);
+      model.foreArm.localToWorld(T.set(0, -0.055, 0.29 + PALM - 0.035));   // (under the heel of his gun hand)
+      bones.upperarm_r.getWorldPosition(S);
+      T.addScaledVector(litOut.copy(S).sub(bones.upperarm_l.getWorldPosition(w)).normalize(), 0.03);   // (a little to the side that hand comes from)
+      if (cup < 0.999) T.lerpVectors(bones.hand_r.getWorldPosition(litH), T, cup * cup * (3 - 2 * cup));
+      const far = Math.min(S.distanceTo(T), (L1 + L2) * 0.995), along = (L1 * L1 - L2 * L2 + far * far) / (2 * far), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+      dir.copy(T).sub(S).normalize();
+      pole.set(0, -1, 0).applyQuaternion(root.getWorldQuaternion(q2)).addScaledVector(litOut, 0.7);
+      pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+      E.copy(S).addScaledVector(dir, along).addScaledVector(pole, off);
+      if (BULK.length) { root.worldToLocal(E); clearOf(E); root.localToWorld(E); }   // (round his belly, not through it)
+      point(bones.upperarm_r, bones.lowerarm_r, E);
+      point(bones.lowerarm_r, bones.hand_r, T);
+      return;
+    }
     if (!model.twoHanded || !model.gun || (mocap && mocap.away)) return;
     model.foreArm.updateWorldMatrix(true, false);
     T.copy(model.gun.support);

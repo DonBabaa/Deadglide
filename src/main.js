@@ -57,11 +57,12 @@ import { runTime as hillTime } from './ui/leaderboard.js';
 import { createEmoter } from './player/emotes.js';
 import { createAfoot, AFOOT } from './player/afoot.js';
 import { singlePass } from './fx/singlePass.js';
+import { createOutCard } from './freeride/outcard.js';
 import { createEmoteWheel } from './ui/emoteWheel.js';
 import { setMusicStyle, MUSIC_STYLES } from './fx/music.js';
 import * as SOUNDS from './fx/audio.js';
 import { createModelViewer } from './ui/modelViewer.js';
-import { playCue, stopCue } from './fx/score.js';
+import { playCue, stopCue, preloadCues } from './fx/score.js';
 import { loadRealMobs } from './enemies/realMobs.js';
 import { loadMobAnims } from './enemies/mobAnims.js';
 
@@ -110,7 +111,7 @@ const ride = createRide({
     flip: skater.flip, speed: skater.speed, ground: skater.grounded ? 1 : 0, grind: skater.grinding ? 1 + skater.grindStyle : 0,   // (0: not grinding; otherwise which grind, plus one)
     trick: skater.trick ? TRICKS.indexOf(skater.trick) : -1, tp: skater.trickProgress, charge: skater.charge, steer: skater.steer,
     ax: aimPoint.x, ay: aimPoint.y, az: aimPoint.z, gun: gunIsUp ? 1 : 0, line: lines.total, best: lines.session,
-    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0, emote: emoter.playing, foot: afoot.on ? 1 : 0,
+    safe: LEVELS[level].freeRide ? Math.max(0, invulnerable) : 0, emote: emoter.playing, foot: afoot.on ? 1 : 0, ready: airlock.meReady ? 1 : 0,
   }),
   onChange: () => {},
 });
@@ -176,10 +177,10 @@ const eggs = createEggs({
     cutscenes.found({ name: COSTUMES[id].name, wear: applyLook });
   },
 });
-// The way down to DEAD AIR (freeride/airlock.js: spoilers). In a party the lamp is everybody's, and whoever goes
+// The way down to DEAD AIR (freeride/airlock.js: spoilers). In a party the lock is everybody's, and whoever goes
 // down first takes the others with them (partySay: the host passes it on).
 // (down it: the lift's cut-in (cutscenes.lift), then the station)
-const downTheHatch = () => { if (cutscenes.active) return; afoot.reset(); cutscenes.lift(airlock, () => intoDeadAir()); };   // (on his board for it: the scene rolls him in)
+const downTheHatch = () => { if (cutscenes.active) return; afoot.reset(); cutscenes.lift(airlock, () => { afoot.cineEnd(); intoDeadAir(); }); };   // (the scene walks him in, his board on his back: cutscenes.lift)
 const airlock = createAirlock({ scene, onEnter: () => { partySay({ da: 'go' }); downTheHatch(); } });
 const powerups = new Powerups(scene);
 const chase = new ChaseCamera(camera);
@@ -248,6 +249,7 @@ function takeUpRun() {
   resetStats();
   for (const k in kept.stats) if (typeof kept.stats[k] === 'number' && k in stats) stats[k] = kept.stats[k];
   stats.taken = { ...kept.stats.taken };
+  stats.combo = { ...(kept.stats.combo || {}) };   // (the synergies taken)
   for (const id of POWER_IDS) if (kept.stats.power?.[id]) Object.assign(stats.power[id], kept.stats.power[id]);
   powerups.reset();
   powerups.refill();
@@ -396,6 +398,8 @@ const panel = createTweakPanel({ onRespawn: () => { if (!inMenu) restart(); } })
 
 let demo = null;   // (the editor: the boss's move being shown, { act, wait })
 let slowed = 0, lastBeam = null;   // (The Long Way Down: how much longer a hit holds you back; the last beam it has been shown)
+let testGod = false, testDamage = 0;   // (the tests: window.game.testGod)
+const lockAim = new THREE.Vector3();   // (the crosshair's line, for the lift's lock: see the sniper's shot)
 function hurt(amount) {
   model.express?.('surprise', 0.7);
   if (LEVELS[level].freeRide) return;   // (nothing hurts in Free Ride)
@@ -405,7 +409,8 @@ function hurt(amount) {
     playShieldHit();
     return;
   }
-  hp = Math.max(0, hp - amount * difficulty.damage);
+  if (testGod) testDamage += amount * difficulty.damage;   // (the balance bot: as if hit (the shield, the moment of safety after), but the health is not taken: counted)
+  else hp = Math.max(0, hp - amount * difficulty.damage);
   invulnerable = config.player.invulnerableTime + stats.invulnerable;
   chase.onSloppy();
   hud.flashHurt();
@@ -529,7 +534,7 @@ ${first ? 'Yours to keep: the Golden BOOF (Shop, Style)\n' : ''}Click to return 
 // The editor's jukebox: a button for each level's music and each story soundtrack, to listen to on its own.
 {
   const list = document.getElementById('music-list');
-  const NAMES = { dnb: 'The Cemetery (and the menu)', catacombs: 'The Catacombs', rock: 'A boss fight', house: 'The House', hill: 'The Long Way Down', moon: 'The Moon', casino: 'The casino' };
+  const NAMES = { title: 'The title screen', dnb: 'The Cemetery', catacombs: 'The Catacombs', rock: 'A boss fight', house: 'The House', hill: 'The Long Way Down', moon: 'The Moon', casino: 'The casino' };
   const CUE_NAMES = { grave: 'Story: the cemetery', deep: 'Story: the Catacombs', city: 'Story: the city', house: 'Story: the House', collapse: 'Story: the collapse', air: 'Story: the launch', moon: 'Story: the Moon' };
   const button = (label, small, play) => {
     const b = document.createElement('button');
@@ -545,7 +550,7 @@ ${first ? 'Yours to keep: the Golden BOOF (Shop, Style)\n' : ''}Click to return 
   };
   for (const id of MUSIC_STYLES) button(NAMES[id], 'Level music', () => { stopCue(); holdMusic(null); setMusicStyle(id); });
   for (const id in CUE_NAMES) button(CUE_NAMES[id], 'Scene soundtrack (loops)', () => { holdMusic(0.02); stopCue(0.2); setTimeout(() => playCue(id), 60); });
-  button('Menu music', 'What the menu normally plays', () => { stopCue(); holdMusic(null); setMusicStyle(finished() || moonMenu ? 'moon' : 'dnb'); });
+  button('Menu music', 'What the menu normally plays', () => { stopCue(); holdMusic(null); setMusicStyle('title'); });
   // Silence: every effect cut off, the soundtrack stopped, the level's music held at nothing (any music button brings it back).
   for (const id of ['sound-stop', 'sound-stop-2']) document.getElementById(id).addEventListener('click', () => {
     SOUNDS.stopAllSounds();
@@ -953,6 +958,7 @@ function offerUpgrade() {
     takeUpgrade(upgrade, run);
     pendingLevels--;
     if (pendingLevels > 0) return offerUpgrade();
+    if (powerOffer) return offerPowers();   // (a HotBox's pick, waiting on these)
     choosing = false;
     paused = false;
     shield = Math.max(shield, config.player.levelUpSafety);   // a few seconds to get your bearings
@@ -987,7 +993,7 @@ function showMenu() {
   if (drag) endDrag(false);
   cutscenes.cancel();
   goldTally.hide();
-  setMusicStyle(finished() || moonMenu ? 'moon' : 'dnb');
+  setMusicStyle('title');   // (the title screen: his DEADSLIDE, wherever the menu is set)
   leaderboard.hideEnd();
   levelUp.hide();
   horde.reset();
@@ -1051,7 +1057,8 @@ function intoDeadAir() {
   playDeadAir();
 }
 // Out of DEAD AIR the way you went in: the lift back up to the Moon, and Free Ride again at the top of it.
-function backToMoon() {
+function backToMoon(results = null) {
+  preloadCues();
   inMenu = false;
   paused = false;
   document.body.classList.add('free-ride');
@@ -1063,7 +1070,7 @@ function backToMoon() {
   const A = airlock.place;
   skater.pos.set(A.x, A.y + 0.25, A.z); skater.vel?.set(0, 0, 0);
   chase.snap(skater);
-  setTimeout(() => { if (!deadAir?.active) cutscenes.surface(airlock, () => { airlock.reset(); }); }, 400);   // (the lift's cage is built on demand: a moment for it)
+  setTimeout(() => { if (!deadAir?.active) cutscenes.surface(airlock, () => { airlock.reset(); afoot.footNext = true; if (results) outCard.show(results); }); }, 400);   // (out of the lift on foot; and the card once the scene has played)   // (the lift's cage is built on demand: a moment for it)
 }
 // The editor's DEAD AIR tab: every stage of it on a button (the mode says what they are: deadair/index.js STAGES).
 let stagesFilled = false;
@@ -1072,8 +1079,10 @@ function fillDeadAirStages() {
   stagesFilled = true;
   const list = document.getElementById('deadair-stage-list');
   openDeadAir().then((made) => {
+    // (each group once, in the order its first stage comes: stages added later to a group join it, wherever they were written)
+    const order = [...new Set(made.stages.map((s) => s.group))], grouped = order.flatMap((g) => made.stages.filter((s) => s.group === g));
     let group = '';
-    for (const s of made.stages) {
+    for (const s of grouped) {
       if (s.group !== group) { group = s.group; list.append(Object.assign(document.createElement('h3'), { textContent: group })); }
       const b = document.createElement('button');
       b.type = 'button';
@@ -1089,6 +1098,7 @@ const playDeadAir = () => openDeadAir().then((made) => { if (spectate) stopSpect
 const emoter = createEmoter(model);
 // Free Ride on foot: B steps off the board (and back on). See player/afoot.js.
 const afoot = createAfoot({ skater, model, chase, input, emoter });
+// Out of DEAD AIR (a win): the card on the Moon, and the Mastre of the Month's statue by the lift.
 const emoteWheel = createEmoteWheel({
   canOpen: () => casino.active || (LEVELS[level].freeRide && !inMenu && !paused && !dead && !cutscenes.active),
   onPick: (i) => (casino.active ? casino.emote(i) : emoter.play(i)),
@@ -1106,6 +1116,8 @@ document.getElementById('menu-casino-open').addEventListener('click', (e) => {
 // Start a run. loadout: Creative mode's choices (null: a normal run). chosen: the level. session: riding with friends
 // ({ host } or { join }), or { direct: true } from the editor: straight into the level, without the story that leads to it.
 function startRun(loadout, chosen = 1, session = null) {
+  afoot.footNext = LEVELS[chosen]?.freeRide === true;   // (Free Ride: on foot from the start)
+  if (LEVELS[chosen]?.freeRide) preloadCues();   // (the lift's two recorded cues, so they are there when its scenes start)
   sweepWait = 0.3;   // (what the level is about to make: drawn in one pass from its first moments, see fx/singlePass.js)
   const taken = !!session?.resume && !!kept && kept.level === chosen;   // (Continue: the run that was kept, taken up again)
   creative = loadout;
@@ -1232,6 +1244,8 @@ window.addEventListener('keydown', (e) => {
     cutscenes.skip();   // (only the story scenes can be skipped)
   } else if (e.code === 'KeyR' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     backToSpawn();
+  } else if (e.code === 'KeyE' && !e.repeat && freeRide() && !paused && !dead && !cutscenes.active && airlock.meInside && airlock.toggleReady()) {
+    hud.popup(airlock.meReady ? 'Ready' : 'Not ready', 'pending');   // (the lift's ready check)
   } else if (e.code === AFOOT.key && !e.repeat && freeRide() && !paused && !dead && !cutscenes.active && !(e.target instanceof HTMLInputElement)) {
     afoot.toggle();   // Free Ride: off the board and on foot, or back on it
   }
@@ -1244,6 +1258,7 @@ function backToSpawn() {
   lines.fail('Back to spawn');
   afoot.reset();
   skater.respawn();
+  afoot.footNext = true;   // (on foot, always, wherever he starts)
   chase.snap(skater);
   overLava = false;
   hud.popup('Back to spawn', 'pending');
@@ -1470,7 +1485,9 @@ function handleEvents() {
 const DRAG = { moveIn: 0.5, inhaleEnd: 1.5, exhaleEnd: 2.6, end: 3.2, fov: 34 };   // seconds into the cutscene
 const smooth = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
 const face = new THREE.Vector3(), close = new THREE.Vector3(), facing = new THREE.Vector3(), lookAt = new THREE.Matrix4(), closeQuat = new THREE.Quaternion();
-const cutscenes = createCutscenes({ camera, model, skater, horde, portal, renderPos, skipStory: () => !preview && load('story') === 'off' });   // the boss, the portal and the exit
+const cutscenes = createCutscenes({ camera, model, skater, horde, portal, renderPos, skipStory: () => !preview && load('story') === 'off', walkPose: (dt, pos, face, speed) => afoot.cine(dt, pos, face, speed) });   // the boss, the portal and the exit
+// Out of DEAD AIR (a win): the card on the Moon, and the Mastre of the Month's statue by the lift.
+const outCard = createOutCard({ scene, airlock, SkaterModel, cutscenes, onClose: () => { if (!paused) lockPointer(); } });
 let drag = null;   // the cutscene in progress: { time, position, quaternion, fov } (where the camera was)
 
 function startDrag() {
@@ -1515,33 +1532,8 @@ function updateDrag(dt) {
   if (t >= DRAG.end) endDrag(true);
 }
 
-// The first time you win a power-up in a run, the game stops on a card that says what it does.
+// (the card that said what a power-up does the first time is gone: the HotBox's pick says it on its own cards)
 const powerInfo = document.getElementById('power-info');
-function explainPower(id) {
-  const P = POWERUPS[id];
-  powerInfo.style.setProperty('--power', `#${P.color.toString(16).padStart(6, '0')}`);
-  document.getElementById('power-info-name').textContent = P.name;
-  document.getElementById('power-info-text').textContent = P.explain;
-  document.getElementById('power-info-more').textContent = `It works on its own, and it's yours for the rest of the run. Win it again in another HotBox Zone to strengthen it (up to level ${P.max}); level-up cards can improve it too.`;
-  powerInfo.classList.remove('hidden');
-  choosing = true;   // (the game waits, like it does for a level-up)
-  paused = true;
-  document.exitPointerLock?.();
-}
-function closePowerInfo() {
-  if (powerInfo.classList.contains('hidden')) return;
-  powerInfo.classList.add('hidden');
-  choosing = false;
-  paused = false;
-  last = performance.now();
-  if (!panel.open) lockPointer();
-}
-powerInfo.addEventListener('click', closePowerInfo);
-window.addEventListener('keydown', (e) => {
-  if (powerInfo.classList.contains('hidden') || !['Enter', 'Escape'].includes(e.code)) return;
-  e.preventDefault();
-  closePowerInfo();
-});
 
 // reward: false when the run is being reset under it.
 function endDrag(reward) {
@@ -1550,17 +1542,41 @@ function endDrag(reward) {
   weapon.flash.intensity = 0;
   document.body.classList.remove('cutscene');
   if (!reward) return;
-  const won = powerups.random();   // you only find out what was in it now
-  if (won) {
-    const level = powerups.grant(won);
-    if (level === 1) explainPower(won);   // new to you this run: stop and say what it does
-    else hud.popup(`${powerups.label(won)}: ${POWERUPS[won].description}`, 'loot');
-  } else {                         // every power-up is already at full strength
+  powerOffer = true;   // (the pick comes up as soon as nothing else is being chosen: see offerPowers)
+  if (!choosing && !dead && !won) offerPowers();
+}
+// A HotBox's pick (the balance pass, 2026-10-16: what it gave was a roll of the dice, and so was your build): three
+// power-ups to choose between, the ones you hold (levelled up) and, while you have room for more, ones you do not.
+// The game waits, as it does for a level-up.
+let powerOffer = false;
+function offerPowers() {
+  powerOffer = false;
+  const ids = powerups.choices(3);
+  if (!ids.length) {   // (every power-up you can have is at full strength)
     run.heal(40);
     hud.popup('Everything maxed: +40 HP', 'loot');
+    playPowerup(); score.add(250, 0.5);
+    return;
   }
+  choosing = true;
+  paused = true;
+  document.exitPointerLock?.();
   playPowerup();
-  score.add(250, 0.5);
+  const cards = ids.map((id) => {
+    const P = POWERUPS[id], L = stats.power[id].level;
+    return { id, name: P.name, max: P.max, rarity: L ? 'power' : 'power new', description: L ? `${P.description[0].toUpperCase()}${P.description.slice(1)}. Level ${L + 1}: more of it.` : P.explain };
+  });
+  levelUp.show('HotBox: pick one', cards, (u) => stats.power[u.id].level, (u) => u.description, (u) => {
+    powerups.grant(u.id);
+    hud.popup(`${powerups.label(u.id)}: ${POWERUPS[u.id].description}`, 'loot');
+    score.add(250, 0.5);
+    if (pendingLevels > 0 && !dead && !won) return offerUpgrade();
+    choosing = false;
+    paused = false;
+    shield = Math.max(shield, config.player.levelUpSafety);
+    last = performance.now();
+    if (!panel.open) lockPointer();
+  });
 }
 
 function frame(now) {
@@ -1665,8 +1681,10 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
       }
       targets.update(dt, skater.pos);
       eggs.update(dt);
-      airlock.update(dt, skater.pos, ride.positions());
-      if (airlock.waiting && !airlock.waitSaid) { airlock.waitSaid = true; hud.popup(`The lift waits for everyone: ${airlock.aboard} of ${airlock.party} aboard`, 'loot'); }
+      outCard.update(dt);
+      if (afoot.footNext && !afoot.on && skater.grounded && !cutscenes.active) { afoot.footNext = false; afoot.stepOffNow(); }   // (Free Ride starts him on his feet)
+      airlock.update(dt, skater.pos, ride.positions(), ride.readies());
+      if (airlock.waiting && !airlock.waitSaid) { airlock.waitSaid = true; hud.popup(`The lift waits for everyone: ${airlock.ready} of ${airlock.party} ready`, 'loot'); }
       if (!airlock.waiting) airlock.waitSaid = false;
       lines.update(dt, skater.grounded && !skater.grinding);
       for (const e of lines.events) {
@@ -1759,7 +1777,10 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
           // Free Ride: what did that hit? A target, or another rider (whichever is nearer).
           const { origin, dir, reach } = weapon.shot;
           eggs.shot(dir);
-          if (airlock.shot(origin, dir, reach)) hud.popup('Something opens behind you', 'loot');
+          // (the lock on its call button, shot off: the lift opens, for everyone. Tried along the crosshair's own line, the
+          // camera's: the shot itself comes from his muzzle, half a metre off it, toward where that line meets the world far
+          // behind the lock, and so passed it by however true the aim)
+          if (airlock.shot(camera.position, camera.getWorldDirection(lockAim), reach + 20) || airlock.shot(origin, dir, reach)) { hud.popup('The lift is unlocked', 'loot'); partySay({ da: 'unseal' }); }
           const rider = ride.rayHit(origin, dir, reach);
           const doing = { air: !skater.grounded && !skater.grinding, trick: !!skater.trick || Math.abs(skater.spin) > 1.2 || Math.abs(skater.flip) > 1.2, scoped: chase.scope > 0.5 };
           const target = targets.shoot(origin, dir, rider ? rider.dist : reach, doing);
@@ -1870,6 +1891,8 @@ slowest chunk ${arena.stats.build.toFixed(0)} ms`;
     const gain = xp.update(dt, skater);
     if (gain.collected) playPickup();
     pendingLevels += gain.levels;
+    stats.xpLevel = xp.level;   // (the crowd grows with you: config.horde.hpPerLevel)
+    if (powerOffer && !choosing && !dead && !won) offerPowers();
     if (gain.spare > 0) score.add(gain.spare * config.xp.cappedGemPoints);   // at the level cap, XP becomes points
     if (pendingLevels > 0 && !choosing && !dead && !won) offerUpgrade();
 
@@ -1889,4 +1912,4 @@ requestAnimationFrame(frame);
 if (new URLSearchParams(location.search).has('deadair')) playDeadAir();   // (?deadair in the address: straight in, for testing)
 
 // Handy in the browser console: game.skater, game.config, game.horde
-window.game = { renderer, scene, hurt, airlock, startRun, afoot, model, chase, input, camera, cutscenes, get skater() { return skater; }, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED };
+window.game = { renderer, scene, hurt, airlock, startRun, afoot, model, chase, input, camera, cutscenes, get skater() { return skater; }, get drawn() { return { ...renderer.info.render, chunk: arena.stats.build }; }, get spectate() { return spectate; }, startSpectate, giveGold: (amount = 1000) => { bank(amount); shop.refresh(); return profile.gold; }, get cutscene() { return drag; }, get casino() { return casino; }, openCasino, model, menuScene, viewer, gold, lines, ride, targets, descent, profile, shop, cutscenes, skater, config, chase, weapon, horde, xp, loot, score, hotbox, portal, powerups, stats, input, restart, showMenu, seed: SEED, get testGod() { return testGod; }, set testGod(v) { testGod = !!v; }, get testDamage() { return testDamage; }, set testDamage(v) { testDamage = v; } };

@@ -127,11 +127,28 @@ const CUES = {
 const LEVEL = 1.5;   // how loud a cue is: clearly there, a little under the level music it replaces
 let cue = null;   // the one playing: { name, def, out, play, step, next, timer }
 
+// Recorded cues (his, made with Suno: see tools/extract_audio.py): one plays once, from the first frame of its scene,
+// and the scene is cut to it. Fetched ahead (preloadCues) so that it is there when the scene starts; if it is not,
+// the generated cue of the same name plays instead (or nothing).
+const RECORDED = { moon_down: 'cue_moon_down.aac', moon_up: 'cue_moon_up.aac' };   // (his, made with Suno: tools/master_audio.py)
+const RECORDED_LEVEL = { moon_down: 1.0, moon_up: 1.0 };
+const recorded = {};
+export function preloadCues(names = Object.keys(RECORDED)) {
+  const ctx = audio.ctx;
+  if (!ctx) return;
+  for (const name of names) {
+    if (recorded[name] || !RECORDED[name]) continue;
+    recorded[name] = fetch(`${import.meta.env.BASE_URL}sounds/music/${RECORDED[name]}`).then((r) => r.arrayBuffer()).then((data) => ctx.decodeAudioData(data)).then((b) => { recorded[name] = b; return b; }).catch(() => { recorded[name] = null; });
+  }
+}
+
 export function stopCue(fade = 1.2) {
   if (!cue) return;
   const { out, timer } = cue, t = audio.ctx.currentTime;
+  const src = cue.src;
   cue = null;
   clearInterval(timer);
+  if (src) setTimeout(() => { try { src.stop(); } catch {} }, fade * 1000 + 600);
   out.gain.cancelScheduledValues(t);
   out.gain.setTargetAtTime(0, t, fade / 4);
   setTimeout(() => out.disconnect(), fade * 1000 + 2500);   // (after its last notes have died away)
@@ -141,6 +158,15 @@ export function playCue(name) {
   if (cue?.name === name) return;
   stopCue();
   const ctx = audio.ctx, def = CUES[name];
+  const buffer = recorded[name];
+  if (ctx && ctx.state === 'running' && buffer && buffer.getChannelData) {   // (the recording, once, from now)
+    const out = ctx.createGain(), src = ctx.createBufferSource();
+    out.gain.value = RECORDED_LEVEL[name] ?? 1;
+    out.connect(audio.score);
+    src.buffer = buffer; src.connect(out); src.start(ctx.currentTime + 0.02);
+    cue = { name, out, timer: 0, src };
+    return;
+  }
   if (!ctx || ctx.state !== 'running' || !def) return;
   const out = ctx.createGain();
   out.gain.value = LEVEL;

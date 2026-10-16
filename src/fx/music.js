@@ -4,7 +4,9 @@
 // So does the Moon (Free Ride): the same tempo at half speed, wide open and weightless.
 // And each of the other levels: the Catacombs (a slow, heavy dub in the dark), the House (a big band playing a minor
 // swing as fast as it can) and the Long Way Down (a chase: four on the floor, octave bass, an arpeggio that will not stop).
-// Nothing is recorded. A small sequencer schedules synthesized drums and sub
+// His recorded tracks (made with Suno) now play the title and the levels: see TRACKS, below. What follows is the
+// generated music: the casino's still, and any style's until its recording has loaded.
+// A small sequencer schedules synthesized drums and sub
 // bass under a graveyard's worth of atmosphere: uneasy pads, a tolling bell,
 // a wailing ghost voice, a broken music box and gusts of wind.
 // To change the groove, edit the patterns below (16 steps = one bar,
@@ -66,14 +68,61 @@ let started = false, step = 0, nextTime = 0, echo = null, style = 'dnb', amp = n
 
 // 'dnb' (the cemetery, and the menu), 'catacombs', 'house', 'hill', 'moon', 'casino', or 'rock' (a boss fight).
 // The new groove starts from bar one, at once.
-export const MUSIC_STYLES = ['dnb', 'catacombs', 'rock', 'house', 'hill', 'moon', 'casino'];
+export const MUSIC_STYLES = ['title', 'dnb', 'catacombs', 'rock', 'house', 'hill', 'moon', 'casino'];
 export const musicStyle = () => style;
 export function setMusicStyle(next) {
   if (next === style) return;
   style = next;
   step = 0;
   if (audio.ctx) nextTime = audio.ctx.currentTime + 0.05;
+  if (started) { if (buffers[next]) playTrack(next, next === 'rock' ? 0.5 : 1.4); else stopTrack(1); }   // (a boss cuts in: quickly)
 }
+
+// ---- His recorded tracks (Suno; tools/master_loops.py) ----
+// One for the title and one for each level's style. Each plays from its top once (its intro), then round and round
+// between its loop's start and end, the buffer's own loopStart / loopEnd (the join was found by ear, so to speak: by
+// rhythm and tone, its phase to the sample, its last moments crossfaded into what comes before the start). While a
+// style's recording plays, the generator is silent for it; until it has loaded, the generator plays as it always did.
+const TRACKS = {
+  title: ['title_theme', 22.17, 120.3537],          // DEADSLIDE: haunted drum and bass, the words and all
+  dnb: ['level_cemetery', 5.37, 130.5172],           // the Cemetery: high-BPM horror rock
+  catacombs: ['level_catacombs', 16.05, 187.5402],   // dark industrial techno
+  moon: ['level_freeride', 20.98, 206.0869],         // Free Ride: a dark electro breakbeat, steady, for hours of it
+  house: ['level_house', 11.42, 76.2613],            // the House: dark electro-swing
+  hill: ['level_longway', 35.36, 190.9751],          // the Long Way Down: epic hard rock
+  rock: ['level_boss', 6.29, 136.6398],              // a boss fight: symphonic horror metal
+};
+const TRACK_LEVEL = 0.85;   // (on the music's own volume: the generated styles sat about there)
+const buffers = {};
+let track = null;   // the one playing: { style, src, gain }
+function loadTracks() {
+  const ctx = audio.ctx;
+  for (const [st, [file]] of Object.entries(TRACKS)) {
+    fetch(`${import.meta.env.BASE_URL}sounds/music/${file}.aac`).then((r) => r.arrayBuffer()).then((data) => ctx.decodeAudioData(data))
+      .then((b) => { buffers[st] = b; if (st === style && (!track || track.style !== st)) playTrack(st, 1.5); }).catch(() => {});
+  }
+}
+function playTrack(st, fade = 1.2) {
+  const ctx = audio.ctx, b = buffers[st];
+  if (!ctx || !b) return;
+  if (track && track.style === st) return;
+  stopTrack(fade);
+  const [, from, to] = TRACKS[st], t = ctx.currentTime;
+  const src = ctx.createBufferSource(), gain = ctx.createGain();
+  src.buffer = b; src.loop = true; src.loopStart = from; src.loopEnd = Math.min(to, b.duration);   // (to: the end as it was cut; the decoded file runs a few samples past it)
+  gain.gain.setValueAtTime(0.0001, t); gain.gain.linearRampToValueAtTime(TRACK_LEVEL, t + fade);
+  src.connect(gain).connect(audio.music);
+  src.start(t);
+  track = { style: st, src, gain };
+}
+function stopTrack(fade = 1.2) {
+  if (!track) return;
+  const { src, gain } = track, t = audio.ctx.currentTime;
+  track = null;
+  gain.gain.cancelScheduledValues(t); gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t); gain.gain.linearRampToValueAtTime(0.0001, t + fade);
+  try { src.stop(t + fade + 0.05); } catch {}
+}
+export const musicTrack = () => (track ? { style: track.style, file: TRACKS[track.style][0] } : null);   // (the tests)
 
 export function startMusic() {
   if (started || !audio.ctx) return;
@@ -92,6 +141,7 @@ export function startMusic() {
   damp.connect(audio.music);
 
   nextTime = ctx.currentTime + 0.1;
+  loadTracks();
   setInterval(() => {
     applyVolume();
     // Schedule a little ahead; further when the tab is in the background and timers run slow.
@@ -105,6 +155,7 @@ export function startMusic() {
 }
 
 function schedule(index, t) {
+  if (track && track.style === style) return;   // (its recording is playing)
   if (style === 'rock') return rock(index, t);
   if (style === 'casino') return lounge(index, t);
   if (style === 'moon') return moon(index, t);

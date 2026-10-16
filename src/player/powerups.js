@@ -64,7 +64,7 @@ export const POWERUPS = {
   frost: {
     name: 'Frost Aura', color: 0x9fd8ff, max: 5, description: 'a ring of cold: monsters near you slow right down',
     explain: 'A ring of cold surrounds you. Any monster inside it is chilled: it moves far slower, and the cold eats at it.',
-    numbers: (L, m) => ({ radius: (5 + 0.8 * (L - 1)) * m.size, slow: Math.max(0.35, 0.72 - 0.07 * L), dps: (5 + 3 * (L - 1)) * m.damage }),
+    numbers: (L, m) => ({ radius: (5 + 0.8 * (L - 1)) * m.size, slow: Math.max(0.5, 0.8 - 0.06 * L), dps: (5 + 3 * (L - 1)) * m.damage }),   // (slow: less than it was, 0.68 at level 2, 0.5 at most: once it could be chosen it was the whole defence, measured)
   },
   rain: {
     name: 'Bone Rain', color: 0xe8dfc8, max: 5, description: 'bones fall out of the dark onto monsters and burst',
@@ -470,7 +470,20 @@ export class Powerups {
   // The shield, full (a run taken up again where it was left: main.js).
   refill() { if (level('shield')) this.shieldHp = numbers('shield').capacity; }
 
-  // A random power-up that can still be levelled, or null if everything is maxed.
+  // Up to `count` power-ups to choose between (a HotBox's pick): ones you hold that can still go up, and, while you have
+  // room for another (config.hotbox.maxPowers), ones you do not: some of each when it can.
+  choices(count = 3) {
+    const full = POWER_IDS.filter((id) => level(id) > 0).length >= config.hotbox.maxPowers;
+    const mix = (list) => list.map((id) => [Math.random(), id]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+    const held = mix(POWER_IDS.filter((id) => level(id) > 0 && level(id) < POWERUPS[id].max));
+    const fresh = full ? [] : mix(POWER_IDS.filter((id) => level(id) === 0));
+    const want = held.length && fresh.length ? Math.min(held.length, POWER_IDS.filter((id) => level(id) > 0).length >= 2 ? 2 : 1) : held.length;
+    const out = [...held.slice(0, want), ...fresh.slice(0, count - Math.min(want, count))];
+    for (const id of [...held.slice(want), ...fresh]) if (out.length < count && !out.includes(id)) out.push(id);
+    return out.slice(0, count);
+  }
+
+  // A random power-up that can still be levelled, or null if everything is maxed (the shop's Head Start).
   random() {
     // Once you hold as many different ones as you're allowed, a zone can only level up what you have.
     const full = POWER_IDS.filter((id) => level(id) > 0).length >= config.hotbox.maxPowers;
@@ -647,7 +660,7 @@ export class Powerups {
       if (Math.hypot(e.x - pos.x, e.z - pos.z) > N.radius + (e.T.boss ? e.T.radius * e.scale : 0)) continue;
       const caught = !(e.chill > 0);   // (this is the moment it takes hold of it)
       horde.chill(e, 0.7, N.slow);
-      horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true);
+      horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true, 'frost');
       if (e.dead) continue;
       e.flash = 0;   // (it does not flinch at the cold: it is slowed by it, and goes blue)
       if (caught) {
@@ -686,7 +699,7 @@ export class Powerups {
       d.mark.material.opacity = 0.35 + 0.65 * coming;
       if (d.life <= 0) {
         d.mesh.visible = d.mark.visible = false;
-        horde.shockwave(d.at, d.radius, d.damage);
+        horde.shockwave(d.at, d.radius, d.damage, 'rain');
         this.flare(d.at.x, d.at.y + 0.6, d.at.z, 0xfff0d0, 5, 0.25);
         this.burst(d.at.x, d.at.y + 0.3, d.at.z, 0xe8dfc8, 26, 10, 0.7, 16);
         this.burst(d.at.x, d.at.y + 0.3, d.at.z, 0x9a8f7a, 14, 4, 0.9, 3);   // (and the dust of it)
@@ -706,6 +719,7 @@ export class Powerups {
     this.shieldFlash = Math.max(0, this.shieldFlash - dt * 4);
     this.shieldWave = Math.min(1, this.shieldWave + dt * 2.6);
     this.bubble.visible = on && (this.shieldHp > 0 || this.shieldFlash > 0);
+    stats.shieldUp = on && this.shieldHp > 0 ? 1 : 0;   // (for Spiked Shell)
     if (!this.bubble.visible) return;
     const U = this.bubble.material.uniforms;
     this.bubble.position.set(pos.x, pos.y + 1, pos.z);
@@ -740,7 +754,7 @@ export class Powerups {
             inGas = t.life > 0 && Math.hypot(e.x - t.pos.x, e.z - t.pos.z) < patchRadius + girth && Math.abs(e.y - t.pos.y) < 4;
           }
           if (!inGas) continue;
-          horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true);
+          horde.damage(e, N.dps * 0.25, 0, 0, false, 0, true, 'gas');
           if (e.dead) continue;
           e.flash = 0;     // (it does not flinch at it: it sickens, and goes green)
           e.sick = 0.6;
@@ -811,8 +825,8 @@ export class Powerups {
         e.burnAt = this.clock + 0.4;
         const d = Math.hypot(e.x - pos.x, e.z - pos.z) || 1;
         chest(e, b);
-        horde.damage(e, N.damage, (e.x - pos.x) / d, (e.z - pos.z) / d, false, 0.6, true);
-        if (!e.dead) horde.ignite(e, N.burn, (N.damage * 0.2) / N.burn);
+        horde.damage(e, N.damage, (e.x - pos.x) / d, (e.z - pos.z) / d, false, 0.6, true, 'fire');
+        if (!e.dead) { const burn = N.burn * (stats.combo.combust && e.sick > 0 ? 2 : 1); horde.ignite(e, burn, (N.damage * 0.2) / N.burn); }   // (Combustion: the sick burn twice as long)
         this.flare(b.x, b.y, b.z, 0xffb04a, 3, 0.22);
         this.burst(b.x, b.y, b.z, 0xff9a30, 14, 7, 0.5, 5);
         this.burst(b.x, b.y, b.z, 0xffe08a, 6, 3, 0.35, -3);
@@ -851,7 +865,7 @@ export class Powerups {
         a.set(e.x, e.y + e.T.height * e.scale * 0.6, e.z).sub(s.pos);
         const dist = a.length();
         if (dist < 0.9) {
-          horde.damage(e, s.damage, a.x / (dist || 1), a.z / (dist || 1), false, 1, true);
+          horde.damage(e, s.damage, a.x / (dist || 1), a.z / (dist || 1), false, 1, true, 'seekers');
           s.life = 0;
           this.flare(s.pos.x, s.pos.y, s.pos.z, 0xd9c2ff, 2.6, 0.22);
           this.burst(s.pos.x, s.pos.y, s.pos.z, 0xb98aff, 12, 7, 0.45, 6);
@@ -878,6 +892,7 @@ export class Powerups {
     this.hoop.visible = on;
     if (!on) return;
     const N = numbers('thorns');
+    if (stats.combo.spiked && stats.shieldUp) N.radius *= 1.33;   // (Spiked Shell: a third further while the shield holds)
     this.hoop.position.set(pos.x, pos.y + 0.75, pos.z);
     this.hoop.rotation.set(0.08 * Math.sin(this.clock * 2.1), this.clock * 5, 0.08 * Math.cos(this.clock * 1.7));
     this.hoop.scale.setScalar(N.radius * 0.55);
@@ -886,7 +901,7 @@ export class Powerups {
     for (const e of [...horde.enemies]) {
       const dx = e.x - pos.x, dz = e.z - pos.z, d = Math.hypot(dx, dz) || 1;
       if (e.rise < 1 || d >= N.radius + e.T.radius * e.scale || Math.abs(e.y - pos.y) >= 2.2) continue;
-      horde.damage(e, N.dps * 0.25, dx / d, dz / d, false, N.knock, true);
+      horde.damage(e, N.dps * 0.25, dx / d, dz / d, false, N.knock, true, 'thorns');
       if (torn++ < 6) {   // (where the hoop met it)
         const r = Math.min(d, N.radius * 0.75);
         a.set(pos.x + (dx / d) * r, pos.y + 0.8, pos.z + (dz / d) * r);
@@ -911,7 +926,7 @@ export class Powerups {
         hit.add(e);
         const to = new THREE.Vector3(e.x, e.y + e.T.height * e.scale * 0.6, e.z);
         pieces = this.drawBolt(from, to, pieces);
-        horde.damage(e, N.damage, 0, 0, false, 0.5, true);
+        horde.damage(e, N.damage, 0, 0, false, 0.5, true, 'lightning');
         this.flare(to.x, to.y, to.z, 0xe6fbff, 3.4, 0.2);
         this.burst(to.x, to.y, to.z, 0x9fe8ff, 12, 9, 0.35, 10);
         from = to;

@@ -194,7 +194,6 @@ export function createLounge({ station, game, arms, walker, openCasino, onOut, h
     // it, still dancing)
     room.pos.set(STAGE.x - 1.7, 0, STAGE.z - 2.7);   // (clear of the pipe column at x -12.5)
     room.yaw = Math.atan2(1.7, 2.7);
-    holdMusic(1);
     sound?.sting?.(0.7);
     hud?.whiteout?.(0.6);
   }
@@ -339,7 +338,7 @@ export function createLounge({ station, game, arms, walker, openCasino, onOut, h
     if (roll) cam.rotateZ(roll);
     if (!api.recording) hud?.cine?.(true, lines, flash, title, kk, sub, '', say);
     if (t >= SHOW_TIME) {
-      show = null; hud?.cine?.(false); holdMusic(0.8); if (hud?.banner) hud.banner('ENCORE', 0xffcf4a); game.points += 300;
+      show = null; hud?.cine?.(false); if (hud?.banner) hud.banner('ENCORE', 0xffcf4a); game.points += 300;
       songOn?.level(0.55, 1.5);   // (the band plays on, under the room)
       fx?.clear();
     }
@@ -347,6 +346,7 @@ export function createLounge({ station, game, arms, walker, openCasino, onOut, h
 
   api = {
     get inside() { return inside; },
+    get band() { return !!songOn; },   // (the band's song is on: the lounge's music makes way for it)
     get room() { return room; },
     get scene() { return room?.scene; },
     get camera() { return room?.camera; },
@@ -363,7 +363,7 @@ export function createLounge({ station, game, arms, walker, openCasino, onOut, h
       });
       room.kirky.applyLook({ ...walker.look });
       setRadio(true);
-      holdMusic(0.6);
+      holdMusic(0);   // (the casino's own music is not played in here: his lounge track is, darker: index.js runMusic)
     },
     // Each frame while you are in here (index.js): the casino's own, and the airlock's light, brighter as they hit it.
     update(dt, input) {

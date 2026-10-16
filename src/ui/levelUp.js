@@ -46,7 +46,7 @@ export const levelUp = {
         card.innerHTML = `<span class="key">${i + 1}</span><span class="name"></span><span class="desc"></span><span class="owned"></span>`;
         card.querySelector('.name').textContent = u.name;
         card.querySelector('.desc').textContent = describe(u, owned);
-        card.querySelector('.owned').textContent = u.max > 20 ? '' : owned ? `Level ${owned} to ${owned + 1}  (max ${u.max})` : u.rarity === 'rare' ? 'Rare' : '';
+        card.querySelector('.owned').textContent = u.max > 20 ? '' : owned ? `Level ${owned} to ${owned + 1}  (max ${u.max})` : { rare: 'Rare', synergy: 'Synergy', 'power new': 'New power-up' }[u.rarity] || '';
         card.addEventListener('click', () => pick(i));
         return card;
       }));

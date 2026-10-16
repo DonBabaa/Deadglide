@@ -56,7 +56,7 @@ const eye = new THREE.Vector3(), target = new THREE.Vector3(), dir = new THREE.V
 const spin = new THREE.Quaternion();
 
 // skipStory(): true when the player has switched the story scenes off (they are skipped as they start).
-export function createCutscenes({ camera, model, skater, horde, portal, renderPos, skipStory = () => false }) {
+export function createCutscenes({ camera, model, skater, horde, portal, renderPos, skipStory = () => false, walkPose = null }) {   // (walkPose(dt, pos, face, speed): him on his feet, for a shot that asks for it with `walk`)
   let scene = null;   // the one playing: { time, duration, step, done, marks }
   const home = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), fov: 0 };   // where the camera was
 
@@ -334,7 +334,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
     // shots: [{ for: seconds, line: the caption, cam(k, t): place `eye` and `target` (k: 0..1 through the shot, t:
     // seconds into it) and return { fov, shake, lines }, at(): runs once as the shot starts }]
     // glow: how bright the camera's lamp is (for somewhere dark).
-    story(shots, done, glow = 0, cue = null) {
+    story(shots, done, glow = 0, cue = null, through = false) {   // (through: it plays straight through, nothing waits on Enter)
       const starts = [];
       let total = 0;
       for (const sh of shots) { starts.push(total); total += sh.for; }
@@ -343,8 +343,10 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         let i = shots.length - 1;
         while (i > 0 && t < starts[i]) i--;
         const sh = shots[i], into = t - starts[i], v = sh.cam(Math.min(1, into / sh.for), into) || {};
+        if (v.eye && v.target) { eye.copy(v.eye); target.copy(v.target); }   // (a shot written outside this file: it says where the camera is and what it looks at)
         if (!scene.marks[`shot${i}`]) { scene.marks[`shot${i}`] = true; sh.at?.(); }
-        model.update(dt, skater, skater.pos, null, false);
+        if (v.walk !== undefined && walkPose) walkPose(dt, skater.pos, Math.atan2(skater.fwd.x, skater.fwd.z), v.walk);   // (on his feet: the way into the lift)
+        else model.update(dt, skater, skater.pos, null, false);
         model.inhale = v.drag || 0;
         const flame = v.light !== undefined ? relight(model, v.light) : 0;   // (a shot that has him smoke has him light it first)
         horde.draw(dt);
@@ -360,7 +362,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       }, () => { model.inhale = 0; done?.(); });
       scene.skippable = true;
       if (cue) score(cue);
-      scene.holds = shots.map((sh, i) => starts[i] + sh.for - (i === shots.length - 1 ? 0.2 : 0.03));   // (at the end of every line)
+      scene.holds = through ? [] : shots.map((sh, i) => starts[i] + sh.for - (i === shots.length - 1 ? 0.2 : 0.03));   // (at the end of every line)
     },
 
     // Down the lift (the Moon's way into DEAD AIR): everyone is aboard, the gate has shut. A shaft is built round the
@@ -375,59 +377,62 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       const inCage = (dx, dz) => new THREE.Vector3(A.x, 0, A.z).add(new THREE.Vector3(dx, 0, dz).applyAxisAngle(UP, turn));
       const inward = inCage(0, 1).sub(inCage(0, 0)).normalize();   // (the way in through the gate)
       const outside = inCage(0, -7.2), home = inCage(0, 0.4), ROLL = 4.5;
-      // (the post with its sign stands on the runway's line, a few metres out from the gate, with a boulder off one side of
-      // the cage: the camera that runs alongside him is high, over the sign, on the open side)
+      // (a boulder off one side of the cage, and the line out from the gate where the post stood (airlock.signAt): the camera
+      // that runs alongside him is high, on the open side)
       const across = new THREE.Vector3(inward.z, 0, -inward.x);
-      const roll = (t) => {   // (rolling in at a walking pace, and stopping in the middle of the cage)
-        const e = smooth(Math.min(1, t / ROLL));
+      // (they walk in: off their boards, the boards on their backs, at a walk, and stop in the middle of the cage)
+      let pace = 0;
+      const roll = (t) => {
+        const e = smooth(Math.min(1, t / ROLL)), e2 = smooth(Math.min(1, (t + 0.05) / ROLL));
         p.x = outside.x + (home.x - outside.x) * e; p.z = outside.z + (home.z - outside.z) * e;
-        skater.fwd?.copy(inward); skater.vel?.copy(inward).multiplyScalar(t < ROLL ? 2.6 : 0);
+        pace = t < ROLL ? (e2 - e) * outside.distanceTo(home) / 0.05 : 0;
+        skater.fwd?.copy(inward); skater.vel?.copy(inward).multiplyScalar(pace);
       };
       airlock.holdGate(true);
       this.story([
-        // The way in, in two shots: from behind him and above, the cage and its sign ahead at the end of the runway of
-        // lights, as he rolls up to it; then (a flash) from inside it, low, looking out through the open gate as he rolls
-        // in at us and stops. (One roll across both: ROLL seconds of it, from far out to the middle of the cage.)
+        // The way in, cut to his cue (moon_down: the doors slam at 5.4, the drop at 7.6, the red at 10.2, up at 13.4): high
+        // alongside as they walk up to it; behind them, over the rails, as they walk in; the doors shutting; down; the red
+        // of the shaft; looking up. (One walk across the first two: ROLL seconds of it, from out on the dust to the middle.)
         { for: 2.7, line: 'Shackleton Station. Outside the dome. The last transmission was nine days ago.', cam: (k, into) => {
           roll(into); airlock.setGate?.(0);
           // (alongside him and above, a little ahead: him rolling past the sign toward the lit cage)
           eye.copy(p).addScaledVector(across, 5.2).addScaledVector(inward, -1.0).setY(y0 + 3.3 - 0.6 * k);   // (a little behind him: the cage's corner post never between)
           target.copy(p).addScaledVector(inward, 1.4).setY(y0 + 0.9);
-          return { fov: 50 - 4 * k, lines: k < 0.12 ? 0.6 : 0 };
+          return { fov: 50 - 4 * k, lines: k < 0.12 ? 0.6 : 0, walk: pace };
         } },
         { for: 2.7, line: 'Shackleton Station. Outside the dome. The last transmission was nine days ago.', cam: (k, into) => {
           roll(2.7 + into); airlock.setGate?.(0);
           // (behind him, low, the sign behind us: through the open gate with him, into the lamp's light, and he stops)
           eye.copy(p).addScaledVector(inward, -2.6 + 0.3 * k).addScaledVector(across, 0.5).setY(y0 + 1.75);   // (over the cage's rails, not through them)
           target.copy(p).addScaledVector(inward, 2.2).setY(y0 + 0.95);
-          return { fov: 48, lines: k < 0.1 ? 0.8 : 0 };
+          return { fov: 48, lines: k < 0.1 ? 0.8 : 0, walk: pace };
         } },
         // inside: the gate sliding shut on the Moon, the amber lamp, his face
-        { for: 2.8, line: 'Somebody has to go down and look.', at: () => { airlock.holdGate(false); playHatch(); }, cam: (k) => {
+        { for: 2.3, line: 'Somebody has to go down and look.', at: () => { airlock.holdGate(false); playHatch(); }, cam: (k) => {
           skater.vel?.set(0, 0, 0); airlock.setGate?.(Math.min(1, k * 1.4));   // (the gate sliding shut behind him)
           const f = facing(dir); eye.copy(p).addScaledVector(f, 1.15).add(UP.clone().multiplyScalar(1.3)); target.copy(p).add(UP.clone().multiplyScalar(1.35));
-          return { fov: 36, lines: 0 };
+          return { fov: 36, lines: 0, walk: 0 };
         } },
         // down: the walls starting to slide, the red strips going by faster and faster
-        { for: 3.0, line: 'Restore power. Send the signal. Hold out until the lift comes back.', at: () => { S.shaft.visible = true; playDread(); }, cam: (k, t) => {
+        { for: 2.5, line: 'Restore power. Send the signal. Hold out until the lift comes back.', at: () => { S.shaft.visible = true; playDread(); }, cam: (k, t) => {
           S.down(t);
           // (from a top corner of the cage, across him to the far wall: its red strips starting to stream up past)
           const c = inCage(1.55, -1.5), far = inCage(-0.7, 0.7); eye.set(c.x, y0 + 2.5 - 0.2 * k, c.z); target.set(far.x, y0 + 0.95, far.z);
-          return { fov: 60, shake: 0.03 + 0.03 * k, lines: k > 0.3 ? 0.8 : 0 };
+          return { fov: 60, shake: 0.03 + 0.03 * k, lines: k > 0.3 ? 0.8 : 0, walk: 0 };
         } },
         // his face in the red, the shaft streaming up behind him
-        { for: 2.8, line: 'Everyone comes back, or nobody does.', cam: (k, t) => {
-          S.down(t + 3.0);
+        { for: 3.2, line: 'Everyone comes back, or nobody does.', cam: (k, t) => {
+          S.down(t + 2.5);
           const f = facing(dir); eye.copy(p).addScaledVector(f, 1.1).add(UP.clone().multiplyScalar(1.35)); target.copy(p).add(UP.clone().multiplyScalar(1.38));
-          return { fov: 34, shake: 0.05, lines: 0.6 };
+          return { fov: 34, shake: 0.05, lines: 0.6, walk: 0 };
         } },
         // looking up: the square of the top going away
-        { for: 2.4, line: '', cam: (k, t) => {
-          S.down(t + 5.8);
+        { for: 1.6, line: '', cam: (k, t) => {
+          S.down(t + 5.7);
           const c = inCage(0.4, -0.3); eye.set(c.x, y0 + 0.5, c.z); target.set(A.x, y0 + 30, A.z);
-          return { fov: 62, shake: 0.07, lines: 1 };
+          return { fov: 62, shake: 0.07, lines: 1, walk: 0 };
         } },
-      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4);
+      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4, 'moon_down');   // (cut to his cue: the gate's slam at 5.4, the drop at 7.7, the red at 10.2, up at 13.4)
       scene.cleanup = () => { S.remove(); airlock.holdGate(false); };
       scene.holds = [];   // (it plays through: nothing waits on Enter; Tab still skips it)
     },
@@ -442,8 +447,8 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
       stage.visible = true;
       const inCage = (dx, dz) => new THREE.Vector3(A.x, 0, A.z).add(new THREE.Vector3(dx, 0, dz).applyAxisAngle(UP, turn));
       const outward = inCage(0, -1).sub(inCage(0, 0)).normalize();
-      // (out through the gate and off to the side of the runway: the post with its sign stands on the runway's line, and the
-      // chase camera behind him, when he is his again, must have neither the cage nor the post between it and him)
+      // (out through the gate and off to the side of the line where the post stood: the chase camera behind him, when he is
+      // his again, must have the cage clear of it and him)
       const home = inCage(0, 0.3), gateOut = inCage(0, -3.2), out = inCage(3.0, -8.0);
       airlock.holdGate(false);
       p.x = home.x; p.z = home.z; skater.vel?.set(0, 0, 0);
@@ -454,7 +459,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
         { for: 3.4, line: 'Lift ascending. Surface in ten.', at: () => { S.shaft.visible = true; }, cam: (k, t) => {
           S.up(t); airlock.setGate?.(1);   // (shut, the way up)
           const f = facing(dir); eye.copy(p).addScaledVector(f, 1.15).add(UP.clone().multiplyScalar(1.3)); target.copy(p).add(UP.clone().multiplyScalar(1.35));
-          return { fov: 36, shake: 0.04, lines: 0.6 };
+          return { fov: 36, shake: 0.04, lines: 0.6, walk: 0 };
         } },
         // from the floor of the cage, in its corner, looking up past him: the strips pouring down the shaft, the square of the
         // surface coming (the cage's floor is plate: there is nothing to see looking down)
@@ -462,7 +467,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           S.up(t + 3.4);
           const c = inCage(1.45, 1.35); eye.set(c.x, y0 + 0.35, c.z);
           target.copy(p).setY(y0 + 2.6 + 6 * k).lerp(new THREE.Vector3(A.x, y0 + 2.6 + 6 * k, A.z), 0.4);
-          return { fov: 64 - 6 * k, shake: 0.05, lines: 0.8 };
+          return { fov: 64 - 6 * k, shake: 0.05, lines: 0.8, walk: 0 };
         } },
         // the stop: the shaft gone, the Moon round the cage, the lamp going green; from outside, low, by the sign
         // the stop: the shaft gone, the Moon round the cage; his face from under it, the sky over him
@@ -471,7 +476,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           // (aimed over his head, not at his face: onFace would pull a camera aimed at it back along this low line, under the floor)
           const f = facing(dir); eye.copy(p).addScaledVector(f, 1.35 - 0.15 * k).add(UP.clone().multiplyScalar(1.0));
           target.copy(p).addScaledVector(f, -0.3).add(UP.clone().multiplyScalar(2.3 + 0.15 * k));
-          return { fov: 54, lines: k < 0.15 ? 0.6 : 0 };
+          return { fov: 54, lines: k < 0.15 ? 0.6 : 0, walk: 0 };
         } },
         // the gate opens on the Moon; he rolls out
         { for: 3.6, line: '...Never again. ...Same time tomorrow?', at: () => { airlock.holdGate(true); playPortalOpen(); }, cam: (k) => {
@@ -484,7 +489,7 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           if (ahead.lengthSq() > 1e-4) skater.fwd?.copy(ahead.normalize());
           skater.vel?.copy(skater.fwd || outward).multiplyScalar(k > 0.3 && k < 0.95 ? 4.0 : 0);
           const c = inCage(0, -6.6); eye.set(c.x, y0 + 1.6, c.z); target.set(p.x, y0 + 1.05, p.z);   // (on the runway's line, between the gate and the sign: the one way in clear of the boulders either side; it opening, him coming out and bearing away past us)
-          return { fov: 42, lines: 0 };
+          return { fov: 42, lines: 0, walk: k > 0.32 && k < 0.95 ? 3.4 : 0 };   // (out of the lift on foot: walking, his feet on the ground)
         } },
         // wide: the Moon, the dome, the lift behind him; a crane up and away from the side the sign is not on
         { for: 3.4, line: '', cam: (k) => {
@@ -494,9 +499,9 @@ export function createCutscenes({ camera, model, skater, horde, portal, renderPo
           const e = smooth(k);
           eye.copy(p).addScaledVector(away, 6.5 + 2.5 * e).addScaledVector(toSign, -2.5 - 1.5 * e).setY(y0 + 3.0 + 2.8 * e);   // (from over the ramps and blocks by the runway)
           target.copy(p).addScaledVector(toSign, -1.2).setY(y0 + 1.1 + 0.6 * e);
-          return { fov: 50 + 6 * e, lines: 0 };
+          return { fov: 50 + 6 * e, lines: 0, walk: 0 };
         } },
-      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4, 'moon');
+      ], () => { S.remove(); airlock.holdGate(false); done?.(); }, 1.4, 'moon_up');   // (his cue: the swell as the gate opens, the fade over the wide)
       scene.cleanup = () => { S.remove(); airlock.holdGate(false); };
       scene.holds = [];
     },

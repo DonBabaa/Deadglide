@@ -307,6 +307,12 @@ body { font-family: var(--text); font-size: 16px; letter-spacing: 0.3px; color: 
 .card .desc { font-family: var(--text); font-size: 17px; font-weight: 500; text-transform: none; letter-spacing: 0.5px; }
 .card .owned, .card .key { font-family: var(--text); font-weight: 600; }
 .card.rare { border-color: var(--amber); }
+/* (the balance pass: a synergy card, and the HotBox's pick of power-ups) */
+.card.synergy { border-color: #ff5ab4; box-shadow: 0 0 18px rgba(255, 90, 180, 0.35); }
+.card.synergy .name { color: #ff9ad2; }
+.card.power { border-color: #b48cff; }
+.card.power .name { color: #d7c2ff; }
+.card.power.new { box-shadow: 0 0 16px rgba(180, 140, 255, 0.4); }
 .card:hover { border-color: #7dffb0; }
 #levelup-cards { gap: 28px; }
 
@@ -744,3 +750,23 @@ body.descent #score, body.descent #xp, body.descent #stats, body.descent #gold, 
 #afoot.on { opacity: 1; }
 body.free-ride #afoot { display: block; }
 body.free-ride #afoot.hidden { display: none; }
+
+/* The Moon's lift: locked (shoot its lamp), the ready check (freeride/airlock.js). */
+#lift-ready { display: none; position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); padding: 7px 16px; font-family: var(--display); font-size: 17px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bone); background: rgba(0, 0, 0, 0.5); border: 2px solid rgba(0, 0, 0, 0.7); white-space: nowrap; pointer-events: none; }
+#lift-ready.on { display: block; }
+#lift-ready b { color: #ffd23a; }
+#lift-ready span { opacity: 0.5; margin: 0 4px; }
+#lift-ready kbd { display: inline-block; min-width: 20px; padding: 0 6px; color: #111; background: #ffd23a; border: 2px solid #111; font: inherit; text-align: center; }
+body:not(.free-ride) #lift-ready, body.cutscene #lift-ready { display: none !important; }
+
+/* Out of DEAD AIR, on the Moon: the card (freeride/outcard.js). */
+#out-card { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(4, 4, 6, 0.6); }
+#out-card.on { display: block; }
+#out-card .box { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); min-width: 520px; max-width: 760px; padding: 26px 34px 22px; text-align: center; background: rgba(10, 10, 12, 0.92); border: 2px solid #7dffb0; box-shadow: 0 0 40px rgba(125, 255, 176, 0.18); }
+#out-card h1 { margin: 0 0 8px; font: 400 60px Anton, Impact, sans-serif; letter-spacing: 6px; color: #7dffb0; text-shadow: 4px 4px 0 #000; }
+#out-card .line { margin: 0 0 14px; font: 600 18px 'Barlow Condensed', sans-serif; letter-spacing: 1.5px; color: rgba(232, 226, 214, 0.85); }
+#out-card .crew { list-style: none; margin: 0 0 12px; padding: 0; font: 600 18px 'Barlow Condensed', sans-serif; color: #e8e2d6; }
+#out-card .crew li { display: flex; gap: 14px; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+#out-card .crew b { color: #ffd23a; letter-spacing: 1px; } #out-card .crew span { opacity: 0.7; } #out-card .crew em { font-style: normal; color: #7dffb0; }
+#out-card .mastre { margin: 6px 0 16px; font: 400 22px Anton, Impact, sans-serif; letter-spacing: 3px; color: #f1d27a; text-transform: uppercase; }
+#out-card button { padding: 10px 34px; font: 600 22px 'Barlow Condensed', sans-serif; letter-spacing: 3px; text-transform: uppercase; color: #111; background: #7dffb0; border: 0; cursor: pointer; }

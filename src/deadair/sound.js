@@ -9,6 +9,7 @@
 //   const sound = createDeadSound(station);  sound.load();
 //   sound.update(dt, camera, { danger, hurt })  each frame
 //   sound.voice(z, 'groan' | 'scream' | 'claw'); sound.step(); sound.reload(); sound.sting(); ...
+//   sound.music.want('dread' | 'hunt' | 'swarm' | 'lounge' | null); sound.music.cue(name) -> clock; .jingle(i); .sting(p); .laugh(p)
 import * as THREE from 'three';
 import { audio, unlockAudio } from '../fx/audio.js';
 
@@ -17,20 +18,25 @@ const VOICES = 24, STINGS = 5, PA_FILES = [...Array.from({ length: 10 }, (_, i) 
 // Recorded (CREDITS.txt): the guns, his breath, his feet on the plates, what a round does to meat and to metal, three more drones.
 // (and, off the internet: see CREDITS.txt. zm_*: real zombies, two of them many groans in one file that are cut up on load
 // (SEGMENTS); ghost*: long moans, for far off and the screamer's call; bed_freezer: a cramped-passage ambience loop;
-// music_paranoid: a dark ambient track, under everything, quietest when they are on you)
+// and his music: see MUSIC_FILES)
 const REAL_FILES = ['zm_darsycho.ogg', 'zm_ghoul.ogg', 'zm_ian1.ogg', 'zm_ian2.ogg', 'zm_ian3.ogg', 'zm_fast.ogg', 'ghost1.mp3', 'ghost2.mp3', 'ghost3.mp3', 'ghost4.mp3', 'ghost5.mp3',
   'shot_pistol.wav', 'shot_machineGun.wav', 'shot_shotgun.wav', 'shot_revolver.wav', 'shot_sniper.wav', 'breath_run.wav', 'breath_scared.wav', 'breath_freaked.wav', 'gasp.wav',
   ...Array.from({ length: 8 }, (_, i) => `step${i}.ogg`), 'impact_meat01.ogg', 'impact_meat02.ogg', 'impact_metal.ogg', 'drone_truth.mp3', 'drone_log.mp3', 'drone_cryptid.mp3'];
-const DRONES = [['drone_station', 2400], ['drone_deep', 900], ['drone_truth', 1600], ['drone_log', 1800], ['drone_cryptid', 1200], ['bed_freezer', 1400], ['music_paranoid', 18000]];
+const DRONES = [['drone_station', 2400], ['drone_deep', 900], ['drone_truth', 1600], ['drone_log', 1800], ['drone_cryptid', 1200], ['bed_freezer', 1400]];   // (the old ambient track is gone: his music, below, plays in its place)
 const SEGMENTS = ['zm_darsycho', 'zm_ghoul'];   // (files of many groans: cut into one each on load)
-const BEDS = ['bed_freezer.ogg', 'music_paranoid.mp3', 'show_song.ogg'];   // (show_song: the band's number, his own, made with Suno)   // (loaded after everything else: the track is big, and nothing waits for it)
+const BEDS = ['bed_freezer.ogg', 'show_song.ogg'];   // (show_song: the band's number, his own, made with Suno)   // (loaded after everything else: the track is big, and nothing waits for it)
 // The reloads' recordings (each a part of one: see reload.js, which says which plays when).
 const RELOAD_FILES = ['pistol_out.wav', 'pistol_in.wav', 'pistol_rack.wav', 'rifle_out.wav', 'rifle_in.wav', 'rifle_bolt.wav', 'pump.wav', 'clip1.wav', 'clip2.wav', 'round.wav',
   'shell_first.mp3', 'shell.mp3', 'shotgun_rack.mp3', 'shell_chamber.mp3'];
+// His music (dl/Audio, made with Suno; cut and levelled by tools/master_audio.py, encoded to AAC), in sounds/deadair/music:
+// the loops (dread, hunt, swarm; the lounge's), the cues of the way in and out, the objectives' jingles, stingers, laughs.
+const MUSIC_FILES = ['cue_way_in', 'dread', 'hunt', 'swarm', 'cue_way_out', 'lounge', 'jingle_1', 'jingle_2', 'jingle_3',
+  ...Array.from({ length: 10 }, (_, i) => `sting_${i + 1}`), ...Array.from({ length: 4 }, (_, i) => `laugh_${i + 1}`)];
+const MUSIC_LEVEL = 0.9;   // (on the game's music volume)
 const fwd = new THREE.Vector3(), upv = new THREE.Vector3();
 
 export function createDeadSound(station) {
-  let ctx = null, bus = null, world = null, dull = null, verbIn = null, roomTone = null, drones = [], loaded = false, loading = null, quiet = 0;
+  let ctx = null, bus = null, world = null, dull = null, verbIn = null, roomTone = null, drones = [], loaded = false, loading = null, quiet = 0, mus = null, musLoops = null;
   const buffers = {}, segs = {};
   // The groans in a file of them: where each is (RMS over 20 ms windows above a floor, gaps under 0.3 s bridged, nothing under 0.3 s kept).
   function cutUp(name) {
@@ -61,9 +67,13 @@ export function createDeadSound(station) {
     world = g(1); world.connect(dull);
     // The ring of the place: a tail of noise, combed so that it rings like a steel corridor, dying over two seconds.
     const verb = ctx.createConvolver();
-    verb.buffer = steelTail(ctx, 2.4);
+    verb.buffer = steelTail(ctx, 1.5);   // (shorter and lower than it was: less of the ring, more of the sound itself)
     verbIn = g(1);
-    verbIn.connect(verb).connect(g(0.55)).connect(dull);
+    verbIn.connect(verb).connect(g(0.28)).connect(dull);
+    // His music: on the game's music volume, faded in and out with the mode. The loops have a gain of their own, so that
+    // a jingle or a cue can push them down under it.
+    mus = g(0); mus.connect(audio.score || audio.sfx);
+    musLoops = g(1); musLoops.connect(mus);
     // The station's hum and its air: always there.
     roomTone = hum();
     dread = dreadPad();
@@ -82,6 +92,8 @@ export function createDeadSound(station) {
       // (the beds, after: when they are in, their drones start)
       Promise.all(BEDS.map((name) => fetch(BASE + name).then((r) => r.arrayBuffer()).then((data) => ctx.decodeAudioData(data)).then((b) => { buffers[name.replace(/\.\w+$/, '')] = b; }).catch(() => {}))).then(startDrones);
     });
+    // (his music, alongside: not waited for by anything; a loop asked for before it is in starts when it is)
+    for (const name of MUSIC_FILES) fetch(`${BASE}music/${name}.aac`).then((r) => r.arrayBuffer()).then((data) => ctx.decodeAudioData(data)).then((b) => { buffers[`m_${name}`] = b; }).catch(() => {});
     return loading;
   }
   // Every drone whose recording is in and that is not going yet.
@@ -102,30 +114,154 @@ export function createDeadSound(station) {
 
   // ---- A sound from a place: HRTF, quieter with distance, and muffled if something solid is in the way.
   let crateHumOn = false;
-  function placed(node, p, { level = 1, wet = 0.35, ref = 1.6, open = false } = {}) {
+  // ---- The budget (his report, twice: with a crowd of them and the guns going, the sound stopped). Every sound from a
+  // place has a panner, filters and a send of its own, and the browser renders all of them on one thread: too many at
+  // once and it cannot keep up, and everything cuts out. So, very conservatively, and in this order:
+  //   1. the music: never counted, never touched (its own bus: sound.music);
+  //   2. what is yours (your gun, your feet, your breath, the PA): a few at once of its own (OWN_MOST);
+  //   3. the dead nearest you: their voices, their feet, the hits on them, a handful of each, the nearest first (one
+  //      nearer than the farthest of its kind going takes its place);
+  //   4. the station's own noises (env): the first to go, and none at all while any of them is close or it is busy.
+  // Nothing new at all while too much is going (SFX_MOST), but for the nearest; no more than a few new ones in a tenth
+  // of a second; only the three nearest within 9 m are HRTF, the rest equal-power. And any place that is not one (NaN)
+  // is refused: it would put NaN through the mix, and that is silence for good.
+  const CAPS = { voice: 4, step: 3, hit: 3, hitx: 2, fx: 6, env: 2 };
+  const FARTHEST = { voice: 28, step: 15, hit: 28, hitx: 16, fx: 45, env: 60 };
+  const ALL = 12, HRTF_MOST = 3, HRTF_NEAR = 9, SFX_MOST = 26, OWN_MOST = 10, PER_TENTH = 5;
+  const voices = [], own = [], budget = { made: 0, dropped: 0, live: 0, peak: 0, errors: 0 };
+  let tokens = PER_TENTH, tokenAt = 0, catNow = null;
+  // (every one-shot this makes is counted while it sounds: started, and not yet ended)
+  const counted = (src) => { budget.live++; budget.peak = Math.max(budget.peak, budget.live); src.addEventListener('ended', () => { budget.live--; }, { once: true }); return src; };
+  function admit(p, cat = 'fx', dur = 1) {
+    cat = catNow || cat;
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) { budget.dropped++; return null; }
+    const d = ear.distanceTo(p), now = ctx.currentTime;
+    if (d > (FARTHEST[cat] ?? 45)) { budget.dropped++; return null; }
+    if (cat === 'env' && (last.danger > 0.2 || budget.live > SFX_MOST * 0.4)) { budget.dropped++; return null; }   // (the station keeps quiet while they are about)
+    for (let i = voices.length - 1; i >= 0; i--) if (voices[i].end <= now) voices.splice(i, 1);
+    tokens = Math.min(PER_TENTH, tokens + (now - tokenAt) * PER_TENTH * 10); tokenAt = now;
+    const near = d < 6 && (cat === 'voice' || cat === 'hit' || cat === 'step');
+    let mine = 0, hrtf = 0, farthest = null, farAll = null;
+    for (const v of voices) { if (v.cat === cat) { mine++; if (!farthest || v.d > farthest.d) farthest = v; } if (!farAll || v.d > farAll.d) farAll = v; if (v.hrtf) hrtf++; }
+    const full = mine >= (CAPS[cat] ?? 6) || voices.length >= ALL || budget.live >= SFX_MOST || tokens < 1;
+    if (full) {
+      // (full: the nearest are the ones heard. One nearer than the farthest of its kind (or of all, if that is what is
+      // full) takes its place, that one faded out quickly; and never when it is the rate that is spent, unless it is close)
+      const victim = mine >= (CAPS[cat] ?? 6) ? farthest : farAll;
+      if ((tokens < 1 && !near) || !victim || d > victim.d * 0.75 || !victim.kill) { budget.dropped++; return null; }
+      victim.kill(); voices.splice(voices.indexOf(victim), 1); budget.dropped++;
+    }
+    tokens = Math.max(0, tokens - 1);
+    const v = { end: now + Math.min(8, Math.max(0.05, dur)) + 0.1, cat, d, kill: null, hrtf: d < HRTF_NEAR && hrtf < HRTF_MOST };
+    voices.push(v); budget.made++;
+    return v;
+  }
+  // What is yours (not from a place: your gun, your feet, your breath): a few at once; past that, the newest waits for
+  // nothing (it is not made). important: the PA, a sting, a scare's own (always made).
+  function admitOwn(dur, important = false) {
+    const now = ctx.currentTime;
+    for (let i = own.length - 1; i >= 0; i--) if (own[i] <= now) own.splice(i, 1);
+    if (!important && (own.length >= OWN_MOST || budget.live >= SFX_MOST + 6)) { budget.dropped++; return false; }
+    own.push(now + Math.min(6, Math.max(0.05, dur)) + 0.05);
+    return true;
+  }
+  function placed(node, p, { level = 1, wet = 0.35, ref = 1.6, open = false, hrtf = true } = {}) {
     const pan = ctx.createPanner();
-    pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = ref; pan.rolloffFactor = 1.15; pan.maxDistance = 80;
+    pan.panningModel = hrtf ? 'HRTF' : 'equalpower'; pan.distanceModel = 'inverse'; pan.refDistance = ref; pan.rolloffFactor = 1.15; pan.maxDistance = 80;
     if (pan.positionX) { pan.positionX.value = p.x; pan.positionY.value = p.y; pan.positionZ.value = p.z; } else pan.setPosition(p.x, p.y, p.z);
     const blocked = !open && !station.see(ear, p), muffle = ctx.createBiquadFilter(), gain = ctx.createGain();
     muffle.type = 'lowpass'; muffle.frequency.value = blocked ? 650 : 16000;
     gain.gain.value = level * (blocked ? 0.55 : 1);
     node.connect(muffle).connect(gain).connect(pan);
     pan.connect(world);
-    const send = ctx.createGain(); send.gain.value = wet * (blocked ? 1.6 : 1);
-    pan.connect(send).connect(verbIn);
+    if (wet > 0.05) { const send = ctx.createGain(); send.gain.value = wet * (blocked ? 1.6 : 1); pan.connect(send).connect(verbIn); }   // (none for what is barely wet: a node fewer)
     return { pan, gain };
   }
-  function sample(name, p, { level = 1, rate = 1, wet = 0.35, ref, from = 0, length } = {}) {
+  function sample(name, p, { level = 1, rate = 1, wet = 0.35, ref, from = 0, length, cat = 'fx' } = {}) {
     if (!ready() || !buffers[name]) return null;
-    const src = ctx.createBufferSource();
+    const dur = (length || buffers[name].duration - from) / Math.max(0.1, rate);
+    const a = p ? admit(p, cat, dur) : null;
+    if (p ? !a : !admitOwn(dur, cat === 'own!')) return null;
+    const src = counted(ctx.createBufferSource());
     src.buffer = buffers[name];
     src.playbackRate.value = rate;
-    if (p) placed(src, p, { level, wet, ref });
+    if (p) { const { gain } = placed(src, p, { level, wet, ref, hrtf: a.hrtf }); a.kill = () => { const t = ctx.currentTime; gain.gain.setTargetAtTime(0, t, 0.015); try { src.stop(t + 0.08); } catch {} }; }
     else { const gn = ctx.createGain(); gn.gain.value = level; src.connect(gn).connect(world); const s = ctx.createGain(); s.gain.value = wet; gn.connect(s).connect(verbIn); }
     if (length) src.start(0, from, length); else src.start();
     return src;
   }
   const ready = () => !!(bus && loaded && !quiet);
+
+  // ---- His music. A loop (dread, hunt, swarm; the lounge) starts somewhere in itself and crossfades into another when
+  // it is asked for, and into its own start as it runs out. A cue plays once from its start, with the loops gone under
+  // it, and can say how far into it it is (the scenes keep time by that). A jingle pushes the loops down under it.
+  const music = (() => {
+    const XF = 4;   // (seconds of a crossfade)
+    let cur = null, cue = null, duckTo = 1, duckFor = 0, wanted = null;
+    const log = [], note = (what) => { log.push(what); if (log.length > 16) log.shift(); };   // (what it last played: the tests)
+    const startLoop = (name, from = null) => {
+      const b = buffers[`m_${name}`]; if (!b) return null;
+      const src = ctx.createBufferSource(), gn = ctx.createGain(), t = ctx.currentTime;
+      src.buffer = b; src.connect(gn).connect(musLoops);
+      const off = from ?? Math.random() * Math.max(0, b.duration - 60);   // (the same opening every time would grow old)
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.linearRampToValueAtTime(1, t + (from === 0 ? XF : 2.5));
+      src.start(t, off);
+      return { name, src, gain: gn, endAt: t + (b.duration - off) };
+    };
+    const fadeOut = (n, src, secs) => { const t = ctx.currentTime; n.gain.cancelScheduledValues(t); n.gain.setValueAtTime(Math.max(0.0001, n.gain.value), t); n.gain.linearRampToValueAtTime(0.0001, t + secs); try { src.stop(t + secs + 0.1); } catch {} };
+    const m = {
+      get wanted() { return wanted; },
+      get playing() { return cur?.name || null; },
+      get log() { return log.slice(); },
+      note,
+      // The loop to be playing (null: none), crossfaded to if it is not the one already.
+      want(name) {
+        wanted = name;
+        if (!ctx || cue || cur?.name === name) return;
+        if (cur) { fadeOut(cur.gain, cur.src, XF); cur = null; }
+        if (name) cur = startLoop(name);
+      },
+      // A cue, once, from its start (or from `from` seconds in: the scene was already that far along when it came in), the
+      // loops faded out under it. Returns a clock: seconds into it (-1 once it is over, or while the sound is asleep).
+      cue(name, level = 1, from = 0) {
+        if (!ctx || !mus) return null;
+        m.endCue(0.3);
+        const b = buffers[`m_${name}`]; if (!b || from >= b.duration) return null;
+        if (cur) { fadeOut(cur.gain, cur.src, 1.2); cur = null; }
+        const src = ctx.createBufferSource(), gn = ctx.createGain(), t0 = ctx.currentTime + 0.03;
+        gn.gain.value = level; src.buffer = b; src.connect(gn).connect(mus); src.start(t0, from);
+        const c = cue = { name, src, gain: gn, t0: t0 - from, length: b.duration };
+        src.onended = () => { if (cue === c) cue = null; };
+        return () => (cue === c && ctx.state === 'running' ? ctx.currentTime - c.t0 : -1);
+      },
+      // (in, and the sound awake to play it)
+      ready(name) { return !!(ctx && ctx.state === 'running' && buffers[`m_${name}`]); },
+      endCue(fade = 2.5) { if (!cue) return; const c = cue; cue = null; fadeOut(c.gain, c.src, fade); },
+      get cueName() { return cue?.name || null; },
+      cueTime() { return cue ? ctx.currentTime - cue.t0 : -1; },
+      has(name) { return !!buffers[`m_${name}`]; },
+      // The loops down to `to` for `secs` (a jingle, a line on the PA), then back up.
+      duck(to = 0.4, secs = 4) { duckTo = Math.min(duckTo, to); duckFor = Math.max(duckFor, secs); },
+      // An objective done: the child's tune (a music box, a toy piano), the loops down under it.
+      jingle(i = 1) {
+        const b = buffers[`m_jingle_${i}`]; if (!b || !mus) return;
+        m.duck(0.2, b.duration + 0.4); note(`jingle_${i}`);
+        const src = ctx.createBufferSource(), gn = ctx.createGain(); gn.gain.value = 1.1; src.buffer = b; src.connect(gn).connect(mus); src.start(ctx.currentTime + 0.05);
+      },
+      // A stinger: everywhere at once (p null) or from a place, as they come through.
+      sting(p = null, level = 1) { const n = 1 + Math.floor(Math.random() * 10); if (buffers[`m_sting_${n}`] && ready()) note(`sting_${n}`); if (buffers[`m_sting_${n}`]) sample(`m_sting_${n}`, p, { level: 0.95 * level, wet: 0.08, ref: 6 }); },
+      // A laugh, from somewhere in the dark (muffled through the walls, if that is where it is).
+      laugh(p) { const n = 1 + Math.floor(Math.random() * 4); if (buffers[`m_laugh_${n}`] && ready()) note(`laugh_${n}`); if (buffers[`m_laugh_${n}`]) sample(`m_laugh_${n}`, p, { level: 1.5, rate: rnd(0.9, 1.04), wet: 0.15, ref: 3.5 }); },
+      update(dt, hushed = 1) {
+        if (!ctx || !musLoops) return;
+        if (wanted && !cur && !cue && buffers[`m_${wanted}`]) cur = startLoop(wanted);   // (asked for before it was in)
+        if (cur && ctx.currentTime > cur.endAt - XF - 0.05) { const next = startLoop(cur.name, 0); fadeOut(cur.gain, cur.src, XF); cur = next; }   // (round again)
+        if (duckFor > 0) duckFor -= dt; else duckTo = Math.min(1, duckTo + dt * 0.4);
+        musLoops.gain.setTargetAtTime(duckTo * (hushed < 1 ? 0.15 : 1), ctx.currentTime, hushed < 1 ? 0.08 : 0.3);
+      },
+    };
+    return m;
+  })();
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -133,7 +269,8 @@ export function createDeadSound(station) {
   // out (a gun's recording rings on for eight seconds; an automatic cannot have forty of those going).
   function one(name, { level = 1, rate = 1, wet = 0.35, cap = 0, offset = 0, dur = 0 } = {}) {
     const b = buffers[name]; if (!b) return null;
-    const src = ctx.createBufferSource(); src.buffer = b; src.playbackRate.value = rate;
+    if (!admitOwn(cap > 0 ? cap + 0.4 : dur > 0 ? dur : b.duration / rate)) return null;
+    const src = counted(ctx.createBufferSource()); src.buffer = b; src.playbackRate.value = rate;
     const g = ctx.createGain(); g.gain.value = level;
     const s = ctx.createGain(); s.gain.value = wet;
     src.connect(g).connect(world); g.connect(s).connect(verbIn);
@@ -147,7 +284,8 @@ export function createDeadSound(station) {
   // A recording out of a little speaker: band-passed (no bottom, no top), a touch of distortion, everywhere at once.
   function speaker(name, { level = 1, f = 1400, q = 1.2 } = {}) {
     const b = buffers[name]; if (!b) return;
-    const src = ctx.createBufferSource(); src.buffer = b;
+    admitOwn(b.duration, true);
+    const src = counted(ctx.createBufferSource()); src.buffer = b;
     const band = ctx.createBiquadFilter(); band.type = 'bandpass'; band.frequency.value = f; band.Q.value = q;
     const crush = ctx.createWaveShaper(); const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = (i / 127.5) - 1; curve[i] = Math.tanh(x * 2.4) / Math.tanh(2.4); } crush.curve = curve;
     const g = ctx.createGain(); g.gain.value = level * 1.6;
@@ -155,33 +293,37 @@ export function createDeadSound(station) {
     src.start();
   }
   // One of the real ones: a single recording, or one groan out of a file of them. kind: 'groan' | 'fast' | 'feed'.
-  function moan(kind, p, { level = 1, rate = 1, wet = 0.4, ref = 3 } = {}) {
-    if (kind === 'fast' && Math.random() < 0.5) return sample('zm_fast', p, { level, rate, wet, ref });
+  function moan(kind, p, { level = 1, rate = 1, wet = 0.4, ref = 3, cat = 'voice' } = {}) {
+    if (kind === 'fast' && Math.random() < 0.5) return sample('zm_fast', p, { level, rate, wet, ref, cat });
     const singles = kind === 'feed' ? ['zm_ian2', 'zm_ian3'] : ['zm_ian1', 'zm_ian2', 'zm_ian3'];
     const many = kind === 'feed' ? 'zm_ghoul' : pick(['zm_darsycho', 'zm_ghoul']);
     const cuts = segs[many];
-    if (cuts && cuts.length && Math.random() < 0.65) { const [a, b] = pick(cuts); return sample(many, p, { level, rate, wet, ref, from: a, length: (b - a) / rate }); }
-    return sample(pick(singles), p, { level, rate, wet, ref });
+    if (cuts && cuts.length && Math.random() < 0.65) { const [a, b] = pick(cuts); return sample(many, p, { level, rate, wet, ref, from: a, length: (b - a) / rate, cat }); }
+    return sample(pick(singles), p, { level, rate, wet, ref, cat });
   }
-  function noise(seconds, { type = 'bandpass', f = 1000, f2 = f, q = 1, level = 0.4, attack = 0.002, p = null, wet = 0.3, at = 0 } = {}) {
-    if (!bus) return;
-    const t = ctx.currentTime + at, src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  function noise(seconds, { type = 'bandpass', f = 1000, f2 = f, q = 1, level = 0.4, attack = 0.002, p = null, wet = 0.3, at = 0, cat = 'fx' } = {}) {
+    if (!bus || !(level > 0.0001)) return;   // (a ramp to nothing is an error, not a silence)
+    const a = p ? admit(p, cat, seconds + at) : null;
+    if (p ? !a : !admitOwn(seconds + at, cat === 'own!')) return;
+    const t = ctx.currentTime + at, src = counted(ctx.createBufferSource()), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
     src.buffer = audio.noise; src.loop = true;
     filter.type = type; filter.Q.value = q;
     filter.frequency.setValueAtTime(f, t); filter.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + seconds);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(level, t + attack); gain.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
     src.connect(filter).connect(gain);
-    if (p) placed(gain, p, { wet }); else { gain.connect(world); const s = ctx.createGain(); s.gain.value = wet; gain.connect(s).connect(verbIn); }
+    if (p) { placed(gain, p, { wet, hrtf: a.hrtf }); a.kill = () => { const k = ctx.currentTime; gain.gain.cancelScheduledValues(k); gain.gain.setTargetAtTime(0.0001, k, 0.015); try { src.stop(k + 0.08); } catch {} }; } else { gain.connect(world); const s = ctx.createGain(); s.gain.value = wet; gain.connect(s).connect(verbIn); }
     src.start(t, Math.random()); src.stop(t + seconds + 0.05);
   }
-  function tone(seconds, { type = 'sine', f = 200, f2 = f, level = 0.3, attack = 0.003, p = null, wet = 0.25, at = 0 } = {}) {
-    if (!bus) return;
-    const t = ctx.currentTime + at, osc = ctx.createOscillator(), gain = ctx.createGain();
+  function tone(seconds, { type = 'sine', f = 200, f2 = f, level = 0.3, attack = 0.003, p = null, wet = 0.25, at = 0, cat = 'fx' } = {}) {
+    if (!bus || !(level > 0.0001)) return;   // (a ramp to nothing is an error, not a silence)
+    const a = p ? admit(p, cat, seconds + at) : null;
+    if (p ? !a : !admitOwn(seconds + at, cat === 'own!')) return;
+    const t = ctx.currentTime + at, osc = counted(ctx.createOscillator()), gain = ctx.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(f, t); osc.frequency.exponentialRampToValueAtTime(Math.max(10, f2), t + seconds);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(level, t + attack); gain.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
     osc.connect(gain);
-    if (p) placed(gain, p, { wet }); else { gain.connect(world); const s = ctx.createGain(); s.gain.value = wet; gain.connect(s).connect(verbIn); }
+    if (p) { placed(gain, p, { wet, hrtf: a.hrtf }); a.kill = () => { const k = ctx.currentTime; gain.gain.cancelScheduledValues(k); gain.gain.setTargetAtTime(0.0001, k, 0.015); try { osc.stop(k + 0.08); } catch {} }; } else { gain.connect(world); const s = ctx.createGain(); s.gain.value = wet; gain.connect(s).connect(verbIn); }
     osc.start(t); osc.stop(t + seconds + 0.05);
   }
   // The station's hum: the mains (50 Hz and its second), air moving in the ducts. Never stops while you are in there.
@@ -223,6 +365,7 @@ export function createDeadSound(station) {
     has: (name) => !!buffers[name],   // (the tests)
     cuts: (name) => segs[name] || null,
     load,
+    music,
     get ready() { return ready(); },
     // Open (fade in) / closed (fade out).
     open(on) {
@@ -231,12 +374,14 @@ export function createDeadSound(station) {
       load();
       const t = ctx.currentTime;
       bus.gain.cancelScheduledValues(t); bus.gain.setTargetAtTime(on ? 1.25 : 0, t, on ? 0.6 : 0.25);
+      mus.gain.cancelScheduledValues(t); mus.gain.setTargetAtTime(on ? MUSIC_LEVEL : 0, t, 0.6);
+      if (!on) { music.want(null); music.endCue(1.5); }
       roomTone.gain.setTargetAtTime(on ? 1 : 0, t, 1.5);
       quiet = on ? 0 : 1;
       wantOpen = on;
     },
     // (what state it is all in: the tests, and anyone whose sound has gone)
-    state() { return { ctx: ctx?.state ?? 'none', bus: bus ? +bus.gain.value.toFixed(3) : null, sfx: audio.sfx ? +audio.sfx.gain.value.toFixed(3) : null, quiet, loaded, wantOpen, drones: drones.filter(Boolean).length, hush: +hush.toFixed(2) }; },
+    state() { return { ctx: ctx?.state ?? 'none', bus: bus ? +bus.gain.value.toFixed(3) : null, sfx: audio.sfx ? +audio.sfx.gain.value.toFixed(3) : null, quiet, loaded, wantOpen, drones: drones.filter(Boolean).length, hush: +hush.toFixed(2), voices: voices.length, made: budget.made, dropped: budget.dropped, live: budget.live, peak: budget.peak, errors: budget.errors }; },
     update(dt, camera, { danger = 0, hurt = 0, dark = false, signal = false, hard = false } = {}) {
       // (a watchdog: the browser can put the context to sleep, and a bus shut by mistake would be silence for good)
       nudged -= dt;
@@ -283,7 +428,7 @@ export function createDeadSound(station) {
       if (drones[3]) drones[3].level.gain.setTargetAtTime(0.32 * last.signal, t, 0.6);       // (the broadcast: a captain's last log under it)
       if (drones[4]) drones[4].level.gain.setTargetAtTime((0.16 + 0.14 * last.danger) * last.hard, t, 0.8);   // (Nightmare: something in a cage)
       if (drones[5]) drones[5].level.gain.setTargetAtTime((0.26 + 0.16 * last.dark) * (1 - 0.5 * last.danger) * hushed, t, 0.9);   // (the cramped passage: the calm is not calm)
-      if (drones[6]) drones[6].level.gain.setTargetAtTime((0.3 - 0.16 * last.danger) * hushed, t, 1.2);   // (the track: under everything, least when they are on you)
+      music.update(dt, hushed);
       // Hurt: the world goes dull, and your heart is in your ears.
       last.hurt += (hurt - last.hurt) * Math.min(1, dt * 4);
       if (!shut) dull.frequency.setTargetAtTime(20000 * Math.pow(0.04, last.hurt), t, 0.08);
@@ -297,19 +442,19 @@ export function createDeadSound(station) {
     },
     // A zombie's voice, from where it is.
     voice(z, what) {
-      const p = z.head || z.pos;
-      if (what === 'scream') { sample(`voice${pick([16, 17, 18, 21, 19])}`, p, { level: 1.5, rate: rnd(1.05, 1.25), wet: 0.5, ref: 2.5 }); return; }
-      if (what === 'claw') { sample(`voice${pick([2, 5, 6, 11, 13, 24])}`, p, { level: 1.2, rate: rnd(0.95, 1.15), wet: 0.2 }); noise(0.16, { type: 'highpass', f: 2600, f2: 900, level: 0.5, p }); return; }
-      if (what === 'die') { sample(`voice${pick([1, 9, 12, 15, 20])}`, p, { level: 0.9, rate: rnd(0.75, 0.9), wet: 0.4 }); noise(0.3, { f: 300, f2: 90, q: 0.7, level: 0.35, p, at: 0.6 }); return; }
-      if (what === 'feed') { if (Math.random() < 0.5) moan('feed', p, { level: 0.7, rate: rnd(0.7, 0.85), wet: 0.3 }); else sample(`voice${pick([3, 7, 8, 14])}`, p, { level: 0.6, rate: rnd(0.6, 0.75), wet: 0.3 }); noise(0.25, { f: 700, f2: 400, q: 2, level: 0.12, p, at: 0.2 }); return; }
-      if (what === 'call') { sample(`ghost${pick([1, 2, 3, 4])}`, p, { level: 1.7, rate: rnd(0.9, 1.05), wet: 0.6, ref: 3 }); return; }   // (the screamer: a long one, the whole deck hears it)
+      const p = z.head && Number.isFinite(z.head.x) ? z.head : z.pos;
+      if (what === 'scream') { sample(`voice${pick([16, 17, 18, 21, 19])}`, p, { cat: 'voice', level: 2.1, rate: rnd(1.05, 1.25), wet: 0.3, ref: 4.5 }); return; }
+      if (what === 'claw') { sample(`voice${pick([2, 5, 6, 11, 13, 24])}`, p, { cat: 'voice', level: 1.2, rate: rnd(0.95, 1.15), wet: 0.2 }); noise(0.16, { type: 'highpass', f: 2600, f2: 900, level: 0.5, p }); return; }
+      if (what === 'die') { sample(`voice${pick([1, 9, 12, 15, 20])}`, p, { cat: 'voice', level: 0.9, rate: rnd(0.75, 0.9), wet: 0.4 }); noise(0.3, { f: 300, f2: 90, q: 0.7, level: 0.35, p, at: 0.6 }); return; }
+      if (what === 'feed') { if (Math.random() < 0.5) moan('feed', p, { cat: 'voice', level: 0.7, rate: rnd(0.7, 0.85), wet: 0.3 }); else sample(`voice${pick([3, 7, 8, 14])}`, p, { cat: 'voice', level: 0.6, rate: rnd(0.6, 0.75), wet: 0.3 }); noise(0.25, { f: 700, f2: 400, q: 2, level: 0.12, p, at: 0.2 }); return; }
+      if (what === 'call') { sample(`ghost${pick([1, 2, 3, 4])}`, p, { cat: 'voice', level: 1.7, rate: rnd(0.9, 1.05), wet: 0.6, ref: 3 }); return; }   // (the screamer: a long one, the whole deck hears it)
       const fast = z.kind === 'sprinter' || z.kind === 'runner';
-      if (Math.random() < 0.55) { moan(fast ? 'fast' : 'groan', p, { level: fast ? 1.5 : 1.3, rate: fast ? rnd(1.0, 1.15) : rnd(0.8, 0.95), wet: 0.5, ref: 3 }); return; }   // (a real one, as often as not)
-      sample(`voice${1 + Math.floor(Math.random() * VOICES)}`, p, { level: fast ? 1.6 : 1.35, rate: fast ? rnd(0.95, 1.12) : rnd(0.68, 0.88), wet: 0.5, ref: 3 });
+      if (Math.random() < 0.55) { moan(fast ? 'fast' : 'groan', p, { cat: 'voice', level: fast ? 2.0 : 1.8, rate: fast ? rnd(1.0, 1.15) : rnd(0.8, 0.95), wet: 0.3, ref: 4.5 }); return; }   // (a real one, as often as not)
+      sample(`voice${1 + Math.floor(Math.random() * VOICES)}`, p, { cat: 'voice', level: fast ? 2.1 : 1.8, rate: fast ? rnd(0.95, 1.12) : rnd(0.68, 0.88), wet: 0.3, ref: 4.5 });
     },
     // Something heavy: a sting, as something comes at you out of the dark.
     sting(level = 1) {
-      sample(`sting${1 + Math.floor(Math.random() * STINGS)}`, null, { level: 0.8 * level, rate: rnd(0.9, 1.05), wet: 0.4 });
+      sample(`sting${1 + Math.floor(Math.random() * STINGS)}`, null, { level: 0.8 * level, rate: rnd(0.9, 1.05), wet: 0.4, cat: 'own!' });
       noise(0.9, { type: 'lowpass', f: 3000, f2: 120, level: 0.45 * level, attack: 0.004, wet: 0.6 });
       tone(1.4, { f: 62, f2: 38, level: 0.6 * level, wet: 0.3 });
     },
@@ -344,8 +489,12 @@ export function createDeadSound(station) {
       if (!ready()) return;
       // (a recorded boot on a grate, if it is here; heavier and quicker when he runs; a thud of his weight under a run)
       if (buffers.step0) {
-        one(`step${Math.floor(Math.random() * 8)}`, { level: (running ? 0.62 : 0.36) * level, rate: running ? rnd(1.0, 1.12) : rnd(0.92, 1.04), wet: running ? 0.3 : 0.22 });
-        if (running) tone(0.12, { f: rnd(70, 85), f2: 40, level: 0.3 * level, attack: 0.003, wet: 0.2 });
+        one(`step${Math.floor(Math.random() * 8)}`, { level: (running ? 0.85 : 0.55) * level, rate: running ? rnd(1.0, 1.12) : rnd(0.92, 1.04), wet: running ? 0.1 : 0.06 });
+        if (running) tone(0.12, { f: rnd(70, 85), f2: 40, level: 0.3 * level, attack: 0.003, wet: 0.08 });
+        // (foley: the kit on him, the sling's clink and the lamp's bracket; the rub of his jacket)
+        noise(0.05, { type: 'highpass', f: rnd(3800, 5200), level: (running ? 0.16 : 0.07) * level, attack: 0.002, at: 0.03, wet: 0.04 });
+        if (running || Math.random() < 0.5) tone(0.04, { type: 'triangle', f: rnd(2400, 3100), f2: rnd(2000, 2400), level: (running ? 0.05 : 0.025) * level, attack: 0.002, at: 0.05, wet: 0.05 });
+        noise(0.16, { type: 'bandpass', f: rnd(900, 1500), q: 0.9, level: (running ? 0.1 : 0.06) * level, attack: 0.05, at: 0.02, wet: 0.03 });
         return;
       }
       if (running) {
@@ -377,21 +526,35 @@ export function createDeadSound(station) {
       lastShot[id] = now;
       one(buffers[`shot_${id}`] ? `shot_${id}` : 'shot_pistol', { level: id === 'sniper' || id === 'revolver' ? 1 : id === 'shotgun' ? 0.95 : 0.8, rate: rnd(0.97, 1.03), wet: 0.55, cap: auto ? 0.7 : id === 'machineGun' ? 1.2 : 2.6 });
     },
+    // One of them coming through (a grille kicked out of the ceiling, a panel): a hard bang of steel where it is, and
+    // the thing clattering down onto the plates under it.
+    burst(p, level = 1) {
+      if (!ready()) return;
+      music.note('burst');
+      if (buffers.impact_metal) sample('impact_metal', p, { level: 1.2 * level, rate: rnd(0.55, 0.72), wet: 0.22, ref: 3.5 });
+      tone(0.4, { f: rnd(64, 86), f2: 32, level: 0.85 * level, attack: 0.002, p, wet: 0.22 });
+      noise(0.2, { type: 'lowpass', f: 2600, f2: 260, level: 0.75 * level, attack: 0.001, p, wet: 0.25 });
+      const floor = p.clone().setY(0.2);
+      for (let i = 0; i < 5; i++) noise(0.05, { type: 'bandpass', f: rnd(1700, 3600), q: 4, level: 0.34 * level * (1 - i * 0.16), attack: 0.001, p: floor, at: 0.38 + i * rnd(0.07, 0.16), wet: 0.18 });
+      tone(0.12, { f: rnd(90, 120), f2: 50, level: 0.4 * level, attack: 0.002, p: floor, at: 0.36, wet: 0.15 });
+    },
     // A round into the wall: metal, where it hit.
-    ricochet(p) { if (ready() && buffers.impact_metal) sample('impact_metal', p, { level: rnd(0.35, 0.6), rate: rnd(0.8, 1.25), wet: 0.45, ref: 1.4 }); },
+    ricochet(p) { if (ready() && buffers.impact_metal) sample('impact_metal', p, { cat: 'hitx', level: rnd(0.35, 0.6), rate: rnd(0.8, 1.25), wet: 0.45, ref: 1.4 }); },
     // One of theirs, on the plates, near: a scuff and a thud, heavier when it runs.
     zstep(p, running) {
       if (!ready()) return;
-      tone(0.08, { f: rnd(60, 80), f2: 40, level: running ? 0.42 : 0.28, attack: 0.003, p, wet: 0.3 });
-      noise(0.06, { f: rnd(700, 1100), q: 1.5, level: running ? 0.2 : 0.12, attack: 0.002, p, wet: 0.35 });
+      // (bare feet and rags on steel plate: one of the recorded steps, slowed and heavy. One source a step: a crowd of
+      // them running is a great many steps)
+      if (buffers.step0) sample(`step${Math.floor(Math.random() * 8)}`, p, { cat: 'step', level: running ? 1.4 : 1.0, rate: running ? rnd(0.78, 0.9) : rnd(0.62, 0.74), wet: 0, ref: 3.2 });
+      else tone(0.09, { cat: 'step', f: rnd(55, 75), f2: 38, level: running ? 0.7 : 0.48, attack: 0.003, p, wet: 0 });
     },
     // A round into one of them: the slap and the wet of it. big: a shotgun's, a melee's.
     meat(p, big = false) {
       if (!ready()) return;
-      if (buffers.impact_meat01) sample(pick(['impact_meat01', 'impact_meat02']), p, { level: big ? 1.3 : 0.85, rate: rnd(0.88, 1.08), wet: 0.35, ref: 1.6 });
-      noise(0.04, { type: 'bandpass', f: 1900, q: 2, level: big ? 0.5 : 0.32, attack: 0.001, p, wet: 0.3 });
-      noise(0.14, { type: 'lowpass', f: 600, f2: 150, level: big ? 0.7 : 0.45, attack: 0.002, p, wet: 0.4 });
-      tone(0.1, { f: big ? 95 : 130, f2: 50, level: big ? 0.5 : 0.3, attack: 0.002, p, wet: 0.3 });
+      if (buffers.impact_meat01) sample(pick(['impact_meat01', 'impact_meat02']), p, { cat: 'hit', level: big ? 1.3 : 0.85, rate: rnd(0.88, 1.08), wet: 0.35, ref: 1.6 });
+      noise(0.04, { cat: 'hitx', type: 'bandpass', f: 1900, q: 2, level: big ? 0.5 : 0.32, attack: 0.001, p, wet: 0.3 });
+      noise(0.14, { cat: 'hitx', type: 'lowpass', f: 600, f2: 150, level: big ? 0.7 : 0.45, attack: 0.002, p, wet: 0.4 });
+      tone(0.1, { cat: 'hitx', f: big ? 95 : 130, f2: 50, level: big ? 0.5 : 0.3, attack: 0.002, p, wet: 0.3 });
     },
     // The PA coming on: a crackle, the recorded voice (i: which; -1: the lights-out one) out of a tinny speaker in the
     // ceiling, a hum under it, and the crackle again when it is done. Says how long it runs.
@@ -399,6 +562,7 @@ export function createDeadSound(station) {
     welcome() {
       if (!ready()) return 4;
       const b = buffers.pa_welcome, secs = b ? b.duration : 4;
+      music.duck(0.35, secs + 0.8);
       noise(0.3, { type: 'bandpass', f: 2400, f2: 1200, q: 0.7, level: 0.32, attack: 0.005, wet: 0.7 });
       if (b) setTimeout(() => speaker('pa_welcome', { level: 0.95, f: 1400, q: 1.2 }), 380);
       return secs + 0.4;
@@ -407,6 +571,7 @@ export function createDeadSound(station) {
     mastre() {
       if (!ready()) return 6;
       const b = buffers.pa_mastre, secs = b ? b.duration : 6;
+      music.duck(0.35, secs + 0.8);
       noise(0.3, { type: 'bandpass', f: 2400, f2: 1200, q: 0.7, level: 0.32, attack: 0.005, wet: 0.7 });
       tone(secs + 0.6, { type: 'square', f: 60, f2: 60, level: 0.012, attack: 0.3, wet: 0.9 });
       if (b) setTimeout(() => speaker('pa_mastre', { level: 0.95, f: 1400, q: 1.2 }), 380);
@@ -423,6 +588,7 @@ export function createDeadSound(station) {
     log(day) {
       if (!ready()) return 4;
       const name = `log${day}`, b = buffers[name], secs = b ? b.duration : 4;
+      music.duck(0.3, secs + 0.8);
       noise(0.08, { type: 'highpass', f: 3000, f2: 1500, level: 0.4, attack: 0.002, wet: 0.2 });   // (the click)
       noise(secs + 0.3, { type: 'bandpass', f: 5000, q: 0.4, level: 0.03, attack: 0.1, wet: 0.2 });   // (hiss)
       if (b) setTimeout(() => sample(name, null, { level: 1.1, rate: 1.06, wet: 0.15 }), 220);
@@ -431,6 +597,7 @@ export function createDeadSound(station) {
     pa(i = 0) {
       if (!ready()) return 6;
       const name = i < 0 ? 'pa_dark' : `pa${((i % 10) + 10) % 10}`, b = buffers[name], secs = b ? b.duration : 5.5;
+      music.duck(0.35, secs + 0.9);
       noise(0.3, { type: 'bandpass', f: 2400, f2: 1200, q: 0.7, level: 0.32, attack: 0.005, wet: 0.7 });
       tone(secs + 0.6, { type: 'square', f: 60, f2: 60, level: 0.012, attack: 0.3, wet: 0.9 });
       noise(secs + 0.4, { type: 'bandpass', f: 3000, q: 0.5, level: 0.012, attack: 0.3, wet: 0.9 });
@@ -442,6 +609,7 @@ export function createDeadSound(station) {
     radio(name = 'pa_copy') {
       if (!ready()) return 4;
       const b = buffers[name], secs = b ? b.duration : 4;
+      music.duck(0.35, secs + 0.6);
       noise(secs + 0.5, { type: 'bandpass', f: 2600, q: 0.4, level: 0.05, attack: 0.1, wet: 0.1 });
       noise(0.12, { type: 'highpass', f: 2000, level: 0.25, attack: 0.002, wet: 0.2 });
       if (b) speaker(name, { level: 1, f: 1900, q: 2.2 });
@@ -494,9 +662,18 @@ export function createDeadSound(station) {
     // A breath, right behind your ear (a scare: nothing is there).
     breath(p) {
       if (!ready()) return;
-      noise(1.3, { type: 'bandpass', f: 600, f2: 380, q: 1.2, level: 0.22, attack: 0.5, p, wet: 0.05 });
-      noise(0.9, { type: 'bandpass', f: 900, f2: 500, q: 1.5, level: 0.12, attack: 0.25, p, at: 1.4, wet: 0.05 });
-      sample(`voice${pick([3, 7, 14])}`, p, { level: 0.35, rate: 0.5, wet: 0.05, ref: 0.6 });
+      // (right at your ear, and loud: it is meant to make you jump)
+      noise(1.3, { type: 'bandpass', f: 600, f2: 380, q: 1.2, level: 0.85, attack: 0.35, p, wet: 0.02 });
+      noise(0.9, { type: 'bandpass', f: 900, f2: 500, q: 1.5, level: 0.5, attack: 0.2, p, at: 1.4, wet: 0.02 });
+      noise(0.5, { type: 'lowpass', f: 300, f2: 150, level: 0.45, attack: 0.05, p, at: 1.35, wet: 0.02 });
+      sample(`voice${pick([3, 7, 14])}`, p, { level: 1.4, rate: 0.5, wet: 0.02, ref: 0.6 });
+    },
+    // A cough: a hard bark from the chest, rough, and the wheeze in after it.
+    cough(p, hard = 1) {
+      if (!ready()) return;
+      noise(0.16, { type: 'bandpass', f: rnd(500, 700), f2: 260, q: 1.6, level: 0.7 * hard, attack: 0.004, p, wet: 0.15 });
+      tone(0.14, { type: 'sawtooth', f: rnd(130, 160), f2: 70, level: 0.22 * hard, attack: 0.004, p, wet: 0.15 });
+      noise(0.35, { type: 'highpass', f: 1800, f2: 1200, level: 0.12 * hard, attack: 0.08, p, at: 0.18, wet: 0.1 });
     },
     // The power going: everything winding down, the hum dying, and far off in the dark, a scream.
     blackout() {
@@ -635,6 +812,13 @@ export function createDeadSound(station) {
       for (let i = 0; i < seconds * 2; i++) tone(0.45, { type: 'square', f: i % 2 ? 620 : 470, level: 0.07, attack: 0.01, at: i * 0.5, wet: 0.6 });
       noise(seconds, { type: 'bandpass', f: 600, f2: 900, q: 0.5, level: 0.5, attack: 0.6, wet: 0.5 });
     },
+    // The air going: a roar up the shaft for as long as it is open, gusting, and the shriek of it through the hatch's edge.
+    wind(seconds = 10) {
+      if (!ready()) return;
+      noise(seconds, { type: 'lowpass', f: 520, f2: 260, level: 0.9, attack: 0.25, wet: 0.25 });
+      noise(seconds, { type: 'bandpass', f: 1300, f2: 800, q: 0.7, level: 0.45, attack: 0.5, wet: 0.35 });
+      for (let i = 0; i < seconds * 1.5; i++) noise(0.5 + Math.random() * 0.4, { type: 'bandpass', f: rnd(1800, 3200), q: 3, level: 0.18, attack: 0.15, at: i / 1.5 + Math.random() * 0.3, wet: 0.4 });   // (the gusts)
+    },
     // The outer door slamming shut.
     slam(p) { if (!ready()) return; tone(0.5, { f: 70, f2: 35, level: 0.9, attack: 0.004, p, wet: 0.6 }); noise(0.3, { type: 'lowpass', f: 1200, f2: 100, level: 0.7, attack: 0.002, p, wet: 0.6 }); },
     // A pipe letting go: a hiss, hard then dying, from where it is.
@@ -661,6 +845,14 @@ export function createDeadSound(station) {
     down() { if (ready()) { tone(3, { f: 40, f2: 25, level: 0.8, attack: 0.01, wet: 0.6 }); noise(2.5, { type: 'lowpass', f: 1200, f2: 50, level: 0.5, wet: 0.8 }); } },
   };
   void at;
+  // Nothing in here may throw into the game: a sound that fails is a sound not heard (his report: the sound stopped,
+  // and with it whatever came after it in that frame). The station's own noises are marked as such while they are made.
+  const ENV = new Set(['station', 'faraway', 'overhead']);
+  for (const [k, desc] of Object.entries(Object.getOwnPropertyDescriptors(api))) {
+    if (typeof desc.value !== 'function' || k === 'music') continue;
+    const f = desc.value, env = ENV.has(k);
+    api[k] = (...a) => { if (env) catNow = 'env'; try { return f.apply(api, a); } catch (e) { budget.errors++; return null; } finally { if (env) catNow = null; } };
+  }
   return api;
 }
 

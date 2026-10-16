@@ -27,6 +27,8 @@ export const AFOOT = {
 };
 const JUMP = [0.75, 1.6], RJUMP = [0.8, 1.6];   // the parts of the jump clips played through a hop (as in DEAD AIR's walker)
 const LIFTED = { lifted: true };                 // (how high he is is the game's, not the clip's)
+const SQUARE = { upright: 1 };                   // (see poseFoot)
+const lowAim = new THREE.Vector3();
 const STANCE = -1.15;                            // (on his board he stands across it: skaterModel.js)
 const lerp = (a, b, t) => a + (b - a) * t;
 const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -111,13 +113,23 @@ function poseFoot(model, dt, pos, face, how, aimPoint, hidden = false, blinking 
   const long = !!k.twoHanded, hs = how.speed;
   let clip, rate = 1, at, lift = null;
   if (how.air) { clip = long ? 'riflejump' : 'jump'; const c = long ? RJUMP : JUMP; at = Math.min(c[1], c[0] + Math.min(how.airT, 0.9)); lift = LIFTED; }
-  else if (hs < 0.3) clip = long ? 'breathe' : how.ready > 0 ? 'pistolidle' : 'idle';
+  else if (hs < 0.3) clip = long && !how.plain ? 'breathe' : how.ready > 0 ? 'pistolidle' : 'idle';   // (plain: a cutscene's, stood square on: the rifle's idle stands him side-on)
   else if (how.sprint) { clip = long ? 'riflesprint' : 'sprint'; rate = long ? Math.max(0.8, hs / AFOOT.run) : 0.95 + 0.1 * (hs / AFOOT.walk); }
   else if (long && (how.gunUp || how.ready > 0 || how.back)) { clip = 'riflewalk'; rate = Math.max(0.55, hs / AFOOT.walk) * (how.back ? -1 : 1); }
   else if (long) { clip = 'riflerun'; rate = Math.max(0.7, hs / AFOOT.walk); }
   else { clip = 'walk'; rate = Math.max(0.55, hs / AFOOT.walk) * (how.back ? -1 : 1); }
-  k.play?.(clip, 1, rate, at, false, lift);
-  k.updateArm(dt, aimPoint, how.gunUp);
+  // (the rifle clips turn his chest well round from his hips, the way a man holds a long gun across himself: on the
+  // Moon, walking, that read as him going along sideways. His back is brought most of the way round to face where he goes.)
+  if (long && !lift) lift = SQUARE;
+  // (a pistol he is not using: the clip has that arm too, the gun in its hand (kirkyBody's carryInClip), as in DEAD AIR:
+  // posed by hand, it went where it hangs when he rides, which on his feet is folded up behind his back)
+  const carry = !long && !how.gunUp;
+  k.carryInClip = carry;
+  k.play?.(clip, 1, rate, at, carry, lift);
+  k.pistolGrip = (k.pistolGrip || 0) + ((!long && how.gunUp ? 1 : 0) - (k.pistolGrip || 0)) * Math.min(1, dt * 14);   // (a pistol up: both hands on it)
+  // (a long gun he is not using is carried at low ready: muzzle down in front of him, both hands on it, never hung off one arm)
+  if (long && !how.gunUp) { lowAim.set(pos.x + Math.sin(face) * 2.2, pos.y + (how.sprint ? 0.25 : 0.4), pos.z + Math.cos(face) * 2.2); k.updateArm(dt, lowAim, true); }
+  else k.updateArm(dt, aimPoint, how.gunUp);
   k.updateSmoke(dt);
 }
 
@@ -205,6 +217,21 @@ export function createAfoot({ skater, model, chase, input, emoter = null }) {
     },
     // At once, with nothing to show for it (a cutscene that needs him on his board, a respawn, a new level).
     reset() { if (on || phase) mount(false); },
+    // On his feet at once, the board on his back (Free Ride starts him on foot: main.js sets footNext and this is done
+    // the first frame he is on the ground).
+    footNext: false,
+    stepOffNow() {
+      if (on || phase) return;
+      on = true; want = 0;
+      face = Math.atan2(s.fwd.x, s.fwd.z);
+      camYaw = chase.yaw + chase.aimYaw;
+      B.make(); B.wear(true); if (B.fly) B.fly.visible = false;
+      model.board.visible = false; model.riding = undefined;
+      model.rider.position.y = 0; model.rider.rotation.y = 0;
+      s.vel.set(0, 0, 0); s.steer = 0; s.charge = 0; airT = 9; stride = 0;
+      chase.free = true;
+      say();
+    },
 
     // One physics step (in place of skater.update). camYaw: which way the camera looks.
     step(dt, inp, yaw, aiming) {
@@ -328,6 +355,15 @@ export function createAfoot({ skater, model, chase, input, emoter = null }) {
       model.rider.position.y = 0; model.rider.rotation.y = 0;
     },
     show(visible) { hint.classList.toggle('hidden', !visible); },
+    // A cutscene that has him on his feet (the way into the lift): walking at `speed` (0: stood), facing `face`, his
+    // board on his back. cineEnd() puts it back under him.
+    cine(dt, pos, faceAt, speed) {
+      if (!B.back) B.make();
+      B.wear(true); if (B.fly) B.fly.visible = false;
+      poseFoot(model, dt, pos, faceAt, { speed, air: false, airT: 0, sprint: false, back: false, ready: 0, gunUp: false, plain: true }, null);
+      model.rider.position.y = 0; model.rider.rotation.y = 0;
+    },
+    cineEnd() { if (on || phase) return; B.drop(); model.board.visible = true; },
   };
   return api;
 }

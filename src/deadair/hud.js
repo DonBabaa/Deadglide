@@ -63,7 +63,7 @@ body.deadair #hud, body.deadair #crosshair { display: none !important; }
 @keyframes recblink { to { opacity: 0.2; } }
 #deadair .logcard p { margin: 6px 0 0; font: 500 24px 'Barlow Condensed', sans-serif; color: #e8e2d6; letter-spacing: 0.5px; min-height: 30px; }
 #deadair .pause { position: absolute; inset: 0; display: none; pointer-events: auto; background: rgba(4,4,6,0.74); }
-#deadair .pause.on { display: block; }
+#deadair .pause.on { display: block; z-index: 60; }   /* (over every prompt and bar of the HUD) */
 #deadair .pause .box { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center; min-width: 340px; }
 #deadair .pause h1 { margin: 0 0 4px; font: 400 64px Anton, Impact, sans-serif; color: #e8291c; letter-spacing: 8px; text-shadow: 4px 4px 0 #000, 0 0 30px rgba(255, 40, 20, 0.6); }
 #deadair .pause p { margin: 0 0 20px; font: 600 18px 'Barlow Condensed', sans-serif; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,226,214,0.75); text-shadow: 2px 2px 0 #000; }
@@ -105,6 +105,10 @@ body.deadair #hud, body.deadair #crosshair { display: none !important; }
 @keyframes boofpulse { from { text-shadow: 2px 2px 0 #000, 0 0 8px rgba(255, 190, 40, 0.3); } to { text-shadow: 2px 2px 0 #000, 0 0 28px rgba(255, 200, 60, 1); } }
 #deadair .gold-veil { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(255,200,60,0) 55%, rgba(255,170,30,0.28) 85%, rgba(255,140,0,0.5) 100%); transition: opacity 0.4s; }
 #deadair .cine { position: absolute; inset: 0; display: none; pointer-events: none; }
+#deadair .lbox { position: absolute; inset: 0; pointer-events: none; }   /* (a letterbox that leaves the rest of the HUD up: a QTE played as a cut-in) */
+#deadair .lbox i { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.35s ease; }
+#deadair .lbox i:first-child { top: 0; } #deadair .lbox i:last-child { bottom: 0; }
+#deadair .lbox.on i { height: 10%; }
 #deadair.cinema > :not(.cine) { display: none !important; }
 #deadair .cine.on { display: block; }
 #deadair .cine .bar { position: absolute; left: 0; right: 0; height: 13%; background: #000; }
@@ -327,6 +331,7 @@ export function createDeadHud() {
     loading(text, k = 0) { const l = $('.loading'); l.classList.toggle('on', text != null); if (text != null) { l.querySelector('p').textContent = text; l.querySelector('em').style.width = `${Math.round(k * 100)}%`; } },
     // Someone says something (out in the game; the cut-ins have their own line).
     say(who, line) { const l = $('.line'); const text = line ? (who ? `<b>${esc(who)}</b>${esc(line)}` : esc(line)) : ''; if (l.dataset.t !== text) { l.dataset.t = text; l.innerHTML = text; } l.style.opacity = text ? 1 : 0; },
+    letterbox(on) { let l = root.querySelector('.lbox'); if (!l) { l = document.createElement('div'); l.className = 'lbox'; l.innerHTML = '<i></i><i></i>'; root.prepend(l); } l.classList.toggle('on', !!on); },
     cine(on, lines = 0, flash = 0, title = '', k = 0, sub = '', skip = '', say = null) {
       const c = $('.cine');
       c.classList.toggle('on', on);
